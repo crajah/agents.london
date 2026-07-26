@@ -68,9 +68,8 @@ jobs:
         run: |
           ./scripts/03_deploy_k8s.sh
 
-      - name: Verify Deployment Status
+      - name: Verify Deployment & Ingress Status
         run: |
           kubectl get pods --namespace default
           kubectl get services --namespace default
-          kubectl get ingress agents-london-ingress --namespace default || true
-          kubectl get managedcertificate agents-london-managed-cert --namespace default || true
+          ./scripts/04_check_ingresses.sh
