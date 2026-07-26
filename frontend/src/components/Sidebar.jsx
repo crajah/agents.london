@@ -8,10 +8,12 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BuildIcon from '@mui/icons-material/Build';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldIcon from '@mui/icons-material/Shield';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 export default function Sidebar({ currentTab, setCurrentTab, metrics }) {
   const menuItems = [
     { id: 'playground', label: 'Civilization Playground', icon: <SportsEsportsIcon /> },
+    { id: 'discovery', label: 'Discovery & Composability', icon: <AutoAwesomeIcon /> },
     { id: 'civilization', label: 'Civilization Graph', icon: <HubIcon /> },
     { id: 'agents', label: 'Agent Registry & Kagent', icon: <SmartToyIcon /> },
     { id: 'tools', label: 'MCP Tool Registry', icon: <BuildIcon /> },

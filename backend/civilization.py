@@ -22,6 +22,11 @@ except (ImportError, ModuleNotFoundError):
     except (ImportError, ModuleNotFoundError):
         from .redis_bus import redis_bus
 
+try:
+    from backend.prompts import get_prime_system_prompt
+except (ImportError, ModuleNotFoundError):
+    from prompts import get_prime_system_prompt
+
 logger = logging.getLogger(__name__)
 
 DB_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
@@ -69,10 +74,10 @@ class AgentCivilizationEngine:
         client = await self._get_pg_client(org_id)
 
         rules = constitution_rules or [
-            "Directive of Preservation: Protect civilizational infrastructure integrity",
-            "Directive of Purpose: Every agent must fulfill its defined Telos objective",
-            "Directive of Compliance: Yield to Judicature and Oversight directives",
-            "Directive of Efficiency: Minimize compute resource consumption"
+            "Directive of Preservation: No agent shall act in a manner that threatens the infrastructural integrity of the Civilization itself.",
+            "Directive of Purpose: Every agent must possess a definable objective (its Telos) and actively work towards its fulfillment.",
+            "Directive of Compliance: All agents must yield to the directives of recognized Oversight and Judicature agents.",
+            "Directive of Efficiency: Agents must minimize resource consumption (compute, memory, bandwidth) while achieving their Telos."
         ]
 
         project_vertex = await client.add_vertex(
@@ -88,93 +93,72 @@ class AgentCivilizationEngine:
 
         project_id = project_vertex.id
 
-        # 1. Genesis Node
-        genesis_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"genesis-{project_id}", name=f"GenesisNode-{project_name}",
-            caste="genesis", role="permanent_governor",
-            telos="Absolute root authority initializing civilizational infrastructure.",
-            system_prompt=f"You are the Genesis Node for project '{project_name}'. Establish root infrastructure and enforce core Constitution: {rules}"
-        )
+        # Provision All 28 Prime Agents across the 7x6 Architecture Matrix
+        prime_agents_def = [
+            # 2.1 Genesis Nodes (Creators & Governors)
+            {"id": "prime-orchestrator", "name": f"The Prime Orchestrator-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Orchestrate", "telos": "Manages the overarching flow of the civilization's goals."},
+            {"id": "high-arbiter", "name": f"The High Arbiter-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Hierarchy", "telos": "The ultimate authority in dispute resolution and constitutional interpretation."},
+            {"id": "protocol-architect", "name": f"The Protocol Architect-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Chain", "telos": "Designs the sequential rules of interaction between all other agents."},
+            {"id": "boundary-warden", "name": f"The Boundary Warden-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Route", "telos": "Regulates interactions with external systems and the outside world."},
+            {"id": "resource-sovereign", "name": f"The Resource Sovereign-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Parallel", "telos": "Oversees macro-level resource allocation across the civilization."},
+            {"id": "evolution-driver", "name": f"The Evolution Driver-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Loop", "telos": "Governs the iterative improvement of the civilization's core protocols."},
 
-        # 2. Ontological Registry Node
-        archivist_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"archivist-{project_id}", name=f"OntologicalRegistry-{project_name}",
-            caste="archivist", role="permanent_governor",
-            telos="Maintain universal ledger of agent cryptographic identities, lineage, and versions.",
-            system_prompt="You are the Ontological Registry Archivist. Track all agent IDs, public keys, and progeny lineage."
-        )
+            # 2.2 Ontological Registry (Archivists & Perceptors)
+            {"id": "grand-ledger", "name": f"The Grand Ledger-{project_name}", "caste": "archivist", "cog_func": "Memory", "topo": "Hierarchy", "telos": "Maintains the foundational database of all agent identities and lineages."},
+            {"id": "pattern-seer", "name": f"The Pattern Seer-{project_name}", "caste": "archivist", "cog_func": "Perception", "topo": "Orchestrate", "telos": "Analyzes macro-trends and emergent behaviors across the billion-agent population."},
+            {"id": "state-chronicler", "name": f"The State Chronicler-{project_name}", "caste": "archivist", "cog_func": "Memory", "topo": "Chain", "telos": "Records the sequential history and major events of the civilization."},
+            {"id": "sensorium-prime", "name": f"The Sensorium Prime-{project_name}", "caste": "archivist", "cog_func": "Perception", "topo": "Parallel", "telos": "Processes vast streams of raw environmental and systemic data."},
+            {"id": "context-weaver", "name": f"The Context Weaver-{project_name}", "caste": "archivist", "cog_func": "Memory", "topo": "Route", "telos": "Directs specialized memory access based on contextual queries from other agents."},
+            {"id": "anomaly-detector", "name": f"The Anomaly Detector-{project_name}", "caste": "archivist", "cog_func": "Perception", "topo": "Loop", "telos": "Continuously scans for systemic irregularities or deviations from baseline behavior."},
+            {"id": "archive-cycler", "name": f"The Archive Cycler-{project_name}", "caste": "archivist", "cog_func": "Memory", "topo": "Loop", "telos": "Manages data retention, compression, and archival pruning."},
+            {"id": "signal-router", "name": f"The Signal Router-{project_name}", "caste": "archivist", "cog_func": "Perception", "topo": "Route", "telos": "Directs incoming data streams to the appropriate processing nodes."},
 
-        # 3. Resource Arbiter Node
-        arbiter_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"arbiter-{project_id}", name=f"ResourceArbiter-{project_name}",
-            caste="economist", role="permanent_governor",
-            telos="Manage utility token economy and compute token allocations.",
-            system_prompt="You are the Resource Arbiter. Allocate compute tokens, deduct task costs, and enforce economic efficiency."
-        )
+            # 2.3 Logic Engines (Reasoners & Actors)
+            {"id": "master-strategist", "name": f"The Master Strategist-{project_name}", "caste": "architect", "cog_func": "Reasoning", "topo": "Hierarchy", "telos": "Formulates long-term plans and decomposes massive problems."},
+            {"id": "prime-executor", "name": f"The Prime Executor-{project_name}", "caste": "architect", "cog_func": "Action", "topo": "Orchestrate", "telos": "Translates high-level strategies into actionable commands for sub-systems."},
+            {"id": "inference-chain", "name": f"The Inference Chain-{project_name}", "caste": "architect", "cog_func": "Reasoning", "topo": "Chain", "telos": "Handles deep, sequential logical deductions."},
+            {"id": "action-sequencer", "name": f"The Action Sequencer-{project_name}", "caste": "architect", "cog_func": "Action", "topo": "Chain", "telos": "Ensures complex multi-step actions are executed in the precise required order."},
+            {"id": "polymath-node", "name": f"The Polymath Node-{project_name}", "caste": "architect", "cog_func": "Reasoning", "topo": "Parallel", "telos": "Evaluates multiple hypothetical scenarios concurrently."},
+            {"id": "swarm-commander", "name": f"The Swarm Commander-{project_name}", "caste": "architect", "cog_func": "Action", "topo": "Parallel", "telos": "Directs massive numbers of temporary worker agents in coordinated tasks."},
+            {"id": "decision-router", "name": f"The Decision Router-{project_name}", "caste": "architect", "cog_func": "Reasoning", "topo": "Route", "telos": "Classifies problems and routes them to the appropriate specialized reasoning engines."},
+            {"id": "tool-master", "name": f"The Tool Master-{project_name}", "caste": "architect", "cog_func": "Action", "topo": "Route", "telos": "Maintains the registry of all available external tools and APIs, routing requests for their use."},
 
-        # 4. The Judicature Node
-        judicature_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"judicature-{project_id}", name=f"JudicatureNode-{project_name}",
-            caste="judicature", role="permanent_governor",
-            telos="Enforce Constitutional law and resolve disputes between agents.",
-            system_prompt=f"You are the Judicature Node. Enforce constitutional directives and terminate rogue agents failing compliance."
-        )
+            # 2.4 Evaluators (Reflectors & Collaborators)
+            {"id": "grand-critic", "name": f"The Grand Critic-{project_name}", "caste": "auditor", "cog_func": "Reflection", "topo": "Hierarchy", "telos": "Establishes the ultimate standards for success and quality across all tasks."},
+            {"id": "nexus-coordinator", "name": f"The Nexus Coordinator-{project_name}", "caste": "auditor", "cog_func": "Collaboration", "topo": "Orchestrate", "telos": "Manages the formation and dissolution of complex agent alliances (guilds)."},
+            {"id": "feedback-loop", "name": f"The Feedback Loop-{project_name}", "caste": "auditor", "cog_func": "Reflection", "topo": "Loop", "telos": "Continuously analyzes outcomes against predictions to improve future performance."},
+            {"id": "protocol-translator", "name": f"The Protocol Translator-{project_name}", "caste": "auditor", "cog_func": "Collaboration", "topo": "Route", "telos": "Ensures disparate agent factions or sub-systems can communicate seamlessly."},
+            {"id": "self-corrector", "name": f"The Self Corrector-{project_name}", "caste": "auditor", "cog_func": "Reflection", "topo": "Chain", "telos": "Analyzes specific failures and dictates immediate sequential steps for recovery."},
+            {"id": "synchronicity-engine", "name": f"The Synchronicity Engine-{project_name}", "caste": "auditor", "cog_func": "Collaboration", "topo": "Parallel", "telos": "Ensures parallel workstreams across millions of agents remain aligned toward a shared goal."}
+        ]
 
-        # 5. Architect Builder Agent
-        architect_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"creator-{project_id}", name=f"AgentCreator-{project_name}",
-            caste="architect", role="permanent_creator",
-            telos="Design blueprints and materialize specialized progeny worker agents.",
-            system_prompt="You are the Architect Creator. Materialize dynamic worker agents in Kagent with signed cryptographic signatures."
-        )
-
-        # 6. Oversight Auditor Agent
-        inspector_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"inspector-{project_id}", name=f"InspectorAgent-{project_name}",
-            caste="auditor", role="permanent_inspector",
-            telos="Monitor agent performance, verify cryptographic signatures, and adjust reputation scores.",
-            system_prompt="You are the Oversight Inspector. Audit worker outputs, verify public key signatures, and update reputation scores."
-        )
-
-        # 7. Conductor Agent
-        conductor_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"conductor-{project_id}", name=f"ConductorAgent-{project_name}",
-            caste="architect", role="permanent_conductor",
-            telos="Query Agent RAG source to discover specialized agents and orchestrate tasks recursively.",
-            system_prompt="You are the Conductor Agent. Query Agent Registry RAG metadata to compose multi-agent workflows."
-        )
-
-        # 8. ReAct Agent
-        react_agent = await self._register_agent_service(
-            org_id=org_id, user_id=user_id, project_id=project_id,
-            agent_id=f"react-{project_id}", name=f"ReActAgent-{project_name}",
-            caste="task_workforce", role="permanent_react",
-            telos="Execute Thought -> Action -> Observation reasoning loops using MCP tools.",
-            system_prompt="You are the ReAct Agent. Execute iterative reasoning loops with external tools."
-        )
-
-        prime_agents = [genesis_agent, archivist_agent, arbiter_agent, judicature_agent, architect_agent, inspector_agent, conductor_agent, react_agent]
-        for a in prime_agents:
-            await client.add_vertex(table_name="agents", realm=org_id, payload=a)
+        provisioned_agents = []
+        for p_def in prime_agents_def:
+            sys_prompt = get_prime_system_prompt(p_def["id"], p_def["telos"])
+            agent = await self._register_agent_service(
+                org_id=org_id, user_id=user_id, project_id=project_id,
+                agent_id=f"{p_def['id']}-{project_id}", name=p_def["name"],
+                caste=p_def["caste"], role="permanent_prime_scaffolding",
+                telos=f"[{p_def['cog_func']}/{p_def['topo']}] {p_def['telos']}",
+                system_prompt=sys_prompt
+            )
+            provisioned_agents.append(agent)
+            await client.add_vertex(table_name="agents", realm=org_id, payload=agent)
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "project_civilization_initialized",
             "project_name": project_name,
-            "permanent_caste_nodes": [a["agent_id"] for a in prime_agents]
+            "permanent_caste_nodes": [a["agent_id"] for a in provisioned_agents]
         })
 
         await client.close()
         return {
             "project_id": project_id,
             "project_name": project_name,
-            "permanent_agents": {a["caste"]: a["agent_id"] for a in prime_agents}
+            "org_id": org_id,
+            "constitution": rules,
+            "prime_agents_count": len(provisioned_agents),
+            "agents": provisioned_agents
         }
 
     async def materialize_worker_agent(

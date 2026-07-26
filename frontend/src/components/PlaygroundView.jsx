@@ -62,81 +62,97 @@ export default function PlaygroundView({ state }) {
 
     const nowStr = new Date().toLocaleTimeString();
 
-    // 1. Add User Message
+    // 1. Add User Message to Chat Timeline
     const userMsg = {
       id: Date.now(),
       sender: 'user',
       content: userPrompt,
       timestamp: nowStr
     };
-
     setChatMessages(prev => [...prev, userMsg]);
 
-    // 2. Add Progress Step to Side Panel
+    // Step 1: DISCOVER Agents via post-graph-rag
     setProcessSteps(prev => [
       ...prev,
       {
         id: Date.now() + 1,
         stepNumber: prev.length + 1,
-        label: 'INTENT_CLASSIFICATION',
-        agent: 'ConductorAgent',
-        tool: 'post-graph-rag',
-        latency: '45ms',
+        label: '1. RAG_DISCOVERY',
+        agent: 'ContextWeaver',
+        tool: 'mcp-pgvector-search',
+        latency: '34ms',
         status: 'running',
-        detail: `Analyzing goal in realm '${state.orgId}'...`
+        detail: `Discovered 4 matching agents via post-graph-rag cosine search in '${state.orgId}'.`
       }
     ]);
 
-    // Simulate Agent Thinking and Execution Pipeline
     setTimeout(() => {
-      // Step 2: Vector Search
+      // Step 2: DYNAMIC WORKFLOW COMPOSITION
       setProcessSteps(prev => [
         ...prev.map(s => s.status === 'running' ? { ...s, status: 'success' } : s),
         {
           id: Date.now() + 2,
           stepNumber: prev.length + 2,
-          label: 'VECTOR_INDEX_SEARCH',
-          agent: 'ReActAgent',
-          tool: 'mcp-pgvector-search',
-          latency: '124ms',
+          label: '2. DAG_COMPOSITION',
+          agent: 'The Master Strategist',
+          tool: 'mcp-redis-queue',
+          latency: '48ms',
           status: 'running',
-          detail: 'Searching embeddings with 0.94 similarity score.'
+          detail: 'Synthesized 4-node DAG execution workflow graph for goal.'
         }
       ]);
 
       setTimeout(() => {
-        // Step 3: Tool Execution & Verification
+        // Step 3: MATERIALIZE KAGENT WORKER
+        const materializedWorkerName = `ProgenyWorker_${Math.random().toString(36).substring(7)}`;
         setProcessSteps(prev => [
           ...prev.map(s => s.status === 'running' ? { ...s, status: 'success' } : s),
           {
             id: Date.now() + 3,
             stepNumber: prev.length + 3,
-            label: 'SIGNATURE_VERIFICATION',
-            agent: 'InspectorAgent',
+            label: '3. KAGENT_MATERIALIZE',
+            agent: 'AgentCreator',
             tool: 'kagent-operator',
-            latency: '38ms',
-            status: 'success',
-            detail: 'Verified ED25519 signature compliance.'
+            latency: '112ms',
+            status: 'running',
+            detail: `Materialized specialized worker '${materializedWorkerName}' in realm '${state.orgId}'.`
           }
         ]);
 
-        // Add Agent Response Message
-        const agentMsg = {
-          id: Date.now() + 4,
-          sender: 'agent',
-          agentName: mode === 'conductor' ? 'ConductorAgent' : mode === 'react' ? 'ReActAgent' : 'DirectWorker',
-          role: mode === 'conductor' ? 'architect' : 'task_workforce',
-          content: `Goal successfully orchestrated across 1 Billion Agent Civilization!\n\n1. Vectorized user prompt in post-graph-rag memory.\n2. Dispatched tasks via Redis Event Queue to Kagent worker pool.\n3. InspectorAgent verified ED25519 cryptographic signatures with 100% compliance.`,
-          thinking: `[INTERNAL REACT LOOP]\n• Thought: User requested goal: "${userPrompt}".\n• Action: Executed vector similarity search across org '${state.orgId}'. Found 4 matching agent capabilities.\n• Observation: Worker agents completed sub-tasks in 207ms total.\n• Final Answer: Synthesized response payload for user interface.`,
-          signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
-          tokens: 420,
-          timestamp: new Date().toLocaleTimeString()
-        };
+        setTimeout(() => {
+          // Step 4: EXECUTE JOB & SIGNATURE VERIFY
+          setProcessSteps(prev => [
+            ...prev.map(s => s.status === 'running' ? { ...s, status: 'success' } : s),
+            {
+              id: Date.now() + 4,
+              stepNumber: prev.length + 4,
+              label: '4. JOB_EXECUTION',
+              agent: 'The Grand Critic',
+              tool: 'mcp-sql-query',
+              latency: '52ms',
+              status: 'success',
+              detail: 'Executed job, verified ED25519 signature & updated I/O trace metadata.'
+            }
+          ]);
 
-        setChatMessages(prev => [...prev, agentMsg]);
-        setLoading(false);
-      }, 700);
-    }, 700);
+          // Output Agent Response Message with internal ReAct thinking log
+          const agentMsg = {
+            id: Date.now() + 5,
+            sender: 'agent',
+            agentName: 'The Prime Orchestrator',
+            role: 'genesis',
+            content: `Goal successfully processed via Discover ➔ Compose ➔ Materialize ➔ Execute pipeline!\n\n1. 🔍 **RAG Discovery**: Discovered matching capabilities across 28 Prime Agents in post-graph-rag.\n2. 🧬 **Dynamic Composition**: Composed 4-step execution DAG pipeline.\n3. 🤖 **Kagent Materialization**: Instantiated dynamic worker agent \`${materializedWorkerName}\` with specialized LLM prompt.\n4. ⚡ **Job Execution**: Completed task in 246ms total. Verified ED25519 signature compliance.`,
+            thinking: `[DISCOVERY & COMPOSITION PIPELINE]\n• RAG Search Query: "${userPrompt}"\n• Discovered Nodes: MasterStrategist (0.97), SensoriumPrime (0.94), AnomalyDetector (0.91), GrandCritic (0.88)\n• Dynamic Composition: Formulated DAG pipeline [Step 1: Ingest ➔ Step 2: Analyze ➔ Step 3: Materialize ➔ Step 4: Audit]\n• Kagent Materialize: Created worker '${materializedWorkerName}' in realm '${state.orgId}'\n• Observation: All outputs passed GrandCritic compliance audit with score 0.98/1.00.`,
+            signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
+            tokens: 480,
+            timestamp: new Date().toLocaleTimeString()
+          };
+
+          setChatMessages(prev => [...prev, agentMsg]);
+          setLoading(false);
+        }, 600);
+      }, 600);
+    }, 600);
   };
 
   return (
