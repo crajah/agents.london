@@ -21,6 +21,13 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           env:
             - name: POSTGRES_URI
               value: "postgresql://crajah:postgrespassword@postgres-service.default.svc.cluster.local:5432/postgres"

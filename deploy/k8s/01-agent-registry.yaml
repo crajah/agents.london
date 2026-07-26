@@ -21,6 +21,13 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
           env:
             - name: OPENAI_API_BASE
               value: "http://litellm-service.default.svc.cluster.local:80/v1"

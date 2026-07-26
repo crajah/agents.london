@@ -11,8 +11,12 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from backend.civilization import civilization_engine
-from backend.redis_bus import redis_bus
+try:
+    from backend.civilization import civilization_engine
+    from backend.redis_bus import redis_bus
+except ModuleNotFoundError:
+    from civilization import civilization_engine
+    from redis_bus import redis_bus
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
