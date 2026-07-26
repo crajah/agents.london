@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Google Identity Services SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Microsoft Authentication Library (MSAL) SDK -->
+    <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -48,6 +52,7 @@
                 </select>
             </div>
 
+            <button id="btn_open_sso_modal" class="btn btn-secondary">🔑 Sign In (Google / Microsoft)</button>
             <button id="btn_new_project" class="btn btn-secondary">+ New Project</button>
         </div>
 
@@ -90,7 +95,7 @@
                 </div>
                 <div class="stat-row">
                     <span>Permanent Agents:</span>
-                    <strong id="stat_permanent_count">5</strong>
+                    <strong id="stat_permanent_count">8</strong>
                 </div>
                 <div class="stat-row">
                     <span>Materialized Progeny:</span>
@@ -121,7 +126,6 @@
             </div>
 
             <div class="playground-layout" id="playground_layout">
-                <!-- Playground Execution Output Area -->
                 <div class="card playground-output-card" id="playground_output_card">
                     <div class="card-header-bar">
                         <h3 id="playground_mode_title">Conductor Multi-Agent Composition Mode</h3>
@@ -159,12 +163,12 @@
             <div class="graph-canvas-container" id="graph_canvas_container">
                 <canvas id="civilization_canvas"></canvas>
                 <div class="canvas-legend" id="canvas_legend">
-                    <span class="legend-item"><span class="legend-dot governor"></span> Governor</span>
-                    <span class="legend-item"><span class="legend-dot creator"></span> Creator</span>
-                    <span class="legend-item"><span class="legend-dot inspector"></span> Inspector</span>
-                    <span class="legend-item"><span class="legend-dot conductor"></span> Conductor</span>
-                    <span class="legend-item"><span class="legend-dot react"></span> ReAct</span>
-                    <span class="legend-item"><span class="legend-dot worker"></span> Progeny Worker</span>
+                    <span class="legend-item"><span class="legend-dot governor"></span> Genesis Root</span>
+                    <span class="legend-item"><span class="legend-dot creator"></span> Architect</span>
+                    <span class="legend-item"><span class="legend-dot inspector"></span> Auditor</span>
+                    <span class="legend-item"><span class="legend-dot conductor"></span> Judicature</span>
+                    <span class="legend-item"><span class="legend-dot react"></span> Economist</span>
+                    <span class="legend-item"><span class="legend-dot worker"></span> Task Worker</span>
                 </div>
             </div>
 
@@ -281,7 +285,50 @@
         </section>
     </main>
 
-    <!-- Modal 1: Materialize Agent -->
+    <!-- Modal 1: SSO Login (Google / Microsoft Identity) -->
+    <div class="modal-overlay" id="modal_sso_login">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>SSO Identity Login (Google / Microsoft)</h3>
+                <button class="modal-close" id="btn_close_sso_modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">
+                    Log in with Google or Microsoft Identity. Your email domain determines your Organization realm. If using a generic public provider (e.g. Gmail, Outlook, Yahoo), a synthetic Organization is created for your specific email address.
+                </p>
+
+                <div class="sso-buttons-group">
+                    <button class="btn sso-btn google-btn" id="btn_login_google">
+                        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                        Sign in with Google
+                    </button>
+
+                    <button class="btn sso-btn ms-btn" id="btn_login_ms">
+                        <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
+                        Sign in with Microsoft
+                    </button>
+                </div>
+
+                <div class="divider-line"><span>OR TEST WITH ANY EMAIL</span></div>
+
+                <div class="form-group">
+                    <label for="input_sso_email">Enter Work or Personal Email:</label>
+                    <input type="email" id="input_sso_email" class="text-input" placeholder="e.g. chandan@gmail.com or dev@company.com" value="chandan@gmail.com">
+                </div>
+
+                <div class="domain-classification-preview" id="domain_preview_box">
+                    <span class="preview-title">Tenancy Resolution Preview:</span>
+                    <div id="domain_preview_text">Email: <strong>chandan@gmail.com</strong> (Generic Public Email) &rarr; Org: <code style="color: var(--accent-primary);">org_user_chandan_gmail_com</code></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn_cancel_sso">Cancel</button>
+                <button class="btn btn-primary" id="btn_submit_sso">Log In & Instantiate Org</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Materialize Agent -->
     <div class="modal-overlay" id="modal_materialize_agent">
         <div class="modal-card">
             <div class="modal-header">
@@ -319,7 +366,6 @@
         </div>
     </div>
 
-    <!-- JavaScript Bundle -->
     <script src="app.js"></script>
 </body>
 </html>
