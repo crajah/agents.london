@@ -11,8 +11,11 @@ import SharedMemoryView from './components/SharedMemoryView';
 import GuardrailsView from './components/GuardrailsView';
 import SSOModal from './components/SSOModal';
 import MaterializeAgentModal from './components/MaterializeAgentModal';
+import AuthLockScreen from './components/AuthLockScreen';
 
 export default function App() {
+  const [userSession, setUserSession] = useState(null); // null = locked authentication wall
+
   const [currentTab, setCurrentTab] = useState('playground');
   const [ssoModalOpen, setSsoModalOpen] = useState(false);
   const [materializeModalOpen, setMaterializeModalOpen] = useState(false);
@@ -28,6 +31,15 @@ export default function App() {
     ]
   });
 
+  const handleAuthenticate = (session) => {
+    setUserSession(session);
+    setState(prev => ({
+      ...prev,
+      orgId: session.orgId,
+      userId: session.userId
+    }));
+  };
+
   const handleSSOLoginSuccess = (email) => {
     const clean = email.toLowerCase().trim();
     const parts = clean.split('@');
@@ -39,11 +51,11 @@ export default function App() {
     const orgId = isGeneric ? `org_user_${userPart}_${sanitizedDomain}` : `org_${sanitizedDomain}`;
     const userId = `user_${userPart}`;
 
-    setState(prev => ({
-      ...prev,
-      orgId,
-      userId
-    }));
+    handleAuthenticate({ email: clean, orgId, userId, isGeneric });
+  };
+
+  const handleLogout = () => {
+    setUserSession(null);
   };
 
   const handleMaterializeSubmit = (data) => {
@@ -53,45 +65,54 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'background.default' }}>
-        {/* Top Header */}
-        <Header
-          state={state}
-          setState={setState}
-          onOpenSSO={() => setSsoModalOpen(true)}
-          onOpenMaterialize={() => setMaterializeModalOpen(true)}
-        />
 
-        {/* Main Content Area */}
-        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* Left Sidebar */}
-          <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
+      {!userSession ? (
+        /* Mandatory Authentication Wall / Registration Screen */
+        <AuthLockScreen onAuthenticate={handleAuthenticate} />
+      ) : (
+        /* Full Application Dashboard Once Authenticated */
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'background.default' }}>
+          {/* Top Header */}
+          <Header
+            state={state}
+            setState={setState}
+            userSession={userSession}
+            onLogout={handleLogout}
+            onOpenSSO={() => setSsoModalOpen(true)}
+            onOpenMaterialize={() => setMaterializeModalOpen(true)}
+          />
 
-          {/* Active View Panel */}
-          <Box component="main" sx={{ flex: 1, overflow: 'hidden' }}>
-            {currentTab === 'playground' && <PlaygroundView state={state} />}
-            {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
-            {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
-            {currentTab === 'tools' && <ToolRegistryView state={state} />}
-            {currentTab === 'sessions' && <SharedMemoryView />}
-            {currentTab === 'guardrails' && <GuardrailsView />}
+          {/* Main Content Area */}
+          <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            {/* Left Sidebar */}
+            <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
+
+            {/* Active View Panel */}
+            <Box component="main" sx={{ flex: 1, overflow: 'hidden' }}>
+              {currentTab === 'playground' && <PlaygroundView state={state} />}
+              {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
+              {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
+              {currentTab === 'tools' && <ToolRegistryView state={state} />}
+              {currentTab === 'sessions' && <SharedMemoryView />}
+              {currentTab === 'guardrails' && <GuardrailsView />}
+            </Box>
           </Box>
+
+          {/* Modals */}
+          <SSOModal
+            open={ssoModalOpen}
+            onClose={() => setSsoModalOpen(false)}
+            onLoginSuccess={handleSSOLoginSuccess}
+          />
+
+          <MaterializeAgentModal
+            open={materializeModalOpen}
+            onClose={() => setMaterializeModalOpen(false)}
+            state={state}
+            onSubmit={handleMaterializeSubmit}
+          />
         </Box>
-
-        {/* Modals */}
-        <SSOModal
-          open={ssoModalOpen}
-          onClose={() => setSsoModalOpen(false)}
-          onLoginSuccess={handleSSOLoginSuccess}
-        />
-
-        <MaterializeAgentModal
-          open={materializeModalOpen}
-          onClose={() => setMaterializeModalOpen(false)}
-          state={state}
-          onSubmit={handleMaterializeSubmit}
-        />
-      </Box>
+      )}
     </ThemeProvider>
   );
 }

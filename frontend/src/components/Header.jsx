@@ -1,14 +1,14 @@
 import React from 'react';
 import {
-  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link, IconButton
+  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import AddIcon from '@mui/icons-material/Add';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import LogoutIcon from '@mui/icons-material/Logout';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 export default function Header({
-  state, setState, onOpenSSO, onOpenMaterialize
+  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize
 }) {
   return (
     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: 2 }}>
@@ -83,9 +83,19 @@ export default function Header({
             </Select>
           </FormControl>
 
-          <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small">
-            Sign In (Google / MS)
-          </Button>
+          {userSession ? (
+            <Chip
+              label={userSession.email}
+              color="success"
+              onDelete={onLogout}
+              deleteIcon={<LogoutIcon />}
+              sx={{ fontWeight: 600, fontSize: '0.8rem' }}
+            />
+          ) : (
+            <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small">
+              Sign In
+            </Button>
+          )}
 
           <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={onOpenMaterialize} size="small">
             Materialize Agent
