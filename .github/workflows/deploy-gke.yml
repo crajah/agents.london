@@ -45,6 +45,10 @@ jobs:
         run: |
           chmod +x scripts/*.sh
 
+      - name: Reserve Static Global IP for Ingress
+        run: |
+          gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
+
       - name: Build Docker Images
         run: |
           ./scripts/01_build_docker.sh
@@ -68,3 +72,5 @@ jobs:
         run: |
           kubectl get pods --namespace default
           kubectl get services --namespace default
+          kubectl get ingress agents-london-ingress --namespace default || true
+          kubectl get managedcertificate agents-london-managed-cert --namespace default || true
