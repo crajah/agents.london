@@ -16,8 +16,11 @@ from post_graph import AsyncPostGraph
 from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
 try:
     from backend.redis_bus import redis_bus
-except ModuleNotFoundError:
-    from redis_bus import redis_bus
+except (ImportError, ModuleNotFoundError):
+    try:
+        from redis_bus import redis_bus
+    except (ImportError, ModuleNotFoundError):
+        from .redis_bus import redis_bus
 
 logger = logging.getLogger(__name__)
 

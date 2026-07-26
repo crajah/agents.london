@@ -14,9 +14,13 @@ from pydantic import BaseModel, Field
 try:
     from backend.civilization import civilization_engine
     from backend.redis_bus import redis_bus
-except ModuleNotFoundError:
-    from civilization import civilization_engine
-    from redis_bus import redis_bus
+except (ImportError, ModuleNotFoundError):
+    try:
+        from civilization import civilization_engine
+        from redis_bus import redis_bus
+    except (ImportError, ModuleNotFoundError):
+        from .civilization import civilization_engine
+        from .redis_bus import redis_bus
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
