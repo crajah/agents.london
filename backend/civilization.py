@@ -42,6 +42,7 @@ class AgentCivilizationEngine:
         await client.create_vertex_table("agents", realm=org_id)
         await client.create_vertex_table("sessions", realm=org_id)
         await client.create_vertex_table("guardrails", realm=org_id)
+        await client.create_vertex_table("custom_model_configs", realm=org_id)
         await client.create_edge_table("spawns", from_vertex_table="agents", to_vertex_table="agents", realm=org_id)
         await client.create_edge_table("inspects", from_vertex_table="agents", to_vertex_table="agents", realm=org_id)
         await client.create_edge_table("belongs_to", from_vertex_table="projects", to_vertex_table="users", realm=org_id)
@@ -490,5 +491,63 @@ class AgentCivilizationEngine:
             logger.debug(f"Agent registry service call fallback: {e}")
 
         return payload
+
+    async def save_custom_model_config(
+        self,
+        org_id: str,
+        user_id: str,
+        project_id: Optional[str],
+        scope_level: str,
+        provider_name: str,
+        custom_model_id: str,
+        api_endpoint: str,
+        api_key: str
+    ) -> Dict[str, Any]:
+        """Saves custom BYOM/BYOK model config in post-graph PostgreSQL database."""
+        client = await self._get_pg_client(org_id)
+        
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+
+        config_vertex = await client.add_vertex(
+            table_name="custom_model_configs",
+            realm=org_id,
+            payload={
+                "org_id": org_id,
+                "user_id": user_id,
+                "project_id": project_id,
+                "scope_level": scope_level,
+                "provider_name": provider_name,
+                "custom_model_id": custom_model_id,
+                "api_endpoint": api_endpoint,
+                "masked_api_key": masked_key,
+                "raw_api_key": api_key,
+                "created_at": datetime.utcnow().isoformat()
+            }
+        )
+        await client.close()
+        return {
+            "config_id": config_vertex.id,
+            "org_id": org_id,
+            "scope_level": scope_level,
+            "custom_model_id": custom_model_id,
+            "api_endpoint": api_endpoint,
+            "masked_key": masked_key
+        }
+
+    async def get_custom_model_configs(self, org_id: str, user_id: str, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieves custom model configurations from post-graph database."""
+        client = await self._get_pg_client(org_id)
+        try:
+            vertices = await client.get_vertices(table_name="custom_model_configs", realm=org_id)
+            await client.close()
+            configs = []
+            for v in vertices:
+                payload = v.payload if hasattr(v, "payload") else v
+                configs.append(payload)
+            return configs
+        except Exception as e:
+            await client.close()
+            logger.warning(f"Failed to fetch custom_model_configs: {e}")
+            return []
 
 civilization_engine = AgentCivilizationEngine()

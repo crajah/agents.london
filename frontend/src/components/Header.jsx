@@ -4,11 +4,12 @@ import {
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import AddIcon from '@mui/icons-material/Add';
+import KeyIcon from '@mui/icons-material/Key';
 import LogoutIcon from '@mui/icons-material/Logout';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 export default function Header({
-  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize
+  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM
 }) {
   return (
     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: 2 }}>
@@ -82,6 +83,10 @@ export default function Header({
               <MenuItem value="proj_quantum_agents">proj_quantum_agents</MenuItem>
             </Select>
           </FormControl>
+
+          <Button variant="outlined" color="info" startIcon={<KeyIcon />} onClick={onOpenBYOM} size="small">
+            BYOM / BYOK
+          </Button>
 
           {userSession ? (
             <Chip
