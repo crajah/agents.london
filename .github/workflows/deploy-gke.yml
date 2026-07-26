@@ -57,6 +57,8 @@ jobs:
         run: |
           sed -i "s|gcr.io/crajah-dev/|gcr.io/${GCP_PROJECT}/|g" deploy/k8s/*.yaml
           sed -i "s|:latest|:${DOCKER_TAG}|g" deploy/k8s/*.yaml
+          echo "[+] Updated Kubernetes Manifests:"
+          grep -i "image:" deploy/k8s/*.yaml
 
       - name: Deploy agent.london Components to GKE
         run: |

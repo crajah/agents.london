@@ -15,15 +15,21 @@ components=("agent-registry" "tool-registry" "agent-london-backend" "agent-londo
 
 for component in "${components[@]}"; do
     local_image="${component}:${TAG}"
-    remote_image="${GCR_REGISTRY}/${component}:${TAG}"
+    remote_tagged="${GCR_REGISTRY}/${component}:${TAG}"
+    remote_latest="${GCR_REGISTRY}/${component}:latest"
 
-    echo "[+] Tagging ${local_image} -> ${remote_image}"
-    docker tag "${local_image}" "${remote_image}"
+    echo "[+] Tagging ${local_image} -> ${remote_tagged}"
+    docker tag "${local_image}" "${remote_tagged}"
 
-    echo "[+] Pushing ${remote_image} to GCR..."
-    docker push "${remote_image}" || {
-        echo "[!] Push warning: If running without GCP credentials, configure gcloud auth configure-docker."
-    }
+    echo "[+] Pushing ${remote_tagged} to GCR..."
+    docker push "${remote_tagged}"
+
+    if [ "${TAG}" != "latest" ]; then
+        echo "[+] Tagging ${local_image} -> ${remote_latest}"
+        docker tag "${local_image}" "${remote_latest}"
+        echo "[+] Pushing ${remote_latest} to GCR..."
+        docker push "${remote_latest}"
+    fi
 done
 
 echo "============================================================"
