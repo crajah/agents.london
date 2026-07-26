@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-london-backend
+  namespace: default
+  labels:
+    app: agent-london-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-london-backend
+  template:
+    metadata:
+      labels:
+        app: agent-london-backend
+    spec:
+      containers:
+        - name: agent-london-backend
+          image: gcr.io/crajah-dev/agent-london-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: POSTGRES_URI
+              value: "postgresql://crajah:postgrespassword@postgres-service.default.svc.cluster.local:5432/postgres"
+            - name: REDIS_HOST
+              value: "redis-service.default.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: AGENT_REGISTRY_URL
+              value: "http://agent-registry-service.default.svc.cluster.local:8001"
+            - name: TOOL_REGISTRY_URL
+              value: "http://tool-registry-service.default.svc.cluster.local:8002"
+            - name: OPENAI_API_BASE
+              value: "http://litellm-service.default.svc.cluster.local:80/v1"
+            - name: OPENAI_API_KEY
+              value: "BEVZ-6L81-OZ8Y"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-london-backend-service
+  namespace: default
+  labels:
+    app: agent-london-backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: agent-london-backend

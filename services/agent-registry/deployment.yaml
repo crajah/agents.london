@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-registry
+  namespace: default
+  labels:
+    app: agent-registry
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-registry
+  template:
+    metadata:
+      labels:
+        app: agent-registry
+    spec:
+      containers:
+      - name: agent-registry
+        image: agents.london/agent-registry:v1.0.0
+        ports:
+        - containerPort: 8001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-registry-service
+  namespace: default
+spec:
+  selector:
+    app: agent-registry
+  ports:
+  - protocol: TCP
+    port: 8001
+    targetPort: 8001
+  type: ClusterIP
