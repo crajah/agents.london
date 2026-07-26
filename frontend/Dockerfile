@@ -1,8 +1,18 @@
+# Stage 1: Build React App with Material-UI & Vite
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve compiled static bundle with Nginx
 FROM nginx:alpine
 
-COPY index.html /usr/share/nginx/html/index.html
-COPY styles.css /usr/share/nginx/html/styles.css
-COPY app.js /usr/share/nginx/html/app.js
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
