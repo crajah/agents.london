@@ -15,7 +15,7 @@ echo "[+] Building tool-registry image..."
 docker build -t "tool-registry:${TAG}" "${PROJECT_ROOT}/services/tool-registry"
 
 echo "[+] Building backend BFF image..."
-docker build -t "agent-london-backend:${TAG}" -f "${PROJECT_ROOT}/backend/Dockerfile" "${PROJECT_ROOT}"
+docker build -t "agent-london-backend:${TAG}" "${PROJECT_ROOT}/backend"
 
 echo "[+] Building frontend web visualizer image..."
 docker build -t "agent-london-frontend:${TAG}" "${PROJECT_ROOT}/frontend"
