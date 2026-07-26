@@ -12,6 +12,8 @@ import GuardrailsView from './components/GuardrailsView';
 import SSOModal from './components/SSOModal';
 import MaterializeAgentModal from './components/MaterializeAgentModal';
 import AuthLockScreen from './components/AuthLockScreen';
+import BYOMModal from './components/BYOMModal';
+import ProjectTabsBar from './components/ProjectTabsBar';
 
 export default function App() {
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
@@ -19,17 +21,44 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('playground');
   const [ssoModalOpen, setSsoModalOpen] = useState(false);
   const [materializeModalOpen, setMaterializeModalOpen] = useState(false);
+  const [byomModalOpen, setByomModalOpen] = useState(false);
 
   const [state, setState] = useState({
     orgId: 'org_london_meta',
     userId: 'user_chandan',
     projectId: 'proj_alpha_civilization',
     wsConnected: true,
+    availableModels: [
+      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', provider: 'MiniMax AI', context_window: 128000, status: 'active' },
+      { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', provider: 'OpenAI / OSS', context_window: 128000, status: 'active' },
+      { id: 'Meta-Llama-3.3-70B-Instruct', name: 'Meta Llama 3.3 70B Instruct', provider: 'Meta AI', context_window: 128000, status: 'active' },
+      { id: 'gemma-4-31B-it', name: 'Gemma 4 31B Instruct', provider: 'Google DeepMind', context_window: 131072, status: 'active' },
+      { id: 'DeepSeek-V3.1', name: 'DeepSeek V3.1', provider: 'DeepSeek AI', context_window: 128000, status: 'active' },
+      { id: 'DeepSeek-V3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek AI', context_window: 128000, status: 'active' },
+      { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', provider: 'OpenAI / Embeddings', context_window: 8191, status: 'active' }
+    ],
     tools: [
       { tool_id: 'mcp-pgvector-search', name: 'pgvector Vector Search', scope_type: 'org', endpoint_url: 'http://localhost:8002/tools/pgvector', input_schema: { query_vector: 'list[float]' } },
       { tool_id: 'mcp-redis-queue', name: 'Redis Event Queue', scope_type: 'project', endpoint_url: 'http://localhost:8002/tools/redis', input_schema: { channel: 'str' } }
     ]
   });
+
+  useEffect(() => {
+    async function fetchModels() {
+      try {
+        const res = await fetch('/api/models');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.models) {
+            setState(prev => ({ ...prev, availableModels: data.models, routerSource: data.source }));
+          }
+        }
+      } catch (e) {
+        console.log('Could not fetch models from backend:', e);
+      }
+    }
+    fetchModels();
+  }, []);
 
   const handleAuthenticate = (session) => {
     setUserSession(session);
@@ -62,6 +91,20 @@ export default function App() {
     console.log('Materializing agent:', data);
   };
 
+  const handleAddTool = (newTool) => {
+    setState(prev => ({
+      ...prev,
+      tools: [newTool, ...prev.tools]
+    }));
+  };
+
+  const handleAddCustomModel = (customModel) => {
+    setState(prev => ({
+      ...prev,
+      availableModels: [customModel, ...prev.availableModels]
+    }));
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -80,7 +123,11 @@ export default function App() {
             onLogout={handleLogout}
             onOpenSSO={() => setSsoModalOpen(true)}
             onOpenMaterialize={() => setMaterializeModalOpen(true)}
+            onOpenBYOM={() => setByomModalOpen(true)}
           />
+
+          {/* Project Universes Sub-Header Tabs Bar */}
+          <ProjectTabsBar state={state} setState={setState} />
 
           {/* Main Content Area */}
           <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -92,7 +139,7 @@ export default function App() {
               {currentTab === 'playground' && <PlaygroundView state={state} />}
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
-              {currentTab === 'tools' && <ToolRegistryView state={state} />}
+              {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} />}
               {currentTab === 'sessions' && <SharedMemoryView />}
               {currentTab === 'guardrails' && <GuardrailsView />}
             </Box>
@@ -110,6 +157,13 @@ export default function App() {
             onClose={() => setMaterializeModalOpen(false)}
             state={state}
             onSubmit={handleMaterializeSubmit}
+          />
+
+          <BYOMModal
+            open={byomModalOpen}
+            onClose={() => setByomModalOpen(false)}
+            state={state}
+            onAddCustomModel={handleAddCustomModel}
           />
         </Box>
       )}

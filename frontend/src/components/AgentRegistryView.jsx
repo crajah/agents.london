@@ -1,9 +1,14 @@
-import React from 'react';
-import { Box, Paper, Typography, Button, Grid, Card, CardContent, Chip, Stack } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import MemoryIcon from '@mui/icons-material/Memory';
+import AgentDetailModal from './AgentDetailModal';
 
 export default function AgentRegistryView({ state, onOpenMaterialize }) {
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [agentModels, setAgentModels] = useState({});
+
   const primeAgents = [
     { agent_id: `genesis-${state.projectId}`, name: `GenesisNode-${state.projectId}`, caste: 'genesis', telos: 'Root authority initializing civilizational infrastructure.', pubkey: 'ed25519:genesis_root_99a', tokens: 5000, rep: 100 },
     { agent_id: `archivist-${state.projectId}`, name: `OntologicalRegistry-${state.projectId}`, caste: 'archivist', telos: 'Universal agent ledger & cryptographic identity tracking.', pubkey: 'ed25519:archivist_ledger_42b', tokens: 3000, rep: 100 },
@@ -27,6 +32,10 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
     }
   };
 
+  const handleSaveModel = (agentId, modelId, newDescription) => {
+    setAgentModels(prev => ({ ...prev, [agentId]: { modelId, description: newDescription } }));
+  };
+
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
@@ -35,7 +44,7 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
             Versioned Agent Registry & Progeny Lineage
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Track unique agent representations, system prompts, progeny parent-child lineage, and Kagent CRD status.
+            Click on any agent card to inspect details, assign underlying LLM models, and synthesize empirical I/O descriptions.
           </Typography>
         </Box>
 
@@ -46,41 +55,74 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
 
       {/* Agents Grid */}
       <Grid container spacing={2.5}>
-        {primeAgents.map((a) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={a.agent_id}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Chip label={a.caste.toUpperCase()} size="small" color={getCasteColor(a.caste)} sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
-                  <VerifiedUserIcon sx={{ fontSize: 16, color: '#10b981' }} />
-                </Stack>
+        {primeAgents.map((a) => {
+          const config = agentModels[a.agent_id] || {};
+          const assignedModel = config.modelId || 'MiniMax-M2.7';
+          const llmDesc = config.description || a.telos;
 
-                <Typography variant="h6" sx={{ fontSize: '1.05rem', fontWeight: 700 }}>
-                  {a.name}
-                </Typography>
+          return (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={a.agent_id}>
+              <Card
+                onClick={() => setSelectedAgent({ ...a, assignedModel, llmDescription: llmDesc })}
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    borderColor: '#3b82f6'
+                  }
+                }}
+              >
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Chip label={a.caste.toUpperCase()} size="small" color={getCasteColor(a.caste)} sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
+                    <VerifiedUserIcon sx={{ fontSize: 16, color: '#10b981' }} />
+                  </Stack>
 
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', flex: 1 }}>
-                  {a.telos}
-                </Typography>
-
-                <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: '0.75rem' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                    Key: {a.pubkey}
+                  <Typography variant="h6" sx={{ fontSize: '1.05rem', fontWeight: 700 }}>
+                    {a.name}
                   </Typography>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" color="text.secondary">Tokens:</Typography>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#10b981' }}>{a.tokens} CR</Typography>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', flex: 1, lineHeight: 1.5 }}>
+                    {llmDesc}
+                  </Typography>
+
+                  <Chip
+                    icon={<MemoryIcon sx={{ fontSize: 14 }} />}
+                    label={assignedModel}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ fontSize: '0.68rem', fontFamily: '"JetBrains Mono", monospace' }}
+                  />
+
+                  <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: '0.75rem' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                      Key: {a.pubkey}
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="caption" color="text.secondary">Tokens:</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#10b981' }}>{a.tokens} CR</Typography>
+                    </Box>
                   </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption" color="text.secondary">Reputation:</Typography>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#3b82f6' }}>{a.rep}/100</Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
+
+      {/* Detail Modal */}
+      {selectedAgent && (
+        <AgentDetailModal
+          open={Boolean(selectedAgent)}
+          onClose={() => setSelectedAgent(null)}
+          agent={selectedAgent}
+          onSaveModel={handleSaveModel}
+          state={state}
+        />
+      )}
     </Box>
   );
 }

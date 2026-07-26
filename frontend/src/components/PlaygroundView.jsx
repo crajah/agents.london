@@ -1,73 +1,154 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  Box, Paper, Typography, ToggleButtonGroup, ToggleButton, TextField, Button, Chip, Stack, CircularProgress
+  Box, Paper, Typography, ToggleButtonGroup, ToggleButton, TextField, Button, Chip, Stack,
+  Avatar, Accordion, AccordionSummary, AccordionDetails, CircularProgress, Divider, Badge
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import PersonIcon from '@mui/icons-material/Person';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import BuildIcon from '@mui/icons-material/Build';
+import TimelineIcon from '@mui/icons-material/Timeline';
 
 export default function PlaygroundView({ state }) {
   const [mode, setMode] = useState('conductor');
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
-  const [steps, setSteps] = useState([
-    { type: 'SYSTEM', content: 'Civilization Playground initialized. Select a mode and enter your goal to orchestrate tasks across 1 billion agents.' }
+
+  // Chat messages state
+  const [chatMessages, setChatMessages] = useState([
+    {
+      id: 1,
+      sender: 'agent',
+      agentName: 'ConductorAgent',
+      role: 'architect',
+      content: 'Welcome to the 1 Billion Agent Civilization Playground! Enter your goal below to orchestrate tasks across governing agents, post-graph memory, and Kagent workers.',
+      thinking: 'Civilization engine standing by in realm ' + state.orgId + ' / ' + state.projectId + '. Ready for intent classification and tool dispatch.',
+      signature: 'ed25519:conductor_init_99a',
+      tokens: 150,
+      timestamp: '23:55:01'
+    }
   ]);
 
-  const handleRunGoal = async () => {
+  // Process Steps & Tool Trace side panel state
+  const [processSteps, setProcessSteps] = useState([
+    {
+      id: 1,
+      stepNumber: 1,
+      label: 'SYSTEM_READY',
+      agent: 'GenesisNode',
+      tool: 'post-graph-rag',
+      latency: '12ms',
+      status: 'success',
+      detail: 'Civilization universe initialized.'
+    }
+  ]);
+
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, loading]);
+
+  const handleExecuteGoal = () => {
     if (!prompt.trim()) return;
-    const currentPrompt = prompt;
+    const userPrompt = prompt;
     setPrompt('');
     setLoading(true);
 
-    setSteps(prev => [...prev, { type: 'USER', content: currentPrompt }]);
+    const nowStr = new Date().toLocaleTimeString();
 
+    // 1. Add User Message
+    const userMsg = {
+      id: Date.now(),
+      sender: 'user',
+      content: userPrompt,
+      timestamp: nowStr
+    };
+
+    setChatMessages(prev => [...prev, userMsg]);
+
+    // 2. Add Progress Step to Side Panel
+    setProcessSteps(prev => [
+      ...prev,
+      {
+        id: Date.now() + 1,
+        stepNumber: prev.length + 1,
+        label: 'INTENT_CLASSIFICATION',
+        agent: 'ConductorAgent',
+        tool: 'post-graph-rag',
+        latency: '45ms',
+        status: 'running',
+        detail: `Analyzing goal in realm '${state.orgId}'...`
+      }
+    ]);
+
+    // Simulate Agent Thinking and Execution Pipeline
     setTimeout(() => {
-      setSteps(prev => [
-        ...prev,
-        { type: 'CONDUCTOR', content: `Querying post-graph-rag shared memory for optimal multi-agent routing...` }
+      // Step 2: Vector Search
+      setProcessSteps(prev => [
+        ...prev.map(s => s.status === 'running' ? { ...s, status: 'success' } : s),
+        {
+          id: Date.now() + 2,
+          stepNumber: prev.length + 2,
+          label: 'VECTOR_INDEX_SEARCH',
+          agent: 'ReActAgent',
+          tool: 'mcp-pgvector-search',
+          latency: '124ms',
+          status: 'running',
+          detail: 'Searching embeddings with 0.94 similarity score.'
+        }
       ]);
 
       setTimeout(() => {
-        setSteps(prev => [
-          ...prev,
-          { type: 'ACTION', content: `Invoking MCP Tool 'mcp-pgvector-search' to search vector index in realm '${state.orgId}'...` }
+        // Step 3: Tool Execution & Verification
+        setProcessSteps(prev => [
+          ...prev.map(s => s.status === 'running' ? { ...s, status: 'success' } : s),
+          {
+            id: Date.now() + 3,
+            stepNumber: prev.length + 3,
+            label: 'SIGNATURE_VERIFICATION',
+            agent: 'InspectorAgent',
+            tool: 'kagent-operator',
+            latency: '38ms',
+            status: 'success',
+            detail: 'Verified ED25519 signature compliance.'
+          }
         ]);
 
-        setTimeout(() => {
-          setSteps(prev => [
-            ...prev,
-            { type: 'OBSERVATION', content: `Received 4 matching document chunks with 0.94 cosine similarity score.` },
-            { type: 'FINAL_ANSWER', content: `Goal completed successfully! Materialized worker agent verified ED25519 payload signature.` }
-          ]);
-          setLoading(false);
-        }, 600);
-      }, 600);
-    }, 600);
-  };
+        // Add Agent Response Message
+        const agentMsg = {
+          id: Date.now() + 4,
+          sender: 'agent',
+          agentName: mode === 'conductor' ? 'ConductorAgent' : mode === 'react' ? 'ReActAgent' : 'DirectWorker',
+          role: mode === 'conductor' ? 'architect' : 'task_workforce',
+          content: `Goal successfully orchestrated across 1 Billion Agent Civilization!\n\n1. Vectorized user prompt in post-graph-rag memory.\n2. Dispatched tasks via Redis Event Queue to Kagent worker pool.\n3. InspectorAgent verified ED25519 cryptographic signatures with 100% compliance.`,
+          thinking: `[INTERNAL REACT LOOP]\n• Thought: User requested goal: "${userPrompt}".\n• Action: Executed vector similarity search across org '${state.orgId}'. Found 4 matching agent capabilities.\n• Observation: Worker agents completed sub-tasks in 207ms total.\n• Final Answer: Synthesized response payload for user interface.`,
+          signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
+          tokens: 420,
+          timestamp: new Date().toLocaleTimeString()
+        };
 
-  const getStepChipColor = (type) => {
-    switch (type) {
-      case 'USER': return 'primary';
-      case 'CONDUCTOR': return 'secondary';
-      case 'ACTION': return 'warning';
-      case 'OBSERVATION': return 'info';
-      case 'FINAL_ANSWER': return 'success';
-      default: return 'default';
-    }
+        setChatMessages(prev => [...prev, agentMsg]);
+        setLoading(false);
+      }, 700);
+    }, 700);
   };
 
   return (
-    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
-      {/* Header Bar */}
+    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%', overflow: 'hidden' }}>
+      {/* Top Header Bar */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
             Interactive Civilization Playground
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Orchestrate multi-tenant agent goals via Conductor Composition, ReAct loops, or Direct Messaging.
+            Chat-like interface with internal agent thinking accordions & real-time side panel process trace.
           </Typography>
         </Box>
 
@@ -90,56 +171,184 @@ export default function PlaygroundView({ state }) {
         </ToggleButtonGroup>
       </Box>
 
-      {/* Main Console & Steps Paper */}
-      <Paper sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', gap: 2, minHeight: 450 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          {mode === 'conductor' ? '🎵 Conductor Multi-Agent Composition' : mode === 'react' ? '🔄 ReAct Reasoning Loop (Thought -> Action -> Observation)' : '💬 Direct Agent Messaging'}
-        </Typography>
+      {/* Main Split Layout: Left Chat (70%), Right Process Side Panel (30%) */}
+      <Box sx={{ display: 'flex', gap: 2.5, flex: 1, overflow: 'hidden' }}>
+        {/* LEFT COLUMN: CHAT INTERFACE */}
+        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', p: 2 }}>
+          {/* Chat Messages Timeline */}
+          <Box sx={{ flex: 1, overflowY: 'auto', p: 1, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            {chatMessages.map((msg) => (
+              <Box
+                key={msg.id}
+                sx={{
+                  display: 'flex',
+                  justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                  gap: 1.5
+                }}
+              >
+                {msg.sender === 'agent' && (
+                  <Avatar sx={{ bgcolor: '#3b82f6', width: 36, height: 36 }}>
+                    <SmartToyIcon sx={{ fontSize: 20 }} />
+                  </Avatar>
+                )}
 
-        {/* Steps Scroll Area */}
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 2, borderRadius: 2, backgroundColor: 'rgba(9, 13, 22, 0.7)', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {steps.map((step, idx) => (
-            <Paper key={idx} elevation={0} sx={{ p: 1.5, backgroundColor: 'rgba(19, 27, 46, 0.6)', borderLeft: `4px solid ${step.type === 'USER' ? '#3b82f6' : step.type === 'FINAL_ANSWER' ? '#10b981' : '#8b5cf6'}` }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <Chip label={step.type} size="small" color={getStepChipColor(step.type)} sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} />
-              </Stack>
-              <Typography variant="body2" sx={{ fontFamily: step.type === 'USER' ? 'inherit' : '"JetBrains Mono", monospace', fontSize: '0.85rem' }}>
-                {step.content}
-              </Typography>
-            </Paper>
-          ))}
-          {loading && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5 }}>
-              <CircularProgress size={20} />
-              <Typography variant="caption" color="text.secondary">Orchestrating civilizational agents...</Typography>
-            </Box>
-          )}
-        </Box>
+                <Box sx={{ maxWidth: '82%' }}>
+                  {/* Sender Header */}
+                  {msg.sender === 'agent' && (
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#60a5fa' }}>
+                        {msg.agentName}
+                      </Typography>
+                      <Chip label={msg.role.toUpperCase()} size="small" color="primary" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
+                      <Typography variant="caption" color="text.secondary">{msg.timestamp}</Typography>
+                    </Stack>
+                  )}
 
-        {/* Prompt Input Container */}
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <TextField
-            fullWidth
-            placeholder="e.g. Discover specialized dataset processing agents, vectorize payloads in post-graph-rag, and execute compliance checks..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleRunGoal()}
-            multiline
-            maxRows={3}
-            size="small"
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            endIcon={<PlayArrowIcon />}
-            onClick={handleRunGoal}
-            disabled={loading}
-            sx={{ px: 3, height: 'auto' }}
-          >
-            Execute
-          </Button>
-        </Box>
-      </Paper>
+                  {/* Message Bubble */}
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      borderRadius: 3,
+                      backgroundColor: msg.sender === 'user' ? '#2563eb' : 'rgba(9, 13, 22, 0.85)',
+                      border: msg.sender === 'user' ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+                      color: msg.sender === 'user' ? '#ffffff' : 'text.primary',
+                      whiteSpace: 'pre-line'
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
+                      {msg.content}
+                    </Typography>
+
+                    {/* Agent Internal Thinking Accordion */}
+                    {msg.sender === 'agent' && msg.thinking && (
+                      <Accordion
+                        elevation={0}
+                        sx={{
+                          mt: 1.5,
+                          backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                          border: '1px border rgba(255, 255, 255, 0.06)',
+                          borderRadius: '8px !important',
+                          '&:before': { display: 'none' }
+                        }}
+                      >
+                        <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 18 }} />}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                            🧠 Internal ReAct Thinking Process
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails sx={{ pt: 0 }}>
+                          <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace', color: 'text.secondary', whiteSpace: 'pre-line', fontSize: '0.78rem' }}>
+                            {msg.thinking}
+                          </Typography>
+                        </AccordionDetails>
+                      </Accordion>
+                    )}
+
+                    {/* Cryptographic Signature & Token Footer */}
+                    {msg.sender === 'agent' && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5, pt: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', fontSize: '0.72rem', color: 'text.secondary' }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <VerifiedUserIcon sx={{ fontSize: 13, color: '#10b981' }} />
+                          <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                            {msg.signature}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 600 }}>
+                          {msg.tokens} CR
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Box>
+
+                {msg.sender === 'user' && (
+                  <Avatar sx={{ bgcolor: '#8b5cf6', width: 36, height: 36 }}>
+                    <PersonIcon sx={{ fontSize: 20 }} />
+                  </Avatar>
+                )}
+              </Box>
+            ))}
+
+            {loading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2 }}>
+                <CircularProgress size={20} color="primary" />
+                <Typography variant="caption" color="text.secondary">Agents reasoning in internal loop...</Typography>
+              </Box>
+            )}
+            <div ref={chatEndRef} />
+          </Box>
+
+          {/* Prompt Input Box */}
+          <Box sx={{ display: 'flex', gap: 1.5, pt: 2, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Ask the civilization to execute a goal or compose agents..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleExecuteGoal()}
+              multiline
+              maxRows={3}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              endIcon={<PlayArrowIcon />}
+              onClick={handleExecuteGoal}
+              disabled={loading}
+              sx={{ px: 3 }}
+            >
+              Send
+            </Button>
+          </Box>
+        </Paper>
+
+        {/* RIGHT COLUMN: PROCESS STEPS & TOOL TRACE SIDE PANEL */}
+        <Paper sx={{ width: 340, p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'hidden' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#60a5fa' }}>
+            <TimelineIcon sx={{ fontSize: 18 }} /> Process Steps & Tool Trace
+          </Typography>
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+
+          {/* Sequential Process Step Cards */}
+          <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {processSteps.map((step) => (
+              <Paper
+                key={step.id}
+                elevation={0}
+                sx={{
+                  p: 1.5,
+                  backgroundColor: 'rgba(9, 13, 22, 0.75)',
+                  borderLeft: `4px solid ${step.status === 'running' ? '#f59e0b' : step.status === 'success' ? '#10b981' : '#ef4444'}`,
+                  borderRadius: 2
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                    STEP {step.stepNumber}
+                  </Typography>
+                  <Chip
+                    label={step.label}
+                    size="small"
+                    color={step.status === 'running' ? 'warning' : 'success'}
+                    sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700 }}
+                  />
+                </Stack>
+
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.82rem', mb: 0.5 }}>
+                  {step.detail}
+                </Typography>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'text.secondary', fontFamily: '"JetBrains Mono", monospace' }}>
+                  <span>Agent: <strong style={{ color: '#a78bfa' }}>{step.agent}</strong></span>
+                  <span>Latency: <strong style={{ color: '#10b981' }}>{step.latency}</strong></span>
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        </Paper>
+      </Box>
     </Box>
   );
 }
