@@ -14,6 +14,7 @@ import MaterializeAgentModal from './components/MaterializeAgentModal';
 import AuthLockScreen from './components/AuthLockScreen';
 import BYOMModal from './components/BYOMModal';
 import ProjectTabsBar from './components/ProjectTabsBar';
+import AgentDiscoveryView from './components/AgentDiscoveryView';
 
 export default function App() {
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
@@ -137,6 +138,7 @@ export default function App() {
             {/* Active View Panel */}
             <Box component="main" sx={{ flex: 1, overflow: 'hidden' }}>
               {currentTab === 'playground' && <PlaygroundView state={state} />}
+              {currentTab === 'discovery' && <AgentDiscoveryView state={state} />}
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} />}
