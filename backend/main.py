@@ -7,6 +7,7 @@ Includes Playground API, Conductor Orchestration, ReAct Loops, and Progeny Hiera
 import asyncio
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,13 +84,48 @@ class PlaygroundChatRequest(BaseModel):
     prompt: str
     agent_id: Optional[str] = None
 
+GENERIC_EMAIL_DOMAINS = {
+    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.ca",
+    "hotmail.com", "hotmail.co.uk", "outlook.com", "live.com", "msn.com",
+    "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me",
+    "zoho.com", "gmx.com", "gmx.net", "yandex.com", "mail.com", "fastmail.com",
+    "comcast.net", "sbcglobal.net", "verizon.net", "att.net"
+}
+
+def resolve_tenancy_from_email(email: str) -> dict:
+    clean_email = email.strip().lower()
+    if "@" not in clean_email:
+        return {"org_id": "org_london_meta", "user_id": "user_chandan", "is_generic": False}
+    
+    parts = clean_email.split("@")
+    user_part = re.sub(r'[^a-z0-9]', '_', parts[0])
+    domain_part = parts[1]
+    sanitized_domain = re.sub(r'[^a-z0-9]', '_', domain_part)
+    
+    is_generic = domain_part in GENERIC_EMAIL_DOMAINS
+    if is_generic:
+        org_id = f"org_user_{user_part}_{sanitized_domain}"
+    else:
+        org_id = f"org_{sanitized_domain}"
+        
+    return {
+        "org_id": org_id,
+        "user_id": f"user_{user_part}",
+        "domain": domain_part,
+        "is_generic": is_generic,
+        "email": clean_email
+    }
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "agent.london-backend", "active_websockets": len(ACTIVE_CONNECTIONS)}
 
 @app.post("/api/users")
 async def create_user(req: CreateUserRequest):
-    res = await civilization_engine.create_user(req.org_id, req.username, req.email)
+    tenancy = resolve_tenancy_from_email(req.email)
+    effective_org_id = req.org_id if req.org_id and req.org_id != "auto" else tenancy["org_id"]
+    res = await civilization_engine.create_user(effective_org_id, req.username, req.email)
+    res["resolved_tenancy"] = tenancy
     return res
 
 @app.post("/api/projects")

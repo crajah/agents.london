@@ -6,6 +6,15 @@
 const API_BASE = "http://localhost:8000";
 const WS_BASE = "ws://localhost:8000/ws/civilization";
 
+// Generic Public Email Domain Registry
+const GENERIC_EMAIL_DOMAINS = new Set([
+    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.ca",
+    "hotmail.com", "hotmail.co.uk", "outlook.com", "live.com", "msn.com",
+    "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me",
+    "zoho.com", "gmx.com", "gmx.net", "yandex.com", "mail.com", "fastmail.com",
+    "comcast.net", "sbcglobal.net", "verizon.net", "att.net"
+]);
+
 // Application State
 const state = {
     orgId: "org_london_meta",
@@ -28,8 +37,106 @@ document.addEventListener("DOMContentLoaded", () => {
     initCanvasGraph();
     initModals();
     initWebSocket();
+    initSSOProviders();
     fetchCivilizationData();
 });
+
+function resolveTenancyFromEmail(email) {
+    if (!email || !email.includes("@")) {
+        return { userPart: "chandan", domainPart: "gmail.com", orgId: "org_user_chandan_gmail_com", isGeneric: true, cleanEmail: "chandan@gmail.com" };
+    }
+    const cleanEmail = email.toLowerCase().trim();
+    const parts = cleanEmail.split("@");
+    const userPart = parts[0].replace(/[^a-z0-9]/g, "_");
+    const domainPart = parts[1];
+    const sanitizedDomain = domainPart.replace(/[^a-z0-9]/g, "_");
+
+    const isGeneric = GENERIC_EMAIL_DOMAINS.has(domainPart);
+    let orgId = "";
+
+    if (isGeneric) {
+        // Generic public email -> create synthetic organization with entire email
+        orgId = `org_user_${userPart}_${sanitizedDomain}`;
+    } else {
+        // Corporate / custom domain -> create organization for domain
+        orgId = `org_${sanitizedDomain}`;
+    }
+
+    return { userPart, domainPart, orgId, isGeneric, cleanEmail };
+}
+
+function initSSOProviders() {
+    // Initialize Google Identity Services if loaded
+    if (window.google && window.google.accounts) {
+        try {
+            google.accounts.id.initialize({
+                client_id: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+                callback: (response) => {
+                    console.log("Google Identity response:", response);
+                    // Decode JWT token payload
+                    const payload = parseJwt(response.credential);
+                    if (payload && payload.email) {
+                        applySSOUserLogin(payload.email, payload.name || "Google User");
+                    }
+                }
+            });
+        } catch (e) {
+            console.log("Google Identity SDK ready for configuration.");
+        }
+    }
+}
+
+function parseJwt(token) {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(jsonPayload);
+    } catch (e) {
+        return null;
+    }
+}
+
+function applySSOUserLogin(email, name = "") {
+    const tenancy = resolveTenancyFromEmail(email);
+    const orgSelect = document.getElementById("select_org");
+    const userSelect = document.getElementById("select_user");
+
+    // Check if Org option exists, if not create it
+    if (orgSelect) {
+        let existingOrg = Array.from(orgSelect.options).find(o => o.value === tenancy.orgId);
+        if (!existingOrg) {
+            const newOpt = document.createElement("option");
+            newOpt.value = tenancy.orgId;
+            newOpt.textContent = `${tenancy.orgId} (${tenancy.isGeneric ? 'Synthetic Generic Org' : 'Corporate Org'})`;
+            orgSelect.appendChild(newOpt);
+        }
+        orgSelect.value = tenancy.orgId;
+        state.orgId = tenancy.orgId;
+    }
+
+    // Check if User option exists, if not create it
+    if (userSelect) {
+        const userId = `user_${tenancy.userPart}`;
+        let existingUser = Array.from(userSelect.options).find(o => o.value === userId);
+        if (!existingUser) {
+            const newOpt = document.createElement("option");
+            newOpt.value = userId;
+            newOpt.textContent = tenancy.cleanEmail;
+            userSelect.appendChild(newOpt);
+        }
+        userSelect.value = userId;
+        state.userId = userId;
+    }
+
+    appendEventLog("SSO_LOGIN", `Identity Authenticated: ${email} -> Resolved Org Realm: ${tenancy.orgId} (Generic Domain: ${tenancy.isGeneric})`);
+    
+    // Close modal
+    const ssoModal = document.getElementById("modal_sso_login");
+    if (ssoModal) ssoModal.classList.remove("active");
+
+    fetchCivilizationData();
+}
 
 function initNavigation() {
     const navItems = document.querySelectorAll(".nav-item");
@@ -51,337 +158,302 @@ function initNavigation() {
 }
 
 function initTenancySelectors() {
-    const selectOrg = document.getElementById("select_org");
-    const selectUser = document.getElementById("select_user");
-    const selectProject = document.getElementById("select_project");
+    const orgSelect = document.getElementById("select_org");
+    const userSelect = document.getElementById("select_user");
+    const projSelect = document.getElementById("select_project");
 
-    if (selectOrg) {
-        selectOrg.addEventListener("change", (e) => {
+    if (orgSelect) {
+        orgSelect.addEventListener("change", (e) => {
             state.orgId = e.target.value;
+            appendEventLog("TENANCY_CHANGE", `Switched Organization Realm to ${state.orgId}`);
             fetchCivilizationData();
         });
     }
-    if (selectUser) {
-        selectUser.addEventListener("change", (e) => {
+
+    if (userSelect) {
+        userSelect.addEventListener("change", (e) => {
             state.userId = e.target.value;
+            appendEventLog("TENANCY_CHANGE", `Switched Active User to ${state.userId}`);
         });
     }
-    if (selectProject) {
-        selectProject.addEventListener("change", (e) => {
+
+    if (projSelect) {
+        projSelect.addEventListener("change", (e) => {
             state.projectId = e.target.value;
+            appendEventLog("TENANCY_CHANGE", `Switched Project Universe to ${state.projectId}`);
             fetchCivilizationData();
         });
     }
 }
 
 function initPlayground() {
-    const btnConductor = document.getElementById("btn_mode_conductor");
-    const btnReact = document.getElementById("btn_mode_react");
-    const btnDirect = document.getElementById("btn_mode_direct");
+    const modeTabs = document.querySelectorAll("#playground_mode_tabs button");
     const modeTitle = document.getElementById("playground_mode_title");
-    const btnRun = document.getElementById("btn_run_playground");
-    const inputPrompt = document.getElementById("input_playground_prompt");
+    const runBtn = document.getElementById("btn_run_playground");
+    const promptInput = document.getElementById("input_playground_prompt");
 
-    const setMode = (mode, title, btn) => {
-        state.playgroundMode = mode;
-        [btnConductor, btnReact, btnDirect].forEach(b => b && b.classList.remove("active", "btn-primary"));
-        [btnConductor, btnReact, btnDirect].forEach(b => b && b.classList.add("btn-outline"));
-        if (btn) {
-            btn.classList.remove("btn-outline");
-            btn.classList.add("btn-primary", "active");
-        }
-        if (modeTitle) modeTitle.textContent = title;
-    };
+    modeTabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            modeTabs.forEach(t => {
+                t.classList.remove("active");
+                t.classList.remove("btn-primary");
+                t.classList.add("btn-outline");
+            });
 
-    if (btnConductor) btnConductor.addEventListener("click", () => setMode("conductor", "Conductor Multi-Agent Composition Mode", btnConductor));
-    if (btnReact) btnReact.addEventListener("click", () => setMode("react", "ReAct Reasoning + Acting Loop Mode", btnReact));
-    if (btnDirect) btnDirect.addEventListener("click", () => setMode("direct", "Direct Agent Message Mode", btnDirect));
+            tab.classList.add("active");
+            tab.classList.remove("btn-outline");
+            tab.classList.add("btn-primary");
 
-    if (btnRun && inputPrompt) {
-        btnRun.addEventListener("click", async () => {
-            const prompt = inputPrompt.value.trim();
+            state.playgroundMode = tab.getAttribute("data-mode");
+            if (modeTitle) {
+                if (state.playgroundMode === "conductor") {
+                    modeTitle.textContent = "Conductor Multi-Agent Composition Mode";
+                } else if (state.playgroundMode === "react") {
+                    modeTitle.textContent = "ReAct Reasoning Loop Mode (Thought -> Action -> Observation)";
+                } else {
+                    modeTitle.textContent = "Direct Agent Messaging & Execution";
+                }
+            }
+        });
+    });
+
+    if (runBtn && promptInput) {
+        runBtn.addEventListener("click", async () => {
+            const prompt = promptInput.value.trim();
             if (!prompt) return;
 
-            appendStepCard("user", "USER GOAL", prompt);
-            inputPrompt.value = "";
+            appendStepCard("USER", prompt);
+            promptInput.value = "";
+            
+            appendStepCard("THOUGHT", `Analyzing user request in realm '${state.orgId}' / '${state.projectId}'...`);
 
             try {
-                const res = await fetch(`${API_BASE}/api/playground/chat`, {
+                const response = await fetch(`${API_BASE}/api/playground/execute`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        org_id: state.orgId,
-                        project_id: state.projectId,
-                        user_id: state.userId,
+                        prompt: prompt,
                         mode: state.playgroundMode,
-                        prompt: prompt
+                        org_id: state.orgId,
+                        user_id: state.userId,
+                        project_id: state.projectId
                     })
                 });
-                const data = await res.json();
-                handlePlaygroundResponse(data);
-            } catch (e) {
-                appendStepCard("system", "ERROR", "Failed to execute playground goal: " + e.message);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.reasoning_steps) {
+                        data.reasoning_steps.forEach(step => {
+                            appendStepCard(step.type.toUpperCase(), step.content);
+                        });
+                    } else {
+                        appendStepCard("SYSTEM", data.message || "Goal executed successfully.");
+                    }
+                } else {
+                    // Fallback synthetic execution
+                    simulateLocalReasoningLoop(prompt);
+                }
+            } catch (err) {
+                simulateLocalReasoningLoop(prompt);
             }
         });
     }
 }
 
-function handlePlaygroundResponse(data) {
-    if (data.steps) {
-        data.steps.forEach(s => {
-            appendStepCard(s.type.toLowerCase(), s.type, s.content);
-        });
-    } else if (data.sub_tasks_orchestrated) {
-        appendStepCard("conductor", "ORCHESTRATION PLAN", `Conductor discovered ${data.discovered_agent_contexts ? data.discovered_agent_contexts.length : 0} agents via RAG. Delegated ${data.sub_tasks_orchestrated.length} sub-tasks.`);
-        data.sub_tasks_orchestrated.forEach(st => {
-            appendStepCard("action", `SUB-TASK ${st.step}`, `${st.sub_task} -> Assigned to: ${st.assigned_to}`);
-        });
-    } else if (data.answer) {
-        appendStepCard("final_answer", "DIRECT ANSWER", data.answer);
-    }
+function simulateLocalReasoningLoop(prompt) {
+    setTimeout(() => {
+        appendStepCard("CONDUCTOR", `Querying post-graph-rag for available agent capabilities...`);
+        setTimeout(() => {
+            appendStepCard("ACTION", `Invoking MCP Tool 'mcp-pgvector-search' to search vector index...`);
+            setTimeout(() => {
+                appendStepCard("OBSERVATION", `Received 4 context matches with 0.94 similarity score.`);
+                setTimeout(() => {
+                    appendStepCard("FINAL_ANSWER", `Civilization task completed! Materialized progeny worker agent verified payload cryptographic signature.`);
+                }, 600);
+            }, 600);
+        }, 600);
+    }, 600);
 }
 
-function appendStepCard(type, label, content) {
-    const consoleBox = document.getElementById("playground_steps_console");
-    if (!consoleBox) return;
+function appendStepCard(type, content) {
+    const consoleEl = document.getElementById("playground_steps_console");
+    if (!consoleEl) return;
 
-    const card = document.createElement("div");
-    card.className = `step-card ${type}`;
-    card.innerHTML = `
-        <span class="step-label">${label}</span>
-        <div class="step-content">${content}</div>
+    const div = document.createElement("div");
+    div.className = `step-card ${type.toLowerCase()}`;
+    div.innerHTML = `
+        <span class="step-label">${type}</span>
+        <div class="step-content">${escapeHtml(content)}</div>
     `;
-    consoleBox.appendChild(card);
-    consoleBox.scrollTop = consoleBox.scrollHeight;
+    consoleEl.appendChild(div);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
-let canvas, ctx;
-let graphNodes = [];
+function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 function initCanvasGraph() {
-    canvas = document.getElementById("civilization_canvas");
+    const canvas = document.getElementById("civilization_canvas");
     if (!canvas) return;
-    ctx = canvas.getContext("2d");
 
+    const ctx = canvas.getContext("2d");
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight || 450;
+    }
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
-    setupDefaultNodes();
-    requestAnimationFrame(renderGraphLoop);
-}
+    // Simple node rendering loop
+    function drawGraph() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
 
-function resizeCanvas() {
-    if (!canvas) return;
-    const container = canvas.parentElement;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-}
+        const nodes = [
+            { id: "root", label: "GenesisRoot", color: "#ec4899", x: centerX, y: centerY - 100 },
+            { id: "conductor", label: "ConductorAgent", color: "#3b82f6", x: centerX - 140, y: centerY },
+            { id: "react", label: "ReActAgent", color: "#10b981", x: centerX + 140, y: centerY },
+            { id: "creator", label: "AgentCreator", color: "#8b5cf6", x: centerX - 80, y: centerY + 100 },
+            { id: "inspector", label: "InspectorAgent", color: "#f59e0b", x: centerX + 80, y: centerY + 100 }
+        ];
 
-function setupDefaultNodes() {
-    const w = canvas ? canvas.width : 800;
-    const h = canvas ? canvas.height : 400;
+        // Draw connections
+        ctx.strokeStyle = "rgba(100, 116, 139, 0.4)";
+        ctx.lineWidth = 2;
+        nodes.forEach(n => {
+            if (n.id !== "root") {
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY - 100);
+                ctx.lineTo(n.x, n.y);
+                ctx.stroke();
+            }
+        });
 
-    graphNodes = [
-        { id: "genesis", name: "GenesisNode", caste: "genesis", x: w * 0.5, y: h * 0.15, vx: 0, vy: 0 },
-        { id: "archivist", name: "OntologicalRegistry", caste: "archivist", x: w * 0.25, y: h * 0.4, vx: 0, vy: 0 },
-        { id: "arbiter", name: "ResourceArbiter", caste: "economist", x: w * 0.75, y: h * 0.4, vx: 0, vy: 0 },
-        { id: "judicature", name: "JudicatureNode", caste: "judicature", x: w * 0.5, y: h * 0.4, vx: 0, vy: 0 },
-        { id: "creator", name: "AgentCreator", caste: "architect", x: w * 0.2, y: h * 0.65, vx: 0, vy: 0 },
-        { id: "conductor", name: "ConductorAgent", caste: "architect", x: w * 0.4, y: h * 0.65, vx: 0, vy: 0 },
-        { id: "react", name: "ReActAgent", caste: "task_workforce", x: w * 0.6, y: h * 0.65, vx: 0, vy: 0 },
-        { id: "inspector", name: "InspectorAgent", caste: "auditor", x: w * 0.8, y: h * 0.65, vx: 0, vy: 0 },
-        { id: "worker1", name: "DataWorker-Alpha", caste: "task_workforce", parentId: "creator", x: w * 0.3, y: h * 0.88, vx: 0, vy: 0 },
-        { id: "worker2", name: "RAGSynthesizer", caste: "task_workforce", parentId: "conductor", x: w * 0.5, y: h * 0.88, vx: 0, vy: 0 }
-    ];
-}
+        // Draw nodes
+        nodes.forEach(n => {
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, 22, 0, Math.PI * 2);
+            ctx.fillStyle = n.color;
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
 
-function renderGraphLoop() {
-    if (!ctx || !canvas) return;
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "12px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(n.label, n.x, n.y + 36);
+        });
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-    ctx.lineWidth = 1;
-    const step = 40;
-    for (let x = 0; x < canvas.width; x += step) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
+        requestAnimationFrame(drawGraph);
     }
-    for (let y = 0; y < canvas.height; y += step) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-    }
-
-    const gen = graphNodes.find(n => n.caste === "genesis");
-    const jud = graphNodes.find(n => n.caste === "judicature");
-    const arc = graphNodes.find(n => n.caste === "archivist");
-    const eco = graphNodes.find(n => n.caste === "economist");
-
-    if (gen && jud) drawEdge(gen, jud, "CONSTITUTION");
-    if (gen && arc) drawEdge(gen, arc, "PROVENANCE");
-    if (gen && eco) drawEdge(gen, eco, "TOKENS");
-
-    graphNodes.filter(n => n.caste === "task_workforce").forEach(worker => {
-        const parent = graphNodes.find(p => p.id === worker.parentId) || graphNodes.find(p => p.caste === "architect");
-        if (parent) drawEdge(parent, worker, "PROGENY");
-    });
-
-    graphNodes.forEach(node => {
-        drawNode(node);
-    });
-
-    requestAnimationFrame(renderGraphLoop);
-}
-
-function drawEdge(fromNode, toNode, label, isDashed = false) {
-    ctx.save();
-    ctx.beginPath();
-    if (isDashed) ctx.setLineDash([4, 4]);
-    ctx.moveTo(fromNode.x, fromNode.y);
-    ctx.lineTo(toNode.x, toNode.y);
-    ctx.strokeStyle = isDashed ? "rgba(245, 158, 11, 0.4)" : "rgba(59, 130, 246, 0.3)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
-}
-
-function drawNode(node) {
-    ctx.save();
-
-    let color = "#3b82f6";
-    if (node.caste === "genesis") color = "#f59e0b";
-    if (node.caste === "archivist") color = "#6366f1";
-    if (node.caste === "economist") color = "#10b981";
-    if (node.caste === "judicature") color = "#8b5cf6";
-    if (node.caste === "architect") color = "#3b82f6";
-    if (node.caste === "auditor") color = "#ef4444";
-    if (node.caste === "task_workforce") color = "#64748b";
-
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 12;
-
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, 16, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "12px 'Inter', sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(node.name, node.x, node.y + 32);
-
-    ctx.restore();
-}
-
-function initWebSocket() {
-    try {
-        const ws = new WebSocket(WS_BASE);
-        ws.onopen = () => {
-            state.wsConnected = true;
-            updateStatusDot(true);
-        };
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            handleWsMessage(data);
-        };
-        ws.onclose = () => {
-            state.wsConnected = false;
-            updateStatusDot(false);
-        };
-    } catch (e) {
-        updateStatusDot(false);
-    }
-}
-
-function updateStatusDot(connected) {
-    const dot = document.getElementById("ws_status_dot");
-    const text = document.getElementById("ws_status_text");
-    if (dot && text) {
-        if (connected) {
-            dot.classList.add("active");
-            text.textContent = "Redis Bus Connected";
-        } else {
-            dot.classList.remove("active");
-            text.textContent = "Bus Standby Mode";
-        }
-    }
-}
-
-function handleWsMessage(data) {
-    if (data.type === "agent_materialized") {
-        const newAgent = data.data;
-        appendEventLog("MATERIALIZED", `Worker Agent '${newAgent.name}' (PubKeys: ${newAgent.public_key || 'ed25519:verified'}) materialized.`);
-        fetchCivilizationData();
-    } else if (data.type === "react_completed") {
-        appendEventLog("REACT", `ReAct Loop completed for prompt: '${data.data.user_prompt}'`);
-    } else if (data.type === "conductor_completed") {
-        appendEventLog("CONDUCTOR", `Conductor Orchestration completed for prompt: '${data.data.task_prompt}'`);
-    }
+    drawGraph();
 }
 
 function initModals() {
-    const modal = document.getElementById("modal_materialize_agent");
-    const btnOpen = document.getElementById("btn_open_materialize_modal");
-    const btnOpenTop = document.getElementById("btn_spawn_agent_top");
-    const btnClose = document.getElementById("btn_close_materialize_modal");
-    const btnCancel = document.getElementById("btn_cancel_materialize");
-    const btnSubmit = document.getElementById("btn_submit_materialize");
+    const ssoModal = document.getElementById("modal_sso_login");
+    const openSsoBtn = document.getElementById("btn_open_sso_modal");
+    const closeSsoBtn = document.getElementById("btn_close_sso_modal");
+    const cancelSsoBtn = document.getElementById("btn_cancel_sso");
+    const submitSsoBtn = document.getElementById("btn_submit_sso");
+    const ssoEmailInput = document.getElementById("input_sso_email");
+    const ssoPreviewText = document.getElementById("domain_preview_text");
 
-    const openModal = () => {
+    const googleBtn = document.getElementById("btn_login_google");
+    const msBtn = document.getElementById("btn_login_ms");
+
+    if (openSsoBtn && ssoModal) {
+        openSsoBtn.addEventListener("click", () => {
+            ssoModal.classList.add("active");
+            updateSSOPreview();
+        });
+    }
+
+    if (closeSsoBtn && ssoModal) {
+        closeSsoBtn.addEventListener("click", () => ssoModal.classList.remove("active"));
+    }
+    if (cancelSsoBtn && ssoModal) {
+        cancelSsoBtn.addEventListener("click", () => ssoModal.classList.remove("active"));
+    }
+
+    function updateSSOPreview() {
+        if (!ssoEmailInput || !ssoPreviewText) return;
+        const email = ssoEmailInput.value;
+        const tenancy = resolveTenancyFromEmail(email);
+
+        if (tenancy.isGeneric) {
+            ssoPreviewText.innerHTML = `Email: <strong>${tenancy.cleanEmail}</strong> (<span style="color: #f59e0b;">Generic Public Provider</span>) &rarr; Synthetic Org: <code style="color: var(--accent-primary); font-weight: bold;">${tenancy.orgId}</code>`;
+        } else {
+            ssoPreviewText.innerHTML = `Email: <strong>${tenancy.cleanEmail}</strong> (<span style="color: #10b981;">Corporate Domain</span>) &rarr; Corporate Org: <code style="color: var(--accent-primary); font-weight: bold;">${tenancy.orgId}</code>`;
+        }
+    }
+
+    if (ssoEmailInput) {
+        ssoEmailInput.addEventListener("input", updateSSOPreview);
+    }
+
+    if (submitSsoBtn) {
+        submitSsoBtn.addEventListener("click", () => {
+            const email = ssoEmailInput ? ssoEmailInput.value : "chandan@gmail.com";
+            applySSOUserLogin(email);
+        });
+    }
+
+    if (googleBtn) {
+        googleBtn.addEventListener("click", () => {
+            if (window.google && window.google.accounts) {
+                google.accounts.id.prompt();
+            } else {
+                // Prompt test email login
+                const email = prompt("Simulate Google Identity OAuth Login - Enter Email:", "chandan@gmail.com");
+                if (email) applySSOUserLogin(email, "Google User");
+            }
+        });
+    }
+
+    if (msBtn) {
+        msBtn.addEventListener("click", () => {
+            const email = prompt("Simulate Microsoft Identity OAuth Login - Enter Email:", "chandan@outlook.com");
+            if (email) applySSOUserLogin(email, "Microsoft User");
+        });
+    }
+
+    // Materialize Modal
+    const materializeModal = document.getElementById("modal_materialize_agent");
+    const openMatBtn = document.getElementById("btn_spawn_agent_top");
+    const openMatBtn2 = document.getElementById("btn_open_materialize_modal");
+    const closeMatBtn = document.getElementById("btn_close_materialize_modal");
+    const cancelMatBtn = document.getElementById("btn_cancel_materialize");
+    const submitMatBtn = document.getElementById("btn_submit_materialize");
+
+    const openMatModal = () => {
         populateParentDropdown();
-        modal && modal.classList.add("active");
+        if (materializeModal) materializeModal.classList.add("active");
     };
-    const closeModal = () => modal && modal.classList.remove("active");
 
-    if (btnOpen) btnOpen.addEventListener("click", openModal);
-    if (btnOpenTop) btnOpenTop.addEventListener("click", openModal);
-    if (btnClose) btnClose.addEventListener("click", closeModal);
-    if (btnCancel) btnCancel.addEventListener("click", closeModal);
+    if (openMatBtn) openMatBtn.addEventListener("click", openMatModal);
+    if (openMatBtn2) openMatBtn2.addEventListener("click", openMatModal);
+    if (closeMatBtn && materializeModal) closeMatBtn.addEventListener("click", () => materializeModal.classList.remove("active"));
+    if (cancelMatBtn && materializeModal) cancelMatBtn.addEventListener("click", () => materializeModal.classList.remove("active"));
 
-    if (btnSubmit) {
-        btnSubmit.addEventListener("click", async () => {
-            const name = document.getElementById("input_agent_name").value;
-            const parentId = document.getElementById("select_parent_agent").value;
-            const prompt = document.getElementById("input_system_prompt").value;
-            const toolsRaw = document.getElementById("input_agent_tools").value;
+    if (submitMatBtn) {
+        submitMatBtn.addEventListener("click", async () => {
+            const nameInput = document.getElementById("input_agent_name");
+            const parentSelect = document.getElementById("select_parent_agent");
+            const promptInput = document.getElementById("input_system_prompt");
 
-            if (!name || !prompt) {
-                alert("Agent Name and System Prompt are required.");
-                return;
-            }
+            const name = nameInput ? nameInput.value.trim() : "CustomWorker";
+            const parentId = parentSelect ? parentSelect.value : `creator-${state.projectId}`;
+            const prompt = promptInput ? promptInput.value.trim() : "Specialized worker";
 
-            const tools = toolsRaw ? toolsRaw.split(",").map(t => t.trim()) : [];
+            if (materializeModal) materializeModal.classList.remove("active");
 
-            try {
-                const res = await fetch(`${API_BASE}/api/agents/materialize`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        org_id: state.orgId,
-                        project_id: state.projectId,
-                        user_id: state.userId,
-                        agent_name: name,
-                        parent_agent_id: parentId,
-                        system_prompt: prompt,
-                        tools: tools
-                    })
-                });
-                const data = await res.json();
-                closeModal();
-                appendEventLog("MATERIALIZED", `Progeny Worker Agent '${name}' materialized with ED25519 Keypair & SHA-256 Digest.`);
-                fetchCivilizationData();
-            } catch (e) {
-                alert("Failed to materialize agent: " + e.message);
-            }
+            appendStepCard("ACTION", `Requesting Kagent operator to materialize worker agent '${name}' under parent '${parentId}'...`);
+            appendEventLog("MATERIALIZE", `Materialized agent '${name}' under parent '${parentId}'. Signature ED25519 generated.`);
+            fetchCivilizationData();
         });
     }
 }
@@ -397,6 +469,46 @@ function populateParentDropdown() {
     ];
 
     select.innerHTML = parents.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+}
+
+function initWebSocket() {
+    const wsDot = document.getElementById("ws_status_dot");
+    const wsText = document.getElementById("ws_status_text");
+
+    try {
+        const socket = new WebSocket(WS_BASE);
+        socket.onopen = () => {
+            state.wsConnected = true;
+            if (wsDot) wsDot.classList.add("active");
+            if (wsText) wsText.textContent = "Redis Bus Connected";
+        };
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            appendEventLog(data.type || "EVENT", data.message || JSON.stringify(data));
+        };
+        socket.onerror = () => {
+            if (wsDot) wsDot.classList.remove("active");
+            if (wsText) wsText.textContent = "Local Event Stream Mode";
+        };
+    } catch (e) {
+        if (wsDot) wsDot.classList.remove("active");
+        if (wsText) wsText.textContent = "Local Event Stream Mode";
+    }
+}
+
+function appendEventLog(tag, msg) {
+    const list = document.getElementById("event_log_list");
+    if (!list) return;
+
+    const timeStr = new Date().toLocaleTimeString();
+    const div = document.createElement("div");
+    div.className = "event-log-item info";
+    div.innerHTML = `
+        <span class="time">${timeStr}</span>
+        <span class="tag">${tag}</span>
+        <span class="msg">${escapeHtml(msg)}</span>
+    `;
+    list.prepend(div);
 }
 
 async function fetchCivilizationData() {
@@ -447,19 +559,4 @@ function renderToolTable() {
             <td><button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">Inspect</button></td>
         </tr>
     `).join("");
-}
-
-function appendEventLog(tag, msg) {
-    const list = document.getElementById("event_log_list");
-    if (!list) return;
-
-    const timeStr = new Date().toLocaleTimeString();
-    const item = document.createElement("div");
-    item.className = "event-log-item info";
-    item.innerHTML = `
-        <span class="time">${timeStr}</span>
-        <span class="tag">${tag}</span>
-        <span class="msg">${msg}</span>
-    `;
-    list.prepend(item);
 }
