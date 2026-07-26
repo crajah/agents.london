@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-registry
+  namespace: default
+  labels:
+    app: tool-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tool-registry
+  template:
+    metadata:
+      labels:
+        app: tool-registry
+    spec:
+      containers:
+        - name: tool-registry
+          image: gcr.io/crajah-dev/tool-registry:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-registry-service
+  namespace: default
+  labels:
+    app: tool-registry
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8002
+      targetPort: 8002
+      name: http
+  selector:
+    app: tool-registry

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent_london_postgres
+    environment:
+      POSTGRES_USER: crajah
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: agent_london_redis
+    ports:
+      - "6379:6379"
+
+  agent-registry:
+    build:
+      context: ./services/agent-registry
+      dockerfile: Dockerfile
+    container_name: agent_london_agent_registry
+    ports:
+      - "8001:8001"
+
+  tool-registry:
+    build:
+      context: ./services/tool-registry
+      dockerfile: Dockerfile
+    container_name: agent_london_tool_registry
+    ports:
+      - "8002:8002"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agent_london_backend
+    environment:
+      POSTGRES_URI: postgresql://crajah:postgrespassword@postgres:5432/postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AGENT_REGISTRY_URL: http://agent-registry:8001
+      TOOL_REGISTRY_URL: http://tool-registry:8002
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - agent-registry
+      - tool-registry
+
+volumes:
+  pgdata:

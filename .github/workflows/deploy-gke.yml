@@ -1,0 +1,68 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
+  GKE_LOCATION: ${{ secrets.GKE_LOCATION }}
+  DOCKER_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Images and Deploy to GKE
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Get GKE Credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_LOCATION }}
+
+      - name: Configure Docker for GCR
+        run: |
+          gcloud auth configure-docker gcr.io --quiet
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x scripts/*.sh
+
+      - name: Build Docker Images
+        run: |
+          ./scripts/01_build_docker.sh
+
+      - name: Tag and Publish Images to GCR
+        run: |
+          ./scripts/02_publish_gcr.sh
+
+      - name: Update K8s Manifest Image Tags
+        run: |
+          sed -i "s|gcr.io/crajah-dev/|gcr.io/${GCP_PROJECT}/|g" deploy/k8s/*.yaml
+          sed -i "s|:latest|:${DOCKER_TAG}|g" deploy/k8s/*.yaml
+
+      - name: Deploy agent.london Components to GKE
+        run: |
+          ./scripts/03_deploy_k8s.sh
+
+      - name: Verify Deployment Status
+        run: |
+          kubectl get pods --namespace default
+          kubectl get services --namespace default

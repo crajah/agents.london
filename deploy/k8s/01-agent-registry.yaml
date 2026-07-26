@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-registry
+  namespace: default
+  labels:
+    app: agent-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-registry
+  template:
+    metadata:
+      labels:
+        app: agent-registry
+    spec:
+      containers:
+        - name: agent-registry
+          image: gcr.io/crajah-dev/agent-registry:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          env:
+            - name: OPENAI_API_BASE
+              value: "http://litellm-service.default.svc.cluster.local:80/v1"
+            - name: OPENAI_API_KEY
+              value: "BEVZ-6L81-OZ8Y"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-registry-service
+  namespace: default
+  labels:
+    app: agent-registry
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8001
+      targetPort: 8001
+      name: http
+  selector:
+    app: agent-registry

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-london-frontend
+  namespace: default
+  labels:
+    app: agent-london-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-london-frontend
+  template:
+    metadata:
+      labels:
+        app: agent-london-frontend
+    spec:
+      containers:
+        - name: agent-london-frontend
+          image: gcr.io/crajah-dev/agent-london-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-london-frontend-service
+  namespace: default
+  labels:
+    app: agent-london-frontend
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app: agent-london-frontend

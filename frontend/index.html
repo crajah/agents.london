@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>agent.london — Multi-Tenant Agent Civilization Platform</title>
+    <meta name="description" content="Agent Civilization Platform scaling to 1 Billion Agents with post-graph, post-graph-rag, Redis, Kagent microservices, Conductor, and ReAct loop.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Top Navigation Header -->
+    <header class="app-header" id="header_container">
+        <div class="brand-logo" id="brand_logo_section">
+            <span class="logo-icon">🏛️</span>
+            <div class="logo-text">
+                <span class="logo-title">agent.london</span>
+                <span class="logo-badge">1B Agent Civilization</span>
+            </div>
+        </div>
+
+        <div class="tenancy-selector-bar" id="tenancy_selector_section">
+            <div class="selector-group">
+                <label for="select_org">Organization:</label>
+                <select id="select_org" class="select-input">
+                    <option value="org_london_meta">org_london_meta</option>
+                    <option value="org_deepmind_ai">org_deepmind_ai</option>
+                    <option value="org_global_corp">org_global_corp</option>
+                </select>
+            </div>
+
+            <div class="selector-group">
+                <label for="select_user">User:</label>
+                <select id="select_user" class="select-input">
+                    <option value="user_chandan">chandan@agent.london</option>
+                    <option value="user_alice">alice@agent.london</option>
+                </select>
+            </div>
+
+            <div class="selector-group">
+                <label for="select_project">Project Universe:</label>
+                <select id="select_project" class="select-input">
+                    <option value="proj_alpha_civilization">proj_alpha_civilization</option>
+                    <option value="proj_quantum_agents">proj_quantum_agents</option>
+                </select>
+            </div>
+
+            <button id="btn_new_project" class="btn btn-secondary">+ New Project</button>
+        </div>
+
+        <div class="header-status" id="header_status_section">
+            <span class="status-indicator active" id="ws_status_dot"></span>
+            <span id="ws_status_text">Redis Bus Connected</span>
+        </div>
+    </header>
+
+    <!-- Main Grid Dashboard Layout -->
+    <main class="main-dashboard" id="main_dashboard">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar-nav" id="sidebar_nav">
+            <nav class="nav-menu">
+                <button class="nav-item active" id="nav_tab_playground" data-target="view_playground">
+                    <span class="nav-icon">🎮</span> Civilization Playground
+                </button>
+                <button class="nav-item" id="nav_tab_civilization" data-target="view_civilization">
+                    <span class="nav-icon">🌐</span> Civilization Graph
+                </button>
+                <button class="nav-item" id="nav_tab_agents" data-target="view_agents">
+                    <span class="nav-icon">🤖</span> Agent Registry & Kagent
+                </button>
+                <button class="nav-item" id="nav_tab_tools" data-target="view_tools">
+                    <span class="nav-icon">🛠️</span> MCP Tool Registry
+                </button>
+                <button class="nav-item" id="nav_tab_sessions" data-target="view_sessions">
+                    <span class="nav-icon">🧠</span> Shared Session Memory
+                </button>
+                <button class="nav-item" id="nav_tab_guardrails" data-target="view_guardrails">
+                    <span class="nav-icon">🛡️</span> Constitutional Guardrails
+                </button>
+            </nav>
+
+            <div class="sidebar-stats-card" id="sidebar_stats_card">
+                <h4>Civilization Metrics</h4>
+                <div class="stat-row">
+                    <span>Active Scale:</span>
+                    <strong id="stat_scale">1,000,000,000</strong>
+                </div>
+                <div class="stat-row">
+                    <span>Permanent Agents:</span>
+                    <strong id="stat_permanent_count">5</strong>
+                </div>
+                <div class="stat-row">
+                    <span>Materialized Progeny:</span>
+                    <strong id="stat_worker_count">14</strong>
+                </div>
+                <div class="stat-row">
+                    <span>MCP Tools Linked:</span>
+                    <strong id="stat_tools_count">8</strong>
+                </div>
+            </div>
+        </aside>
+
+        <!-- View 0: Interactive Civilization Playground -->
+        <section class="view-panel active" id="view_playground">
+            <div class="panel-header">
+                <div>
+                    <h2>Interactive Civilization Playground</h2>
+                    <p>Interact with the civilization via Conductor Multi-Agent Composition, ReAct Reasoning loops, or Direct Agent Messaging.</p>
+                </div>
+                <div class="mode-selector-tabs" id="playground_mode_tabs">
+                    <button class="btn btn-primary active" id="btn_mode_conductor" data-mode="conductor">🎵 Conductor Orchestration</button>
+                    <button class="btn btn-outline" id="btn_mode_react" data-mode="react">🔄 ReAct Reasoning Loop</button>
+                    <button class="btn btn-outline" id="btn_mode_direct" data-mode="direct">💬 Direct Agent Chat</button>
+                </div>
+            </div>
+
+            <div class="playground-layout" id="playground_layout">
+                <!-- Playground Execution Output Area -->
+                <div class="card playground-output-card" id="playground_output_card">
+                    <div class="card-header-bar">
+                        <h3 id="playground_mode_title">Conductor Multi-Agent Composition Mode</h3>
+                        <span class="badge-tag" id="playground_status_badge">Ready</span>
+                    </div>
+
+                    <div class="steps-console" id="playground_steps_console">
+                        <div class="step-card system">
+                            <span class="step-label">SYSTEM</span>
+                            <div class="step-content">Civilization Playground initialized. Select a mode and enter your goal to orchestrate tasks across 1 billion agents.</div>
+                        </div>
+                    </div>
+
+                    <div class="playground-input-container" id="playground_input_container">
+                        <textarea id="input_playground_prompt" class="textarea-input" rows="2" placeholder="e.g. Find suitable dataset processing agents, vectorize payloads, and verify compliance..."></textarea>
+                        <button class="btn btn-primary" id="btn_run_playground">Execute Goal</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- View 1: Civilization Canvas & Graph Hierarchy -->
+        <section class="view-panel" id="view_civilization">
+            <div class="panel-header">
+                <div>
+                    <h2>Agent Civilization Universe Graph</h2>
+                    <p>Live topological map of permanent governing agents, Conductor, ReAct, Creator nodes, Inspector auditors, and Progeny worker agents.</p>
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary" id="btn_spawn_agent_top">+ Materialize Agent</button>
+                    <button class="btn btn-outline" id="btn_reset_graph_view">Center Graph</button>
+                </div>
+            </div>
+
+            <div class="graph-canvas-container" id="graph_canvas_container">
+                <canvas id="civilization_canvas"></canvas>
+                <div class="canvas-legend" id="canvas_legend">
+                    <span class="legend-item"><span class="legend-dot governor"></span> Governor</span>
+                    <span class="legend-item"><span class="legend-dot creator"></span> Creator</span>
+                    <span class="legend-item"><span class="legend-dot inspector"></span> Inspector</span>
+                    <span class="legend-item"><span class="legend-dot conductor"></span> Conductor</span>
+                    <span class="legend-item"><span class="legend-dot react"></span> ReAct</span>
+                    <span class="legend-item"><span class="legend-dot worker"></span> Progeny Worker</span>
+                </div>
+            </div>
+
+            <div class="event-stream-container" id="event_stream_container">
+                <h3>⚡ Live Inter-Agent Redis Communication Stream</h3>
+                <div class="event-log-list" id="event_log_list">
+                    <div class="event-log-item info">
+                        <span class="time">20:45:10</span>
+                        <span class="tag">CONDUCTOR</span>
+                        <span class="msg">ConductorAgent indexed Agent Registry metadata in post-graph-rag for organic discovery.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- View 2: Agent Registry & Kagent Manifest Materializer -->
+        <section class="view-panel" id="view_agents">
+            <div class="panel-header">
+                <div>
+                    <h2>Versioned Agent Registry & Progeny Lineage</h2>
+                    <p>Track unique agent representations, system prompts, progeny parent-child lineage, and Kagent CRD manifests.</p>
+                </div>
+                <button class="btn btn-primary" id="btn_open_materialize_modal">+ Materialize New Agent</button>
+            </div>
+
+            <div class="agent-cards-grid" id="agent_cards_grid">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+
+        <!-- View 3: MCP Tool Registry -->
+        <section class="view-panel" id="view_tools">
+            <div class="panel-header">
+                <div>
+                    <h2>Model Context Protocol (MCP) Tool Registry</h2>
+                    <p>MCP tools registered and linked to Organization realms or specific Projects.</p>
+                </div>
+                <button class="btn btn-primary" id="btn_open_tool_modal">+ Register MCP Tool</button>
+            </div>
+
+            <div class="tool-list-container" id="tool_list_container">
+                <table class="data-table" id="table_tools">
+                    <thead>
+                        <tr>
+                            <th>Tool ID</th>
+                            <th>Name</th>
+                            <th>Scope</th>
+                            <th>Endpoint URL</th>
+                            <th>Input Schema</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody_tools">
+                        <!-- Dynamically populated -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- View 4: Shared Session Memory (post-graph-rag) -->
+        <section class="view-panel" id="view_sessions">
+            <div class="panel-header">
+                <div>
+                    <h2>Shared Session Memory & RAG Knowledge Store</h2>
+                    <p>Segregated {session} memory context created for multi-agent collaboration using post-graph-rag.</p>
+                </div>
+                <button class="btn btn-primary" id="btn_create_session">+ Initiate Session</button>
+            </div>
+
+            <div class="sessions-layout" id="sessions_layout">
+                <div class="card session-list-card" id="session_list_card">
+                    <h3>Active Collaboration Sessions</h3>
+                    <ul class="session-menu" id="session_menu">
+                        <!-- Populated dynamically -->
+                    </ul>
+                </div>
+
+                <div class="card session-detail-card" id="session_detail_card">
+                    <h3 id="session_detail_title">Session: #sess_001_collaborative_task</h3>
+                    <p class="subtitle">Shared Knowledge Graph Memory (post-graph-rag)</p>
+                    
+                    <div class="memory-snippets-list" id="memory_snippets_list">
+                        <div class="snippet-item">
+                            <span class="meta">[Document: spec_v1.pdf | Page: 1]</span>
+                            <p>All agents operating in session 'sess_001' share context vector embeddings and post-graph edge relations.</p>
+                        </div>
+                    </div>
+
+                    <div class="session-input-box" id="session_input_box">
+                        <input type="text" id="input_session_query" class="text-input" placeholder="Query session shared memory via post-graph-rag...">
+                        <button class="btn btn-primary" id="btn_query_session">Query Memory</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- View 5: Constitutional Guardrails -->
+        <section class="view-panel" id="view_guardrails">
+            <div class="panel-header">
+                <div>
+                    <h2>Constitutional Guardrails & Inspector Agent Audits</h2>
+                    <p>Inviolable safety rules discovered from user prompts or explicitly declared in Org/Project constitutions.</p>
+                </div>
+            </div>
+
+            <div class="guardrails-grid" id="guardrails_grid">
+                <div class="card guardrail-card" id="card_g1">
+                    <div class="card-badge violation">INVIOLABLE</div>
+                    <h3>Rule 1: Destructive Command Execution Block</h3>
+                    <p>Agents are strictly forbidden from running unverified destructive filesystem or database mutation commands.</p>
+                    <div class="rule-meta">Source: Project Constitution | Enforcement: InspectorAgent</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal 1: Materialize Agent -->
+    <div class="modal-overlay" id="modal_materialize_agent">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Materialize New Worker Agent</h3>
+                <button class="modal-close" id="btn_close_materialize_modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="input_agent_name">Agent Name:</label>
+                    <input type="text" id="input_agent_name" class="text-input" placeholder="e.g. DataSynthesizerWorker">
+                </div>
+                <div class="form-group">
+                    <label for="select_parent_agent">Parent Agent (Progeny Origin):</label>
+                    <select id="select_parent_agent" class="select-input">
+                        <!-- Dynamically populated -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="input_system_prompt">System Prompt:</label>
+                    <textarea id="input_system_prompt" class="textarea-input" rows="4" placeholder="You are a specialized worker agent responsible for processing raw payloads..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="input_agent_tools">Attach MCP Tools (comma-separated):</label>
+                    <input type="text" id="input_agent_tools" class="text-input" placeholder="mcp-pgvector-search, mcp-redis-queue">
+                </div>
+                <div class="form-group">
+                    <label for="input_agent_guardrails">Custom Guardrails (comma-separated):</label>
+                    <input type="text" id="input_agent_guardrails" class="text-input" placeholder="Never mutate global variables, Audit outputs">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn_cancel_materialize">Cancel</button>
+                <button class="btn btn-primary" id="btn_submit_materialize">Materialize Agent</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Bundle -->
+    <script src="app.js"></script>
+</body>
+</html>
