@@ -20,12 +20,16 @@ kubectl apply -f "${K8S_DIR}/03-backend.yaml"
 echo "[+] 4. Deploying frontend web visualizer service..."
 kubectl apply -f "${K8S_DIR}/04-frontend.yaml"
 
-echo "[+] 5. Deploying agents.london Ingress & Managed SSL Certificate..."
+echo "[+] 5. Deploying document-registry service..."
+kubectl apply -f "${K8S_DIR}/06-document-registry.yaml"
+
+echo "[+] 6. Deploying agents.london Ingress & Managed SSL Certificate..."
 kubectl apply -f "${K8S_DIR}/05-ingress.yaml"
 
 echo "[+] Verifying deployments rollout status..."
 kubectl rollout status deployment/agent-registry --namespace default --timeout=180s
 kubectl rollout status deployment/tool-registry --namespace default --timeout=180s
+kubectl rollout status deployment/document-registry --namespace default --timeout=180s
 kubectl rollout status deployment/agent-london-backend --namespace default --timeout=180s
 kubectl rollout status deployment/agent-london-frontend --namespace default --timeout=180s
 

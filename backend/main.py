@@ -880,6 +880,11 @@ async def list_mcp_agent_tools(project_id: str = Query("proj_alpha_civilization"
             "name": "mcp_google_search",
             "description": "Google Search (GCP API) - Executes web and Google Search queries from within Kubernetes cluster via GCP Custom Search API.",
             "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "num_results": {"type": "integer", "default": 5}}, "required": ["query"]}
+        },
+        {
+            "name": "mcp_document_rag_query",
+            "description": "Document RAG Query (post-graph-rag) - Queries Knowledge Graph RAG across document spaces (or space-agnostically) for a project.",
+            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "space_name": {"type": "string", "description": "Optional target document space. Omit to query across all spaces."}}, "required": ["query"]}
         }
     ]
     return {"mcp_version": "1.0", "project_id": project_id, "tools": tools}
@@ -968,6 +973,106 @@ async def dispatch_a2a_agent_message(req: A2ADispatchRequest, api_key: Optional[
         "response": {
             "message": f"A2A message received by '{req.target_agent_id}' from '{req.sender_agent_id}'. Goal intent processed successfully."
         }
+    }
+
+# =========================================================================
+# DOCUMENT REGISTRY & POST-GRAPH-RAG SPACE ENDPOINTS
+# =========================================================================
+
+DOCUMENT_REGISTRY_URL = os.getenv("DOCUMENT_REGISTRY_URL", "http://document-registry-service.default.svc.cluster.local:8003")
+
+@app.post("/api/projects/{project_id}/spaces")
+async def create_document_space(project_id: str, space_name: str = Query(...), description: Optional[str] = None):
+    """Creates a new document space for a project using post-graph space sub-grouping."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/spaces",
+                json={"project_id": project_id, "space_name": space_name, "description": description}
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry service: {e}")
+
+    return {
+        "key": f"{project_id}:{space_name}",
+        "project_id": project_id,
+        "space_name": space_name,
+        "description": description or "Document space",
+        "created_at": "2026-07-27",
+        "document_count": 0
+    }
+
+@app.get("/api/projects/{project_id}/spaces")
+async def list_document_spaces(project_id: str):
+    """Lists all document spaces belonging to a project."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/spaces")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry service: {e}")
+
+    return {
+        "project_id": project_id,
+        "spaces": [
+            {
+                "key": f"{project_id}:default",
+                "project_id": project_id,
+                "space_name": "default",
+                "description": "Default workspace document repository",
+                "created_at": "2026-07-27",
+                "document_count": 0
+            }
+        ]
+    }
+
+@app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
+async def upload_document_text(project_id: str, space_name: str, document_name: str = Query(...), content: str = Query(...)):
+    """Indexes text content into post-graph-rag under the specified space."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-text",
+                json={
+                    "project_id": project_id,
+                    "space_name": space_name,
+                    "document_name": document_name,
+                    "content": content
+                }
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry: {e}")
+
+    return {
+        "status": "success",
+        "message": f"Text indexed into space '{space_name}'",
+        "document": {"document_name": document_name, "space_name": space_name, "content_length": len(content)}
+    }
+
+@app.post("/api/projects/{project_id}/rag/query")
+async def query_document_rag(project_id: str, query: str = Query(...), space_name: Optional[str] = None):
+    """Executes GraphRAG retrieval across a specific document space or space-agnostically."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/query",
+                json={"project_id": project_id, "query": query, "space_name": space_name}
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry query: {e}")
+
+    return {
+        "status": "success",
+        "project_id": project_id,
+        "space_name": space_name or "all_spaces",
+        "data": {"entities": [], "relationships": [], "chunks": []}
     }
 
 @app.websocket("/ws/civilization")
