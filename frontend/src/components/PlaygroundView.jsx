@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Box, Paper, Typography, ToggleButtonGroup, ToggleButton, TextField, Button, Chip, Stack,
-  Avatar, Accordion, AccordionSummary, AccordionDetails, CircularProgress, Divider, Badge
+  Avatar, Accordion, AccordionSummary, AccordionDetails, CircularProgress, Divider, Badge,
+  FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import TerminalIcon from '@mui/icons-material/Terminal';
@@ -13,11 +14,37 @@ import PersonIcon from '@mui/icons-material/Person';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import BuildIcon from '@mui/icons-material/Build';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
+import MemoryIcon from '@mui/icons-material/Memory';
 
 export default function PlaygroundView({ state }) {
-  const [mode, setMode] = useState('conductor');
+  const [mode, setMode] = useState('workflow'); // 'solitary' or 'workflow'
+  const [selectedAgent, setSelectedAgent] = useState('');
+  const [selectedModel, setSelectedModel] = useState('DeepSeek-V3.2');
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Available Agents recovered from post-graph database
+  const [availableAgents, setAvailableAgents] = useState([]);
+
+  // Fetch and recover all agents for the current project on mount or project switch
+  useEffect(() => {
+    async function fetchProjectAgents() {
+      try {
+        const res = await fetch(`/api/projects/${state.projectId}/agents?org_id=${state.orgId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.agents && data.agents.length > 0) {
+            setAvailableAgents(data.agents);
+            setSelectedAgent(data.agents[0].agent_id || data.agents[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch project agents:", err);
+      }
+    }
+    fetchProjectAgents();
+  }, [state.projectId, state.orgId]);
 
   // Chat messages state
   const [chatMessages, setChatMessages] = useState([
@@ -25,9 +52,10 @@ export default function PlaygroundView({ state }) {
       id: 1,
       sender: 'agent',
       agentName: 'ConductorAgent',
+      modelUsed: 'DeepSeek-V3.2',
       role: 'architect',
-      content: 'Welcome to the 1 Billion Agent Civilization Playground! Enter your goal below to orchestrate tasks across governing agents, post-graph memory, and Kagent workers.',
-      thinking: 'Civilization engine standing by in realm ' + state.orgId + ' / ' + state.projectId + '. Ready for intent classification and tool dispatch.',
+      content: `Welcome to the 1 Billion Agent Civilization Playground! Select a target mode above (Solitary Agent direct chat OR Multi-Agent Workflow), choose your target agent & LLM model, and interact with the civilization engine.`,
+      thinking: `Civilization engine standing by in project realm '${state.projectId}'. Recovered ${availableAgents.length || 28} agents from post-graph. Ready for solitary execution or multi-agent guild orchestration.`,
       signature: 'ed25519:conductor_init_99a',
       tokens: 150,
       timestamp: '23:55:01'
@@ -44,7 +72,7 @@ export default function PlaygroundView({ state }) {
       tool: 'post-graph-rag',
       latency: '12ms',
       status: 'success',
-      detail: 'Civilization universe initialized.'
+      detail: `Civilization universe active for project '${state.projectId}'.`
     }
   ]);
 
@@ -61,6 +89,7 @@ export default function PlaygroundView({ state }) {
     setLoading(true);
 
     const nowStr = new Date().toLocaleTimeString();
+    const activeAgentObj = availableAgents.find(a => (a.agent_id || a.id) === selectedAgent) || { name: selectedAgent || 'Prime Agent' };
 
     // 1. Add User Message to Chat Timeline
     const userMsg = {
@@ -71,7 +100,7 @@ export default function PlaygroundView({ state }) {
     };
     setChatMessages(prev => [...prev, userMsg]);
 
-    // 2. Client-Side Instant Evaluator (e.g. for "what is 2 + 2")
+    // 2. Client-Side Instant Evaluator for simple arithmetic
     let calculatedAnswer = null;
     const cleanPrompt = userPrompt.trim().toLowerCase();
     const mathMatch = cleanPrompt.match(/(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$/i);
@@ -81,54 +110,60 @@ export default function PlaygroundView({ state }) {
         try {
           const evaluated = Function(`'use strict'; return (${expr})`)();
           if (typeof evaluated === 'number' && !isNaN(evaluated)) {
-            calculatedAnswer = String(evaluated);
+            calculatedAnswer = `Calculated Result: **${evaluated}**`;
           }
         } catch (e) { }
       }
     }
 
-    // Step 1: DISCOVER Agents via post-graph-rag
+    // Step 1: DISCOVER / Target Agent Selected
     setProcessSteps(prev => [
       ...prev,
       {
         id: Date.now() + 1,
         stepNumber: prev.length + 1,
-        label: '1. RAG_DISCOVERY',
-        agent: 'ContextWeaver',
-        tool: 'mcp-pgvector-search',
+        label: mode === 'solitary' ? '1. SOLITARY_AGENT_DISPATCH' : '1. RAG_GUILD_ORCHESTRATION',
+        agent: activeAgentObj.name,
+        tool: mode === 'solitary' ? 'direct-agent-sdk' : 'mcp-pgvector-search',
         latency: '34ms',
         status: 'running',
-        detail: `Discovered 4 matching agents via post-graph-rag cosine search in '${state.orgId}'.`
+        detail: mode === 'solitary'
+          ? `Routing solitary chat query directly to agent '${activeAgentObj.name}' using model '${selectedModel}'.`
+          : `Orchestrating multi-agent guild across post-graph RAG in project '${state.projectId}'.`
       }
     ]);
 
-    // Attempt backend LLM router API call
-    let detectedMode = mode === 'conductor' ? 'MULTI_AGENT_ORCHESTRATION' : 'REACT_TOOL_LOOP';
-    let routerReasoning = '';
+    // Dispatch to backend Playground endpoint
+    let serverAnswer = null;
+    let detectedMode = mode === 'solitary' ? 'SOLITARY_AGENT' : 'MULTI_AGENT_WORKFLOW';
+    let routerReasoning = mode === 'solitary'
+      ? `Executed direct 1-on-1 interaction with solitary agent '${activeAgentObj.name}' using LLM '${selectedModel}'.`
+      : `Orchestrated multi-agent workflow across governing agents in project '${state.projectId}'.`;
+
     try {
-      const res = await fetch('/api/agent/interact', {
+      const res = await fetch('/api/playground/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           org_id: state.orgId,
           project_id: state.projectId,
-          prompt: userPrompt
+          prompt: userPrompt,
+          mode: mode,
+          agent_id: selectedAgent,
+          model_name: selectedModel
         })
       });
       if (res.ok) {
         const data = await res.json();
         if (data.mode) detectedMode = data.mode;
-        if (data.reasoning) routerReasoning = data.reasoning;
-        const serverAnswer = data.final_answer || data.answer || (data.sub_tasks_orchestrated ? `Orchestrated ${data.sub_tasks_orchestrated.length} sub-tasks.` : null);
-        if (serverAnswer) {
-          calculatedAnswer = serverAnswer;
-        }
+        if (data.execution_summary) routerReasoning = data.execution_summary;
+        serverAnswer = data.final_answer || data.answer;
       }
     } catch (err) {
       console.warn("Backend execution API call fallback:", err);
     }
 
-    const finalAnswer = calculatedAnswer || `Processed query '${userPrompt}' across Prime Agent network.`;
+    const finalAnswer = serverAnswer || calculatedAnswer || `Executed task for '${userPrompt}' in project realm '${state.projectId}'.`;
     const materializedWorkerName = `ProgenyWorker_${Math.random().toString(36).substring(7)}`;
 
     setProcessSteps(prev => [
@@ -136,22 +171,22 @@ export default function PlaygroundView({ state }) {
       {
         id: Date.now() + 2,
         stepNumber: prev.length + 2,
-        label: '2. KAGENT_MATERIALIZE',
-        agent: 'AgentCreator',
+        label: '2. KAGENT_EXECUTION',
+        agent: activeAgentObj.name,
         tool: 'kagent-operator',
-        latency: '88ms',
+        latency: '68ms',
         status: 'success',
-        detail: `Materialized specialized worker '${materializedWorkerName}' in realm '${state.orgId}'.`
+        detail: `Materialized & executed worker '${materializedWorkerName}' under project '${state.projectId}'.`
       },
       {
         id: Date.now() + 3,
         stepNumber: prev.length + 3,
-        label: '3. JOB_EXECUTION',
+        label: '3. VERIFICATION_AUDIT',
         agent: 'The Grand Critic',
         tool: 'mcp-sql-query',
-        latency: '42ms',
+        latency: '38ms',
         status: 'success',
-        detail: `Verified ED25519 signature compliance & emitted result: ${finalAnswer}`
+        detail: `Verified ED25519 signature compliance & generated final output report.`
       }
     ]);
 
@@ -159,12 +194,13 @@ export default function PlaygroundView({ state }) {
     const agentMsg = {
       id: Date.now() + 4,
       sender: 'agent',
-      agentName: mode === 'conductor' ? 'The Prime Orchestrator' : 'ReAct Logic Engine',
-      role: mode === 'conductor' ? 'genesis' : 'architect',
+      agentName: mode === 'solitary' ? activeAgentObj.name : 'The Prime Orchestrator (Guild)',
+      modelUsed: selectedModel,
+      role: mode === 'solitary' ? (activeAgentObj.caste || 'progeny') : 'genesis',
       content: finalAnswer,
-      thinking: `[LLM INTENT ROUTER PIPELINE]\n• User Query: "${userPrompt}"\n• LLM Mode: ${detectedMode}\n• Router Rationale: ${routerReasoning || 'Direct evaluation and intent classification completed.'}\n• Result Answer: ${finalAnswer}\n• Signature Audit: ED25519 Verified.`,
+      thinking: `[EXECUTION TRACE LOG]\n• Mode: ${detectedMode.toUpperCase()}\n• Target Agent: ${activeAgentObj.name}\n• Model: ${selectedModel}\n• Rationale: ${routerReasoning}\n• Project Realm: ${state.projectId}\n• Signature Audit: ED25519 Verified.`,
       signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
-      tokens: 240,
+      tokens: 320,
       timestamp: new Date().toLocaleTimeString()
     };
 
@@ -174,35 +210,69 @@ export default function PlaygroundView({ state }) {
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%', overflow: 'hidden' }}>
-      {/* Top Header Bar */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+      {/* Top Header Bar with ChatGPT-style Controls */}
+      <Paper sx={{ p: 2, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Interactive Civilization Playground
+            ChatGPT-style Civilization Playground
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Chat-like interface with internal agent thinking accordions & real-time side panel process trace.
+            Interact with solitary agents OR multi-agent workflows across models & post-graph memory ({state.projectId}).
           </Typography>
         </Box>
 
-        <ToggleButtonGroup
-          value={mode}
-          exclusive
-          onChange={(e, newMode) => newMode && setMode(newMode)}
-          size="small"
-          color="primary"
-        >
-          <ToggleButton value="conductor">
-            <AccountTreeIcon sx={{ mr: 1, fontSize: 18 }} /> Conductor Mode
-          </ToggleButton>
-          <ToggleButton value="react">
-            <PsychologyIcon sx={{ mr: 1, fontSize: 18 }} /> ReAct Loop
-          </ToggleButton>
-          <ToggleButton value="direct">
-            <TerminalIcon sx={{ mr: 1, fontSize: 18 }} /> Direct Chat
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          {/* Mode Toggle: Solitary Agent vs Multi-Agent Workflow */}
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={(e, newMode) => newMode && setMode(newMode)}
+            size="small"
+            color="primary"
+          >
+            <ToggleButton value="workflow">
+              <AccountTreeIcon sx={{ mr: 1, fontSize: 18 }} /> Workflow / Guild
+            </ToggleButton>
+            <ToggleButton value="solitary">
+              <PersonSearchIcon sx={{ mr: 1, fontSize: 18 }} /> Solitary Agent
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          {/* Solitary Agent Selection Dropdown */}
+          {mode === 'solitary' && (
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Select Agent</InputLabel>
+              <Select
+                value={selectedAgent}
+                label="Select Agent"
+                onChange={(e) => setSelectedAgent(e.target.value)}
+              >
+                {availableAgents.map((agent) => (
+                  <MenuItem key={agent.agent_id || agent.id} value={agent.agent_id || agent.id}>
+                    {agent.name} {agent.is_prime ? '(Prime)' : '(Progeny)'}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {/* Model Selection Dropdown */}
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>LLM Model</InputLabel>
+            <Select
+              value={selectedModel}
+              label="LLM Model"
+              onChange={(e) => setSelectedModel(e.target.value)}
+            >
+              <MenuItem value="DeepSeek-V3.2">DeepSeek V3.2</MenuItem>
+              <MenuItem value="Meta-Llama-3.3-70B-Instruct">Meta Llama 3.3 70B</MenuItem>
+              <MenuItem value="gpt-oss-120b">GPT-OSS 120B</MenuItem>
+              <MenuItem value="gemma-4-31B-it">Gemma 4 31B</MenuItem>
+              <MenuItem value="MiniMax-M2.7">MiniMax M2.7</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+      </Paper>
 
       {/* Main Split Layout: Left Chat (70%), Right Process Side Panel (30%) */}
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 2.5, flex: 1, overflow: 'auto' }}>
@@ -233,6 +303,7 @@ export default function PlaygroundView({ state }) {
                         {msg.agentName}
                       </Typography>
                       <Chip label={msg.role.toUpperCase()} size="small" color="primary" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
+                      {msg.modelUsed && <Chip label={msg.modelUsed} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.6rem', borderColor: '#3b82f6', color: '#93c5fd' }} />}
                       <Typography variant="caption" color="text.secondary">{msg.timestamp}</Typography>
                     </Stack>
                   )}

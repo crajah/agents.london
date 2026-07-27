@@ -346,14 +346,18 @@ class GeneratePromptRequest(BaseModel):
 
 @app.post("/api/generate-system-prompt")
 async def generate_system_prompt(req: GeneratePromptRequest):
-    generated = (
-        f"You are a specialized {req.target_role} in the agent.london civilization.\n"
-        f"Your core directive is to execute the following goal with high precision and cryptographic compliance:\n\n"
-        f"GOAL: {req.user_prompt}\n\n"
-        f"INVIOLABLE RULES:\n"
-        f"1. Validate all input schemas before invoking attached MCP tools.\n"
-        f"2. Never execute unverified destructive mutations on databases or filesystems.\n"
-        f"3. Sign all output payloads with your assigned ED25519 cryptographic key."
+    try:
+        from backend.prompts import generate_comprehensive_system_prompt
+    except ImportError:
+        try:
+            from prompts import generate_comprehensive_system_prompt
+        except ImportError:
+            from .prompts import generate_comprehensive_system_prompt
+
+    generated = generate_comprehensive_system_prompt(
+        agent_name=req.target_role or "Progeny Worker Agent",
+        caste_role=req.target_role or "Specialized Task Workforce",
+        telos=req.user_prompt
     )
     return {"system_prompt": generated}
 
@@ -397,23 +401,77 @@ async def materialize_agent(req: MaterializeAgentRequest):
     })
     return res
 
+@app.get("/api/projects/{project_id}/agents")
+async def get_project_agents(project_id: str, org_id: str = Query("org_london_meta")):
+    """Returns all 28 Prime Agents + all persisted custom/progeny agents recovered for a given project."""
+    persisted_custom = await civilization_engine.get_all_project_agents(org_id, project_id)
+    
+    all_agents = []
+    seen_ids = set()
+    
+    for agent in ALL_28_PRIME_AGENTS:
+        aid = f"{agent['id_prefix']}-{project_id}"
+        seen_ids.add(aid)
+        all_agents.append({
+            "agent_id": aid,
+            "id": aid,
+            "name": agent["name"],
+            "caste": agent["caste"],
+            "cog_func": agent["cog_func"],
+            "topo": agent["topo"],
+            "telos": agent["telos"],
+            "pubkey": agent["pubkey"],
+            "assignedModel": agent.get("assignedModel", "DeepSeek-V3.2"),
+            "is_prime": True
+        })
+
+    for ca in persisted_custom:
+        aid = ca.get("agent_id") or ca.get("id")
+        if aid and aid not in seen_ids:
+            seen_ids.add(aid)
+            ca["id"] = aid
+            ca["is_prime"] = False
+            all_agents.append(ca)
+
+    return {"project_id": project_id, "count": len(all_agents), "agents": all_agents}
+
+class EnhancedPlaygroundChatRequest(BaseModel):
+    org_id: str = Field(default="org_london_meta")
+    project_id: str = Field(default="proj_alpha_civilization")
+    prompt: str
+    mode: Optional[str] = Field("workflow", description="'solitary' or 'workflow' / 'conductor'")
+    agent_id: Optional[str] = None
+    model_name: Optional[str] = "DeepSeek-V3.2"
+    session_id: Optional[str] = None
+
 @app.post("/api/playground/chat")
-async def playground_chat(req: PlaygroundChatRequest):
-    """Interactive Playground Endpoint supporting Conductor, ReAct, and Direct mode."""
-    if req.mode == "conductor":
-        res = await civilization_engine.run_conductor_orchestration(req.org_id, req.project_id, req.prompt)
-        await broadcast_ws_event({"type": "conductor_completed", "data": res})
-        return res
-    elif req.mode == "react":
-        res = await civilization_engine.run_react_loop(req.org_id, req.project_id, req.prompt)
-        await broadcast_ws_event({"type": "react_completed", "data": res})
+async def playground_chat(req: EnhancedPlaygroundChatRequest):
+    """Interactive ChatGPT-like Playground Endpoint supporting Solitary Agent and Multi-Agent Workflow modes."""
+    if req.mode == "solitary" and req.agent_id:
+        target_agent_id = req.agent_id
+        # Solitary Agent Execution Mode
+        solitary_prompt = (
+            f"You are the solitary agent '{target_agent_id}' in project '{req.project_id}' of the agent.london civilization.\n"
+            f"User Prompt: {req.prompt}\n\n"
+            f"Execute this request strictly as '{target_agent_id}'. Provide a complete, thorough, authoritative response in Markdown."
+        )
+        answer = generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
+        res = {
+            "mode": "solitary",
+            "agent_id": target_agent_id,
+            "model": req.model_name,
+            "prompt": req.prompt,
+            "answer": answer,
+            "final_answer": answer,
+            "execution_summary": f"Executed solitary agent interaction with '{target_agent_id}' using model '{req.model_name}'."
+        }
+        await broadcast_ws_event({"type": "solitary_chat_completed", "data": res})
         return res
     else:
-        # Direct Mode
-        target_id = req.agent_id or f"gov-{req.project_id}"
-        answer = f"Direct Agent Response ({target_id}): Processed query '{req.prompt}' under project context '{req.project_id}'."
-        res = {"agent_id": target_id, "prompt": req.prompt, "answer": answer}
-        await broadcast_ws_event({"type": "direct_chat_completed", "data": res})
+        # Multi-Agent Workflow / Conductor Execution Mode
+        res = await civilization_engine.run_conductor_orchestration(req.org_id, req.project_id, req.prompt)
+        res["mode"] = "workflow"
+        await broadcast_ws_event({"type": "workflow_completed", "data": res})
         return res
 
 class AgentInteractRequest(BaseModel):

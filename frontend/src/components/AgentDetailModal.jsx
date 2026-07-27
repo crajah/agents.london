@@ -133,6 +133,41 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
           </Box>
         </Box>
 
+        {/* Federated Digital Passport & X.509 Certificate Attestation Panel */}
+        <Box sx={{ p: 2, borderRadius: 2, backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#34d399', display: 'flex', alignItems: 'center', gap: 0.8, mb: 1 }}>
+            <VerifiedUserIcon sx={{ fontSize: 18 }} /> Federated Digital Passport & X.509 Attestation
+          </Typography>
+
+          <Stack spacing={0.8} sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>UAID (Digital Passport):</Typography>
+              <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace', color: '#10b981' }}>
+                {agent.uaid || `uaid:london:auth:${state?.projectId || 'proj_alpha'}:${(agent.agent_id || agent.id).replace(/[^a-zA-Z0-9_-]/g, '')}:v1.0.0`}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>X.509 Root CA Issuer:</Typography>
+              <Typography variant="caption" sx={{ color: '#60a5fa' }}>CN=Federated Root CA, O=agent.london Federation, C=UK</Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>Entra Agent 365 Principal:</Typography>
+              <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace', color: '#a78bfa' }}>
+                {agent.entra_agent365_principal_id || `spn:agent365:${(agent.agent_id || agent.id).replace(/[^a-zA-Z0-9_-]/g, '')}@${state?.projectId || 'proj_alpha'}.entra.agent.london`}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>Codebase Cryptographic Hash Attestation:</Typography>
+              <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace', color: '#f59e0b' }}>
+                {agent.codebase_hash_attestation || `sha256:${(agent.hash_digest || '76a51f4a79f16347b2539f15f0048429d02319eb').substring(0, 24)}...`}
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+
         {/* LLM Synthesized Descriptive Metadata */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 2, borderRadius: 2, backgroundColor: 'rgba(9, 13, 22, 0.75)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
