@@ -1,4 +1,4 @@
-name: Build and Deploy to GKE (Parallel Pipeline)
+name: Build and Deploy to GKE (Fully Parallel Pipeline)
 
 on:
   push:
@@ -88,11 +88,87 @@ jobs:
           docker push "${REMOTE_LATEST}"
 
   # =========================================================================
-  # JOB 3: DEPLOY ALL COMPONENTS TO KUBERNETES GKE CLUSTER
+  # JOB 3: PARALLEL KUBERNETES DEPLOYMENT MATRIX FOR ALL COMPONENTS
   # =========================================================================
   deploy-to-gke:
-    name: Deploy All Components to GKE
+    name: Deploy (${{ matrix.k8s.name }})
     needs: [prepare-tag, build-and-push-parallel]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s:
+          - name: agent-registry
+            manifest: deploy/k8s/01-agent-registry.yaml
+            type: deployment
+            target: agent-registry
+          - name: tool-registry
+            manifest: deploy/k8s/02-tool-registry.yaml
+            type: deployment
+            target: tool-registry
+          - name: document-registry-service
+            manifest: deploy/k8s/06-document-registry.yaml
+            type: deployment
+            target: document-registry
+          - name: backend-bff
+            manifest: deploy/k8s/03-backend.yaml
+            type: deployment
+            target: agent-london-backend
+          - name: frontend-web
+            manifest: deploy/k8s/04-frontend.yaml
+            type: deployment
+            target: agent-london-frontend
+          - name: ingress-and-cert
+            manifest: deploy/k8s/05-ingress.yaml
+            type: ingress
+            target: agents-london-ingress
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Get GKE Credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_LOCATION }}
+
+      - name: Reserve Static Global IP for Ingress
+        run: |
+          gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
+
+      - name: Update Manifest Tag & Apply to GKE (${{ matrix.k8s.name }})
+        env:
+          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
+        run: |
+          MANIFEST_PATH="${{ matrix.k8s.manifest }}"
+          sed -i "s|gcr.io/crajah-dev/|gcr.io/${GCP_PROJECT}/|g" "${MANIFEST_PATH}"
+          sed -i "s|:latest|:${DOCKER_TAG}|g" "${MANIFEST_PATH}"
+
+          echo "[+] Applying ${MANIFEST_PATH} to GKE..."
+          kubectl apply -f "${MANIFEST_PATH}"
+
+          if [ "${{ matrix.k8s.type }}" = "deployment" ]; then
+            echo "[+] Verifying rollout status for deployment/${{ matrix.k8s.target }}..."
+            kubectl rollout status deployment/${{ matrix.k8s.target }} --namespace default --timeout=180s
+          fi
+
+  # =========================================================================
+  # JOB 4: FINAL CLUSTER & INGRESS VERIFICATION
+  # =========================================================================
+  verify-cluster:
+    name: Verify Ingress Gateway & Cluster Health
+    needs: [deploy-to-gke]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -118,26 +194,7 @@ jobs:
         run: |
           chmod +x scripts/*.sh
 
-      - name: Reserve Static Global IP for Ingress
-        run: |
-          gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
-
-      - name: Update K8s Manifest Image Tags (${{ needs.prepare-tag.outputs.docker_tag }})
-        env:
-          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
-        run: |
-          sed -i "s|gcr.io/crajah-dev/|gcr.io/${GCP_PROJECT}/|g" deploy/k8s/*.yaml
-          sed -i "s|:latest|:${DOCKER_TAG}|g" deploy/k8s/*.yaml
-          echo "[+] Updated Kubernetes Manifests to tag '${DOCKER_TAG}':"
-          grep -i "image:" deploy/k8s/*.yaml
-
-      - name: Deploy agent.london Components to GKE
-        env:
-          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
-        run: |
-          ./scripts/03_deploy_k8s.sh
-
-      - name: Verify Deployment & Ingress Status
+      - name: Verify All Pods and Ingresses
         run: |
           kubectl get pods --namespace default
           kubectl get services --namespace default
