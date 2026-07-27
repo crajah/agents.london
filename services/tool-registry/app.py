@@ -58,33 +58,37 @@ async def get_pg_client(realm: str = "global") -> Optional[Any]:
     return None
 
 async def sync_tools_from_post_graph():
-    client = await get_pg_client("global")
-    if not client:
-        return
-    try:
-        vertices = await client.get_vertices(table_name="mcp_tools", realm="global")
-        for v in vertices:
-            payload = v.payload if hasattr(v, "payload") else v
-            if isinstance(payload, dict) and "tool_id" in payload:
-                TOOL_REGISTRY[payload["tool_id"]] = payload
-        await client.close()
-        logger.info(f"Synced {len(TOOL_REGISTRY)} MCP tools from post-graph database.")
-    except Exception as e:
-        logger.warning(f"Failed to sync tool registry from post-graph: {e}")
+    """Populates local cache from post-graph database on startup using project realms."""
+    realms_to_sync = ["proj_alpha_civilization", "proj_quantum_agents", "proj_neural_swarm", "org_london_meta"]
+    for r in realms_to_sync:
+        client = await get_pg_client(r)
+        if not client:
+            continue
         try:
+            vertices = await client.get_vertices(table_name="mcp_tools", realm=r)
+            for v in vertices:
+                payload = v.payload if hasattr(v, "payload") else v
+                if isinstance(payload, dict) and "tool_id" in payload:
+                    TOOL_REGISTRY[payload["tool_id"]] = payload
             await client.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to sync tool registry from post-graph in realm '{r}': {e}")
+            try:
+                await client.close()
+            except Exception:
+                pass
 
 async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
-    client = await get_pg_client("global")
+    """Persists tool vertex into post-graph database using project realm."""
+    realm = payload.get("project_id") or payload.get("org_id") or "proj_alpha_civilization"
+    client = await get_pg_client(realm)
     if not client:
         return
     try:
-        await client.add_vertex(table_name="mcp_tools", realm="global", payload=payload)
+        await client.add_vertex(table_name="mcp_tools", realm=realm, payload=payload)
         await client.close()
     except Exception as e:
-        logger.warning(f"Error persisting tool '{tool_id}' to post-graph: {e}")
+        logger.warning(f"Error persisting tool '{tool_id}' to post-graph in realm '{realm}': {e}")
         try:
             await client.close()
         except Exception:

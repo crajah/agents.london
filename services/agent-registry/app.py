@@ -62,47 +62,54 @@ async def get_pg_client(realm: str = "global") -> Optional[Any]:
 
     return None
 
-async def sync_from_post_graph():
-    """Populates local cache from post-graph database on startup."""
-    client = await get_pg_client("global")
-    if not client:
-        return
-    try:
-        vertices = await client.get_vertices(table_name="agent_registry", realm="global")
-        for v in vertices:
-            payload = v.payload if hasattr(v, "payload") else v
-            if isinstance(payload, dict) and "agent_id" in payload:
-                agent_id = payload["agent_id"]
-                AGENT_REGISTRY[agent_id] = payload
-                try:
-                    records = await client.get_vertex_data(table_name="agent_registry", realm="global", vertex_id=agent_id)
-                    AGENT_VERSIONS[agent_id] = [r.to_dict() for r in records]
-                except Exception:
-                    if agent_id not in AGENT_VERSIONS:
-                        AGENT_VERSIONS[agent_id] = [payload]
-        await client.close()
-        logger.info(f"Synced {len(AGENT_REGISTRY)} agents from post-graph database.")
-    except Exception as e:
-        logger.warning(f"Failed to sync agent registry from post-graph: {e}")
+async def sync_from_post_graph(project_id: str = "proj_alpha_civilization"):
+    """Populates local cache from post-graph database on startup using project realm."""
+    realms_to_sync = [project_id, "proj_alpha_civilization", "proj_quantum_agents", "proj_neural_swarm"]
+    unique_realms = []
+    for r in realms_to_sync:
+        if r and r not in unique_realms:
+            unique_realms.append(r)
+
+    for r in unique_realms:
+        client = await get_pg_client(r)
+        if not client:
+            continue
         try:
+            vertices = await client.get_vertices(table_name="agent_registry", realm=r)
+            for v in vertices:
+                payload = v.payload if hasattr(v, "payload") else v
+                if isinstance(payload, dict) and "agent_id" in payload:
+                    agent_id = payload["agent_id"]
+                    AGENT_REGISTRY[agent_id] = payload
+                    try:
+                        records = await client.get_vertex_data(table_name="agent_registry", realm=r, vertex_id=agent_id)
+                        AGENT_VERSIONS[agent_id] = [rec.to_dict() for rec in records]
+                    except Exception:
+                        if agent_id not in AGENT_VERSIONS:
+                            AGENT_VERSIONS[agent_id] = [payload]
             await client.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to sync agent registry from post-graph in realm '{r}': {e}")
+            try:
+                await client.close()
+            except Exception:
+                pass
 
 async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
-    """Persists agent vertex and appends immutable version entry into post-graph tables."""
-    client = await get_pg_client("global")
+    """Persists agent vertex and appends immutable version entry into post-graph tables using project realm."""
+    project_id = payload.get("project_id", "proj_alpha_civilization")
+    client = await get_pg_client(project_id)
     if not client:
         return
     try:
-        await client.add_vertex(table_name="agent_registry", realm="global", payload=payload)
+        await client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
         try:
-            await client.add_vertex_data(table_name="agent_registry", realm="global", vertex_id=agent_id, payload=payload)
+            await client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=agent_id, payload=payload)
         except Exception:
             pass
         await client.close()
     except Exception as e:
-        logger.warning(f"Error persisting agent '{agent_id}' to post-graph: {e}")
+        logger.warning(f"Error persisting agent '{agent_id}' to post-graph in realm '{project_id}': {e}")
         try:
             await client.close()
         except Exception:

@@ -88,15 +88,17 @@ class RedisBus:
         if len(self._in_memory_events[channel]) > 100:
             self._in_memory_events[channel].pop(0)
 
-    def enqueue_task(self, agent_id: str, task_data: Dict[str, Any]) -> str:
-        """Enqueue task into agent's dedicated Redis work queue."""
+    def enqueue_task(self, agent_id: str, task_data: Dict[str, Any], project_id: Optional[str] = None) -> str:
+        """Enqueue task into agent's dedicated Redis work queue scoped strictly to project_id."""
+        proj = project_id or task_data.get("project_id", "proj_alpha_civilization")
         task_payload = {
             **task_data,
             "task_id": f"task-{int(time.time()*1000)}",
             "enqueued_at": time.time(),
+            "project_id": proj,
             "status": "pending"
         }
-        queue_key = f"agent:queue:{agent_id}"
+        queue_key = f"agent:queue:{proj}:{agent_id}"
 
         if self.redis_client:
             try:
@@ -109,9 +111,10 @@ class RedisBus:
         self._in_memory_queues[queue_key].append(task_payload)
         return task_payload["task_id"]
 
-    def dequeue_task(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Dequeue next available task for an agent."""
-        queue_key = f"agent:queue:{agent_id}"
+    def dequeue_task(self, agent_id: str, project_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Dequeue next available task for an agent scoped strictly to project_id."""
+        proj = project_id or "proj_alpha_civilization"
+        queue_key = f"agent:queue:{proj}:{agent_id}"
 
         if self.redis_client:
             try:
