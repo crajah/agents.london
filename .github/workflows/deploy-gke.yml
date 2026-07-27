@@ -72,8 +72,8 @@ jobs:
           DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
           GCR_REGISTRY: gcr.io/${{ env.GCP_PROJECT }}
         run: |
-          IMAGE_NAME="${matrix.service.name}"
-          CONTEXT_DIR="${matrix.service.context}"
+          IMAGE_NAME="${{ matrix.service.name }}"
+          CONTEXT_DIR="${{ matrix.service.context }}"
           
           REMOTE_TAGGED="${GCR_REGISTRY}/${IMAGE_NAME}:${DOCKER_TAG}"
           REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
