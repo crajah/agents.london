@@ -3,16 +3,18 @@ import { Box, Paper, Typography, Button, TextField, List, ListItem, ListItemButt
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import SearchIcon from '@mui/icons-material/Search';
 
-export default function SharedMemoryView() {
+export default function SharedMemoryView({ state }) {
   const [query, setQuery] = useState('');
+  const activeProject = state?.projectId || 'proj_alpha_civilization';
+
   const [results, setResults] = useState([
-    { doc: 'spec_v1.pdf', page: 1, text: 'All agents operating in session memory share context vector embeddings and post-graph edge relations.' }
+    { doc: `spec_${activeProject}.pdf`, page: 1, text: `All agents operating in session memory share context vector embeddings and post-graph edge relations under realm '${activeProject}'.` }
   ]);
 
   const handleQuery = () => {
     if (!query.trim()) return;
     setResults(prev => [
-      { doc: 'agent_constitution.pdf', page: 3, text: `Vector search matched query '${query}' with 0.94 similarity in post-graph-rag session memory.` },
+      { doc: `agent_constitution_${activeProject}.pdf`, page: 3, text: `Vector search matched query '${query}' with 0.94 similarity in post-graph-rag session memory for project '${activeProject}'.` },
       ...prev
     ]);
     setQuery('');
@@ -23,15 +25,15 @@ export default function SharedMemoryView() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Shared Session Memory & RAG Knowledge Store
+            Shared Session Memory & RAG Knowledge Store ({activeProject})
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Segregated session memory context created for multi-agent collaboration using post-graph-rag.
+            Segregated session memory context created for multi-agent collaboration in project realm <code>{activeProject}</code> using post-graph-rag.
           </Typography>
         </Box>
 
         <Button variant="contained" color="primary">
-          + Initiate New Session
+          + Initiate New Session in {activeProject}
         </Button>
       </Box>
 
@@ -40,14 +42,14 @@ export default function SharedMemoryView() {
         {/* Left Session List */}
         <Paper sx={{ width: 300, p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Active Collaboration Sessions
+            Active Collaboration Sessions ({activeProject})
           </Typography>
 
           <List disablePadding>
             <ListItem disablePadding>
               <ListItemButton selected sx={{ borderRadius: 2 }}>
                 <ListItemText
-                  primary="#sess_001_collaborative_task"
+                  primary={`#sess_${activeProject}_collab`}
                   secondary="8 Agents • post-graph-rag active"
                   primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: '#60a5fa' }}
                   secondaryTypographyProps={{ fontSize: '0.72rem' }}

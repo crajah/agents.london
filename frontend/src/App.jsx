@@ -39,6 +39,7 @@ export default function App() {
       { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', provider: 'OpenAI / Embeddings', context_window: 8191, status: 'active' }
     ],
     tools: [
+      { tool_id: 'mcp-google-search', name: 'Google Search (GCP API)', scope_type: 'org', endpoint_url: 'http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search', input_schema: { query: 'string', num_results: 'int' } },
       { tool_id: 'mcp-pgvector-search', name: 'pgvector Vector Search', scope_type: 'org', endpoint_url: 'http://localhost:8002/tools/pgvector', input_schema: { query_vector: 'list[float]' } },
       { tool_id: 'mcp-redis-queue', name: 'Redis Event Queue', scope_type: 'project', endpoint_url: 'http://localhost:8002/tools/redis', input_schema: { channel: 'str' } }
     ]
@@ -151,8 +152,8 @@ export default function App() {
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} />}
-              {currentTab === 'sessions' && <SharedMemoryView />}
-              {currentTab === 'guardrails' && <GuardrailsView />}
+              {currentTab === 'sessions' && <SharedMemoryView state={state} />}
+              {currentTab === 'guardrails' && <GuardrailsView state={state} />}
             </Box>
           </Box>
 

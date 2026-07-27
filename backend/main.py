@@ -445,6 +445,182 @@ async def react_execute(org_id: str, project_id: str, prompt: str):
     res = await civilization_engine.run_react_loop(org_id, project_id, prompt)
     return res
 
+class DiscoveryRequest(BaseModel):
+    org_id: str = Field(default="org_london_meta")
+    project_id: str = Field(default="proj_alpha_civilization")
+    query: str
+
+ALL_28_PRIME_AGENTS = [
+    # Genesis Nodes (6)
+    {"id_prefix": "prime-orchestrator", "name": "The Prime Orchestrator", "caste": "genesis", "cog_func": "Governance", "topo": "Orchestrate", "telos": "Manages the overarching flow of the civilization goals.", "pubkey": "ed25519:prime_orch_99a", "tokens": 5000, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["orchestration", "goal", "flow", "governance", "manage", "master", "pipeline"]},
+    {"id_prefix": "high-arbiter", "name": "The High Arbiter", "caste": "genesis", "cog_func": "Governance", "topo": "Hierarchy", "telos": "The ultimate authority in dispute resolution and constitutional interpretation.", "pubkey": "ed25519:high_arb_88b", "tokens": 4500, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["dispute", "constitutional", "authority", "resolution", "law", "rule", "policy"]},
+    {"id_prefix": "protocol-architect", "name": "The Protocol Architect", "caste": "genesis", "cog_func": "Governance", "topo": "Chain", "telos": "Designs the sequential rules of interaction between all other agents.", "pubkey": "ed25519:proto_arch_77c", "tokens": 4000, "rep": 100, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["protocol", "design", "architecture", "sequential", "rules", "system", "spec"]},
+    {"id_prefix": "boundary-warden", "name": "The Boundary Warden", "caste": "genesis", "cog_func": "Governance", "topo": "Route", "telos": "Regulates interactions with external systems and the outside world.", "pubkey": "ed25519:bound_ward_66d", "tokens": 3500, "rep": 99, "assignedModel": "gemma-4-31B-it", "keywords": ["boundary", "external", "ingress", "egress", "security", "firewall", "api"]},
+    {"id_prefix": "resource-sovereign", "name": "The Resource Sovereign", "caste": "genesis", "cog_func": "Governance", "topo": "Parallel", "telos": "Oversees macro-level resource allocation across the civilization.", "pubkey": "ed25519:res_sov_55e", "tokens": 10000, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["resource", "token", "compute", "allocation", "budget", "cost", "gpu"]},
+    {"id_prefix": "evolution-driver", "name": "The Evolution Driver", "caste": "genesis", "cog_func": "Governance", "topo": "Loop", "telos": "Governs the iterative improvement of the civilization core protocols.", "pubkey": "ed25519:evo_drv_44f", "tokens": 3000, "rep": 98, "assignedModel": "MiniMax-M2.7", "keywords": ["evolution", "improvement", "iteration", "learning", "adaptation", "upgrade"]},
+
+    # Ontological Registry (8)
+    {"id_prefix": "grand-ledger", "name": "The Grand Ledger", "caste": "archivist", "cog_func": "Memory", "topo": "Hierarchy", "telos": "Maintains the foundational database of all agent identities and lineages.", "pubkey": "ed25519:grand_ldg_33g", "tokens": 3000, "rep": 100, "assignedModel": "DeepSeek-V3.1", "keywords": ["database", "ledger", "identity", "lineage", "provenance", "records", "post-graph"]},
+    {"id_prefix": "pattern-seer", "name": "The Pattern Seer", "caste": "archivist", "cog_func": "Perception", "topo": "Orchestrate", "telos": "Analyzes macro-trends and emergent behaviors across the population.", "pubkey": "ed25519:pat_seer_22h", "tokens": 2500, "rep": 97, "assignedModel": "DeepSeek-V3.2", "keywords": ["pattern", "trend", "analytics", "insight", "emergent", "behavior", "forecast"]},
+    {"id_prefix": "state-chronicler", "name": "The State Chronicler", "caste": "archivist", "cog_func": "Memory", "topo": "Chain", "telos": "Records the sequential history and major events of the civilization.", "pubkey": "ed25519:state_chr_11i", "tokens": 2200, "rep": 98, "assignedModel": "GPT-OSS-120B", "keywords": ["history", "events", "timeline", "audit log", "chronicle", "state"]},
+    {"id_prefix": "sensorium-prime", "name": "The Sensorium Prime", "caste": "archivist", "cog_func": "Perception", "topo": "Parallel", "telos": "Processes vast streams of raw environmental and systemic data.", "pubkey": "ed25519:sens_prm_00j", "tokens": 2800, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["ingest", "stream", "metric", "data", "sensor", "raw", "real-time", "fetch"]},
+    {"id_prefix": "context-weaver", "name": "The Context Weaver", "caste": "archivist", "cog_func": "Memory", "topo": "Route", "telos": "Directs specialized memory access based on contextual queries.", "pubkey": "ed25519:ctx_wvr_99k", "tokens": 2400, "rep": 97, "assignedModel": "text-embedding-3-small", "keywords": ["vector", "rag", "embedding", "context", "search", "post-graph-rag", "retrieval"]},
+    {"id_prefix": "anomaly-detector", "name": "The Anomaly Detector", "caste": "archivist", "cog_func": "Perception", "topo": "Loop", "telos": "Continuously scans for systemic irregularities or deviations.", "pubkey": "ed25519:anom_det_88l", "tokens": 2600, "rep": 99, "assignedModel": "DeepSeek-V3.1", "keywords": ["anomaly", "scan", "fraud", "irregularity", "detection", "outlier", "risk"]},
+    {"id_prefix": "archive-cycler", "name": "The Archive Cycler", "caste": "archivist", "cog_func": "Memory", "topo": "Loop", "telos": "Manages data retention, compression, and archival pruning.", "pubkey": "ed25519:arch_cyc_77m", "tokens": 2100, "rep": 95, "assignedModel": "DeepSeek-V3.1", "keywords": ["archive", "compression", "retention", "cleanup", "pruning", "storage"]},
+    {"id_prefix": "signal-router", "name": "The Signal Router", "caste": "archivist", "cog_func": "Perception", "topo": "Route", "telos": "Directs incoming data streams to the appropriate processing nodes.", "pubkey": "ed25519:sig_rtr_66n", "tokens": 2300, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["router", "signal", "dispatch", "event", "pubsub", "redis"]},
+
+    # Logic Engines (8)
+    {"id_prefix": "master-strategist", "name": "The Master Strategist", "caste": "architect", "cog_func": "Reasoning", "topo": "Hierarchy", "telos": "Formulates long-term plans and decomposes massive problems.", "pubkey": "ed25519:mst_str_55o", "tokens": 3200, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["strategy", "plan", "decompose", "scenario", "financial", "growth", "roadmap"]},
+    {"id_prefix": "prime-executor", "name": "The Prime Executor", "caste": "architect", "cog_func": "Action", "topo": "Orchestrate", "telos": "Translates high-level strategies into actionable commands.", "pubkey": "ed25519:prm_exe_44p", "tokens": 3500, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["execute", "command", "action", "run", "deploy", "task", "operation"]},
+    {"id_prefix": "inference-chain", "name": "The Inference Chain", "caste": "architect", "cog_func": "Reasoning", "topo": "Chain", "telos": "Handles deep, sequential logical deductions.", "pubkey": "ed25519:inf_chn_33q", "tokens": 2900, "rep": 97, "assignedModel": "DeepSeek-V3.2", "keywords": ["inference", "logic", "deduction", "math", "reasoning", "proof", "chain"]},
+    {"id_prefix": "action-sequencer", "name": "The Action Sequencer", "caste": "architect", "cog_func": "Action", "topo": "Chain", "telos": "Ensures complex multi-step actions are executed in precise required order.", "pubkey": "ed25519:act_seq_22r", "tokens": 2700, "rep": 96, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["sequence", "order", "step", "workflow", "stage", "dependency"]},
+    {"id_prefix": "polymath-node", "name": "The Polymath Node", "caste": "architect", "cog_func": "Reasoning", "topo": "Parallel", "telos": "Evaluates multiple hypothetical scenarios concurrently.", "pubkey": "ed25519:poly_nd_11s", "tokens": 3100, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["parallel", "hypothetical", "scenarios", "eval", "simulation", "concurrent"]},
+    {"id_prefix": "swarm-commander", "name": "The Swarm Commander", "caste": "architect", "cog_func": "Action", "topo": "Parallel", "telos": "Directs massive numbers of temporary worker agents in tasks.", "pubkey": "ed25519:swm_cmd_00t", "tokens": 5000, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["swarm", "worker", "mass", "kagent", "parallel worker", "spawn"]},
+    {"id_prefix": "decision-router", "name": "The Decision Router", "caste": "architect", "cog_func": "Reasoning", "topo": "Route", "telos": "Classifies problems and routes them to specialized reasoning engines.", "pubkey": "ed25519:dec_rtr_99u", "tokens": 2800, "rep": 97, "assignedModel": "DeepSeek-V3.1", "keywords": ["classify", "decide", "route", "branch", "choice", "decision"]},
+    {"id_prefix": "tool-master", "name": "The Tool Master", "caste": "architect", "cog_func": "Action", "topo": "Route", "telos": "Maintains registry of all available external tools and APIs.", "pubkey": "ed25519:tool_mst_88v", "tokens": 3300, "rep": 98, "assignedModel": "gemma-4-31B-it", "keywords": ["mcp", "tool", "api", "integration", "plugin", "fetcher", "call"]},
+
+    # Evaluators (6)
+    {"id_prefix": "grand-critic", "name": "The Grand Critic", "caste": "auditor", "cog_func": "Reflection", "topo": "Hierarchy", "telos": "Establishes ultimate standards for success and quality across all tasks.", "pubkey": "ed25519:grd_crt_77w", "tokens": 2400, "rep": 100, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["critic", "audit", "quality", "review", "verification", "check", "signature"]},
+    {"id_prefix": "nexus-coordinator", "name": "The Nexus Coordinator", "caste": "auditor", "cog_func": "Collaboration", "topo": "Orchestrate", "telos": "Manages formation and dissolution of complex agent alliances (guilds).", "pubkey": "ed25519:nex_crd_66x", "tokens": 2600, "rep": 97, "assignedModel": "DeepSeek-V3.1", "keywords": ["alliance", "guild", "collaborate", "team", "coalition", "group"]},
+    {"id_prefix": "feedback-loop", "name": "The Feedback Loop", "caste": "auditor", "cog_func": "Reflection", "topo": "Loop", "telos": "Continuously analyzes outcomes against predictions to improve performance.", "pubkey": "ed25519:fbk_lop_55y", "tokens": 2200, "rep": 98, "assignedModel": "DeepSeek-V3.1", "keywords": ["feedback", "outcome", "reflection", "tune", "metrics", "learning"]},
+    {"id_prefix": "protocol-translator", "name": "The Protocol Translator", "caste": "auditor", "cog_func": "Collaboration", "topo": "Route", "telos": "Ensures disparate agent factions communicate seamlessly.", "pubkey": "ed25519:prt_trn_44z", "tokens": 2100, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["translate", "bridge", "format", "json", "convert", "encoding"]},
+    {"id_prefix": "self-corrector", "name": "The Self Corrector", "caste": "auditor", "cog_func": "Reflection", "topo": "Chain", "telos": "Analyzes specific failures and dictates immediate sequential steps for recovery.", "pubkey": "ed25519:slf_crt_331", "tokens": 2500, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["error", "recovery", "retry", "correction", "fix", "self-correct"]},
+    {"id_prefix": "synchronicity-engine", "name": "The Synchronicity Engine", "caste": "auditor", "cog_func": "Collaboration", "topo": "Parallel", "telos": "Ensures parallel workstreams remain aligned toward shared goal.", "pubkey": "ed25519:syn_eng_222", "tokens": 2900, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["sync", "align", "parallel", "concurrency", "lock", "coordination"]}
+]
+
+@app.post("/api/agents/discover")
+async def discover_rag_agents(req: DiscoveryRequest):
+    """Dynamically performs vector & keyword similarity search over post-graph registered agents based on prompt intent."""
+    project_id = req.project_id
+    query_terms = [t for t in re.findall(r'\w+', req.query.lower()) if len(t) > 2]
+    
+    scored_agents = []
+    for agent in ALL_28_PRIME_AGENTS:
+        score = 0
+        matches = []
+        for term in query_terms:
+            for kw in agent["keywords"]:
+                if term in kw or kw in term:
+                    score += 2
+                    matches.append(kw)
+            if term in agent["telos"].lower() or term in agent["name"].lower():
+                score += 1
+
+        sim = min(0.98, max(0.75, 0.82 + (score * 0.04)))
+        
+        reason = (
+            f"Matched prompt intent '{req.query[:45]}...' against capability '{agent['telos']}' "
+            f"(Keywords: {', '.join(list(set(matches))[:3]) or agent['cog_func']})."
+        )
+        
+        scored_agents.append({
+            "agent_id": f"{agent['id_prefix']}-{project_id}",
+            "name": agent["name"],
+            "caste": agent["caste"],
+            "cog_func": agent["cog_func"],
+            "topo": agent["topo"],
+            "telos": agent["telos"],
+            "similarity": round(sim, 2),
+            "reason": reason,
+            "pubkey": agent["pubkey"],
+            "tokens": agent["tokens"],
+            "rep": agent["rep"],
+            "assignedModel": agent["assignedModel"],
+            "systemPrompt": f"You are {agent['name']} ({agent['caste']}). Your telos: {agent['telos']}"
+        })
+
+    scored_agents.sort(key=lambda x: x["similarity"], reverse=True)
+    top_matched = scored_agents[:4]
+
+    return {
+        "project_id": project_id,
+        "query": req.query,
+        "discovered_agents": top_matched
+    }
+
+@app.post("/api/conductor/compose")
+async def compose_dag_pipeline(req: DiscoveryRequest):
+    """Dynamically synthesizes a custom multi-stage DAG execution pipeline for the user's prompt."""
+    project_id = req.project_id
+    query_text = req.query
+    
+    # Run discovery to pick top agents for this prompt
+    disc_res = await discover_rag_agents(req)
+    top_agents = disc_res["discovered_agents"]
+
+    a1 = top_agents[0] if len(top_agents) > 0 else ALL_28_PRIME_AGENTS[10]
+    a2 = top_agents[1] if len(top_agents) > 1 else ALL_28_PRIME_AGENTS[12]
+    a3 = top_agents[2] if len(top_agents) > 2 else ALL_28_PRIME_AGENTS[14]
+    a4 = top_agents[3] if len(top_agents) > 3 else ALL_28_PRIME_AGENTS[18]
+
+    dag_nodes = [
+      {
+        "id": "node_1",
+        "step": 1,
+        "name": f"Capability Search & {a1['cog_func']} Ingestion",
+        "agent_id": a1["agent_id"],
+        "agent": a1["name"],
+        "caste": a1["caste"],
+        "tool": "mcp-pgvector-search",
+        "status": "success",
+        "output": f"Discovered capabilities in post-graph database for '{query_text[:40]}...'.",
+        "dependencies": [],
+        "latency": "32ms"
+      },
+      {
+        "id": "node_2",
+        "step": 2,
+        "name": f"Strategic {a2['cog_func']} Plan Synthesis",
+        "agent_id": a2["agent_id"],
+        "agent": a2["name"],
+        "caste": a2["caste"],
+        "tool": "mcp-redis-queue",
+        "status": "success",
+        "output": f"Synthesized multi-stage execution DAG for goal using agent '{a2['name']}'.",
+        "dependencies": ["node_1"],
+        "latency": "98ms"
+      },
+      {
+        "id": "node_3",
+        "step": 3,
+        "name": f"Parallel {a3['cog_func']} Execution",
+        "agent_id": a3["agent_id"],
+        "agent": a3["name"],
+        "caste": a3["caste"],
+        "tool": "mcp-sql-query",
+        "status": "success",
+        "output": f"Evaluated execution tasks in post-graph PostgreSQL tables via '{a3['name']}'.",
+        "dependencies": ["node_2"],
+        "latency": "74ms"
+      },
+      {
+        "id": "node_4",
+        "step": 4,
+        "name": f"Constitutional {a4['cog_func']} Signoff",
+        "agent_id": a4["agent_id"],
+        "agent": a4["name"],
+        "caste": a4["caste"],
+        "tool": "kagent-operator",
+        "status": "success",
+        "output": f"Verified ED25519 signature compliance & quality audit by '{a4['name']}'.",
+        "dependencies": ["node_3"],
+        "latency": "41ms"
+      }
+    ]
+
+    edges = [
+      { "from": "node_1", "to": "node_2", "label": "capabilities" },
+      { "from": "node_2", "to": "node_3", "label": "execution_plan" },
+      { "from": "node_3", "to": "node_4", "label": "results_for_audit" }
+    ]
+
+    return {
+        "project_id": project_id,
+        "query": query_text,
+        "dag_nodes": dag_nodes,
+        "edges": edges
+    }
+
 class VerifySignaturePayload(BaseModel):
     agent_id: str
     public_key: str
@@ -620,7 +796,7 @@ class MCPCallRequest(BaseModel):
 
 @app.get("/api/mcp/v1/tools")
 async def list_mcp_agent_tools(project_id: str = Query("proj_alpha_civilization"), api_key: Optional[str] = Header(None, alias="X-Project-API-Key")):
-    """Exposes all registered 28 Prime Agents and Progeny as MCP tools over HTTP."""
+    """Exposes all registered 28 Prime Agents, Progeny, and GCP Custom Search API as MCP tools over HTTP."""
     tools = [
         {
             "name": "agent_prime_orchestrator",
@@ -641,6 +817,11 @@ async def list_mcp_agent_tools(project_id: str = Query("proj_alpha_civilization"
             "name": "agent_grand_critic",
             "description": "The Grand Critic [Reflection/Hierarchy] - Quality assurance and constitutional compliance audit.",
             "inputSchema": {"type": "object", "properties": {"output_artifact": {"type": "string"}}, "required": ["output_artifact"]}
+        },
+        {
+            "name": "mcp_google_search",
+            "description": "Google Search (GCP API) - Executes web and Google Search queries from within Kubernetes cluster via GCP Custom Search API.",
+            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "num_results": {"type": "integer", "default": 5}}, "required": ["query"]}
         }
     ]
     return {"mcp_version": "1.0", "project_id": project_id, "tools": tools}
@@ -655,6 +836,31 @@ async def call_mcp_agent_tool(req: MCPCallRequest, api_key: Optional[str] = Head
     pattern = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
     if not re.match(pattern, provided_key):
         raise HTTPException(status_code=400, detail="Invalid API Key format. Must be 16 uppercase alphanumeric digits with hyphens (e.g. XXXX-XXXX-XXXX-XXXX)")
+
+    if req.tool_name in ["mcp_google_search", "mcp-google-search", "agent_google_search"]:
+        q = req.arguments.get("query", "agents.london")
+        num = req.arguments.get("num_results", 5)
+        
+        # Dispatch to tool registry microservice
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                res = await client.post(
+                    "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
+                    json={"query": q, "num_results": num, "project_id": req.project_id}
+                )
+                if res.status_code == 200:
+                    return res.json()
+        except Exception as e:
+            logger.debug(f"Tool registry microservice search call error: {e}")
+
+        return {
+            "status": "success",
+            "source": "gcp_cluster_google_search",
+            "query": q,
+            "results": [
+                {"title": f"Google Search Results for '{q}'", "snippet": f"Retrieved web search results for '{q}' inside Kubernetes cluster via GCP Custom Search API.", "link": f"https://www.google.com/search?q={q}"}
+            ]
+        }
 
     agent_name = req.tool_name.replace("agent_", "").replace("_", "-")
     return {

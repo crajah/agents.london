@@ -3,20 +3,22 @@ import { Box, Paper, Typography, Grid, Card, CardContent, Chip, Stack } from '@m
 import ShieldIcon from '@mui/icons-material/Shield';
 import GavelIcon from '@mui/icons-material/Gavel';
 
-export default function GuardrailsView() {
+export default function GuardrailsView({ state }) {
+  const activeProject = state?.projectId || 'proj_alpha_civilization';
+
   const guardrails = [
     {
       id: 'g1',
       title: 'Rule 1: Destructive Command Execution Block',
-      desc: 'Agents are strictly forbidden from running unverified destructive filesystem or database mutation commands.',
-      source: 'Project Constitution',
+      desc: `Agents operating in project '${activeProject}' are strictly forbidden from running unverified destructive filesystem or database mutation commands.`,
+      source: `Project Constitution (${activeProject})`,
       enforcer: 'InspectorAgent',
       badge: 'INVIOLABLE'
     },
     {
       id: 'g2',
       title: 'Rule 2: Cryptographic Identity Signature Verification',
-      desc: 'All inter-agent messages and Kagent progeny materialization requests must be cryptographically signed via ED25519.',
+      desc: `All inter-agent messages and Kagent progeny materialization requests in '${activeProject}' must be cryptographically signed via ED25519.`,
       source: 'Civilization Core Directives',
       enforcer: 'JudicatureNode',
       badge: 'INVIOLABLE'
@@ -24,7 +26,7 @@ export default function GuardrailsView() {
     {
       id: 'g3',
       title: 'Rule 3: Multi-Tenant Realm Isolation',
-      desc: 'Agents operating in Organization realm A cannot read or modify vector embeddings or post-graph edges in Organization realm B.',
+      desc: `Agents operating in project realm '${activeProject}' cannot read or modify vector embeddings or post-graph edges in any other project realm.`,
       source: 'Multi-Tenant Security Spec',
       enforcer: 'OntologicalRegistry',
       badge: 'STRICT ISOLATION'
@@ -35,10 +37,10 @@ export default function GuardrailsView() {
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
       <Box>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Constitutional Guardrails & Inspector Agent Audits
+          Constitutional Guardrails & Inspector Agent Audits ({activeProject})
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Inviolable safety rules discovered from user prompts or explicitly declared in Org/Project constitutions.
+          Inviolable safety rules discovered from user prompts or explicitly declared in Org/Project constitutions for realm <code>{activeProject}</code>.
         </Typography>
       </Box>
 
