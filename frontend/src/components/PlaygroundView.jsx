@@ -83,7 +83,7 @@ export default function PlaygroundView({ state }) {
           if (typeof evaluated === 'number' && !isNaN(evaluated)) {
             calculatedAnswer = String(evaluated);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
