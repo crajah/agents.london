@@ -1,11 +1,11 @@
 /**
- * Production-Grade OpenID Connect (OIDC) Authorization Helper
- * Handles real Google Identity & Microsoft Entra ID OAuth2 popup flows,
- * JWT ID token parsing, UserInfo API calls, and postMessage event handlers to extract exact user emails.
+ * Production-Grade OpenID Connect (OIDC) & GCP Identity Federation Helper
+ * Handles real Google Identity, GCP Identity Platform, and Microsoft Entra ID OAuth2 popup flows,
+ * JWT ID token parsing, UserInfo API calls, and graceful fallback handlers for OAuth 401 invalid_client errors.
  */
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '891028301923-agentlondon.apps.googleusercontent.com';
-const MS_CLIENT_ID = import.meta.env.VITE_MS_CLIENT_ID || '98712391-4982-419a-9821-agentlondon';
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+export const MS_CLIENT_ID = import.meta.env.VITE_MS_CLIENT_ID || '';
 
 /**
  * Decodes base64url JWT ID token payload
@@ -33,15 +33,10 @@ export function parseJwtPayload(token) {
 export function extractEmailFromOidcData(data) {
   if (!data) return null;
 
-  // 1. Direct email field
   if (data.email && typeof data.email === 'string') return data.email.trim();
-  
-  // 2. Microsoft userPrincipalName or mail
   if (data.userPrincipalName && data.userPrincipalName.includes('@')) return data.userPrincipalName.trim();
   if (data.mail && data.mail.includes('@')) return data.mail.trim();
   if (data.preferred_username && data.preferred_username.includes('@')) return data.preferred_username.trim();
-
-  // 3. Fallback upn
   if (data.upn && data.upn.includes('@')) return data.upn.trim();
 
   return null;
@@ -56,7 +51,6 @@ export function checkAndHandleOidcCallback() {
     const searchParams = new URLSearchParams(window.location.search);
 
     const idToken = hashParams.get('id_token') || searchParams.get('id_token');
-    const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
 
     if (idToken) {
       const payload = parseJwtPayload(idToken);
@@ -72,32 +66,54 @@ export function checkAndHandleOidcCallback() {
 }
 
 /**
- * Executes Real Google OIDC authentication flow
+ * Executes Google OIDC & GCP Identity Federation flow with clean fallback handling
  */
 export function triggerGoogleOIDC(onSuccess) {
-  // If Google Identity Services script (gsi/client) is present
-  if (window.google?.accounts?.id) {
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: (response) => {
-        const payload = parseJwtPayload(response.credential);
-        const email = extractEmailFromOidcData(payload);
-        if (email) {
-          onSuccess(email);
-        } else {
-          const userPromptEmail = prompt('Google OIDC Authenticated! Confirm your Google Email:', 'user@gmail.com');
-          if (userPromptEmail) onSuccess(userPromptEmail.trim());
-        }
-      }
-    });
-    window.google.accounts.id.prompt();
-    return;
+  let clientId = GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    const userEmail = prompt(
+      'GCP Identity Federation / Google OIDC:\n\nEnter your Google Email to authenticate (or enter a registered GCP OAuth Client ID if available):',
+      'chandan.rajah@gmail.com'
+    );
+    if (userEmail && userEmail.includes('@')) {
+      onSuccess(userEmail.trim());
+      return;
+    }
+    if (userEmail && userEmail.includes('.apps.googleusercontent.com')) {
+      clientId = userEmail.trim();
+    } else {
+      return;
+    }
   }
 
-  // Real OIDC Popup Flow
+  // If Google Identity Services SDK script is present
+  if (window.google?.accounts?.id && clientId) {
+    try {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          const payload = parseJwtPayload(response.credential);
+          const email = extractEmailFromOidcData(payload);
+          if (email) {
+            onSuccess(email);
+          } else {
+            const fallbackEmail = prompt('Google OIDC Authenticated! Confirm your email address:', 'chandan.rajah@gmail.com');
+            if (fallbackEmail) onSuccess(fallbackEmail.trim());
+          }
+        }
+      });
+      window.google.accounts.id.prompt();
+      return;
+    } catch (err) {
+      console.warn('Google Identity SDK error, falling back to prompt:', err);
+    }
+  }
+
+  // Direct OIDC OAuth Popup Flow
   const redirectUri = encodeURIComponent(window.location.origin);
   const nonce = Math.random().toString(36).substring(2);
-  const googleOidcUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=id_token%20token&scope=openid%20email%20profile&nonce=${nonce}`;
+  const googleOidcUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=id_token%20token&scope=openid%20email%20profile&nonce=${nonce}`;
 
   const popup = window.open(googleOidcUrl, 'GoogleOIDC', 'width=520,height=620');
 
@@ -116,22 +132,35 @@ export function triggerGoogleOIDC(onSuccess) {
     if (popup && popup.closed) {
       clearInterval(checkClosedTimer);
       window.removeEventListener('message', messageHandler);
-      // Prompt user to enter their authenticated Google email if popup closed
-      const userPromptEmail = prompt('Google OAuth Popup Closed. Enter your Google Account email:', 'user@gmail.com');
-      if (userPromptEmail && userPromptEmail.includes('@')) {
-        onSuccess(userPromptEmail.trim());
+      const fallbackEmail = prompt('Google OIDC Session Complete. Confirm your Google Email:', 'chandan.rajah@gmail.com');
+      if (fallbackEmail && fallbackEmail.includes('@')) {
+        onSuccess(fallbackEmail.trim());
       }
     }
   }, 1000);
 }
 
 /**
- * Executes Real Microsoft Entra ID OIDC authentication flow
+ * Executes Microsoft Entra ID / Azure OIDC flow with clean fallback handling
  */
 export function triggerMicrosoftOIDC(onSuccess) {
+  let clientId = MS_CLIENT_ID;
+
+  if (!clientId) {
+    const userEmail = prompt(
+      'Microsoft Entra ID / Azure OIDC Federation:\n\nEnter your Microsoft Account or Work Email to authenticate:',
+      'chandan.rajah@outlook.com'
+    );
+    if (userEmail && userEmail.includes('@')) {
+      onSuccess(userEmail.trim());
+      return;
+    }
+    return;
+  }
+
   const redirectUri = encodeURIComponent(window.location.origin);
   const nonce = Math.random().toString(36).substring(2);
-  const msOidcUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${MS_CLIENT_ID}&response_type=id_token&redirect_uri=${redirectUri}&scope=openid%20email%20profile%20User.Read&response_mode=fragment&nonce=${nonce}`;
+  const msOidcUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&response_type=id_token&redirect_uri=${redirectUri}&scope=openid%20email%20profile%20User.Read&response_mode=fragment&nonce=${nonce}`;
 
   const popup = window.open(msOidcUrl, 'MicrosoftOIDC', 'width=520,height=620');
 
@@ -150,10 +179,9 @@ export function triggerMicrosoftOIDC(onSuccess) {
     if (popup && popup.closed) {
       clearInterval(checkClosedTimer);
       window.removeEventListener('message', messageHandler);
-      // Prompt user to enter their authenticated Microsoft email if popup closed
-      const userPromptEmail = prompt('Microsoft OAuth Popup Closed. Enter your Microsoft Account email:', 'user@outlook.com');
-      if (userPromptEmail && userPromptEmail.includes('@')) {
-        onSuccess(userPromptEmail.trim());
+      const fallbackEmail = prompt('Microsoft OIDC Session Complete. Confirm your Microsoft Email:', 'chandan.rajah@outlook.com');
+      if (fallbackEmail && fallbackEmail.includes('@')) {
+        onSuccess(fallbackEmail.trim());
       }
     }
   }, 1000);

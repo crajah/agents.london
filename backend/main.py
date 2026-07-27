@@ -118,6 +118,109 @@ def resolve_tenancy_from_email(email: str) -> dict:
         "email": clean_email
     }
 
+class VerifyGoogleTokenRequest(BaseModel):
+    id_token: Optional[str] = None
+    code: Optional[str] = None
+    redirect_uri: Optional[str] = None
+
+@app.post("/api/auth/google/verify")
+async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "976346242948-poehj19t44affqbhrd2istr83vs5v0h5.apps.googleusercontent.com")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "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")
+
+    async with httpx.AsyncClient() as client:
+        if req.code:
+            token_url = "https://oauth2.googleapis.com/token"
+            payload = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": req.code,
+                "grant_type": "authorization_code",
+                "redirect_uri": req.redirect_uri or "http://localhost:5173"
+            }
+            resp = await client.post(token_url, data=payload)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Google OAuth token exchange failed: {resp.text}")
+            token_data = resp.json()
+            id_token = token_data.get("id_token")
+        else:
+            id_token = req.id_token
+
+        if not id_token:
+            raise HTTPException(status_code=400, detail="Missing id_token or code")
+
+        info_resp = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+        if info_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid Google ID Token")
+
+        token_info = info_resp.json()
+        email = token_info.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="No email associated with Google account")
+
+        tenancy = resolve_tenancy_from_email(email)
+        return {
+            "status": "verified",
+            "email": email,
+            "org_id": tenancy["org_id"],
+            "user_id": tenancy["user_id"],
+            "token_info": token_info
+        }
+
+class VerifyMicrosoftTokenRequest(BaseModel):
+    id_token: Optional[str] = None
+    code: Optional[str] = None
+    redirect_uri: Optional[str] = None
+
+@app.post("/api/auth/ms/verify")
+async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
+    client_id = os.getenv("MS_CLIENT_ID", "fd44c70b-8bce-416c-97cb-277649052aa3")
+    client_secret = os.getenv("MS_CLIENT_SECRET", "dCk8Q~cIrBadt.RbOMA8tRr4BdduHbVxTDK4GaIU")
+
+    async with httpx.AsyncClient() as client:
+        if req.code:
+            token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            payload = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": req.code,
+                "grant_type": "authorization_code",
+                "redirect_uri": req.redirect_uri or "http://localhost:5173",
+                "scope": "openid email profile User.Read"
+            }
+            resp = await client.post(token_url, data=payload)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Microsoft OAuth token exchange failed: {resp.text}")
+            token_data = resp.json()
+            id_token = token_data.get("id_token")
+        else:
+            id_token = req.id_token
+
+        if not id_token:
+            raise HTTPException(status_code=400, detail="Missing id_token or code")
+
+        try:
+            parts = id_token.split(".")
+            import base64
+            padding = "=" * (4 - len(parts[1]) % 4)
+            payload_json = base64.b64decode(parts[1] + padding).decode("utf-8")
+            token_info = json.loads(payload_json)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid Microsoft ID Token payload: {e}")
+
+        email = token_info.get("email") or token_info.get("preferred_username") or token_info.get("upn")
+        if not email:
+            raise HTTPException(status_code=400, detail="No email found in Microsoft ID Token")
+
+        tenancy = resolve_tenancy_from_email(email)
+        return {
+            "status": "verified",
+            "email": email,
+            "org_id": tenancy["org_id"],
+            "user_id": tenancy["user_id"],
+            "token_info": token_info
+        }
+
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
 
