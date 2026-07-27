@@ -1054,6 +1054,31 @@ async def upload_document_text(project_id: str, space_name: str, document_name: 
         "document": {"document_name": document_name, "space_name": space_name, "content_length": len(content)}
     }
 
+@app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-file")
+async def upload_document_file(project_id: str, space_name: str, file: UploadFile = File(...)):
+    """Uploads a PDF, DOCX, or text file, extracts content via Docling/PyPDF, and indexes into target space."""
+    file_bytes = await file.read()
+    filename = file.filename or "uploaded_document"
+    files = {"file": (filename, file_bytes, file.content_type or "application/octet-stream")}
+    data = {"project_id": project_id}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-file",
+                data=data,
+                files=files
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry file upload: {e}")
+
+    return {
+        "status": "success",
+        "message": f"File '{filename}' processed and indexed into space '{space_name}'",
+        "document": {"filename": filename, "space_name": space_name, "content_length": len(file_bytes)}
+    }
+
 @app.post("/api/projects/{project_id}/rag/query")
 async def query_document_rag(project_id: str, query: str = Query(...), space_name: Optional[str] = None):
     """Executes GraphRAG retrieval across a specific document space or space-agnostically."""

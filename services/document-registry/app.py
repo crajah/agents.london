@@ -231,37 +231,118 @@ async def upload_document_text(req: UploadDocumentTextRequest):
         "document": doc_record
     }
 
+import io
+from typing import List, Dict, Any, Optional, Tuple
+
+def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> Tuple[str, str]:
+    """Extracts structured text from PDF, DOCX, Markdown, TXT, HTML, JSON files using Docling or PyPDF fallbacks."""
+    ext = os.path.splitext(filename)[1].lower()
+
+    # 1. Use Docling if available
+    if DOCLING_AVAILABLE:
+        try:
+            converter = DocumentConverter()
+            result = converter.convert(file_bytes)
+            text = result.document.export_to_markdown()
+            if text and len(text.strip()) > 10:
+                return text, "docling"
+        except Exception as e:
+            logger.info(f"Docling conversion note for {filename}: {e}")
+
+    # 2. PDF parsing via pypdf / PyPDF2
+    if ext == ".pdf":
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            pages = [page.extract_text() for page in reader.pages if page.extract_text()]
+            text = "\n\n".join(pages)
+            if text.strip():
+                return text, "pypdf"
+        except Exception as e:
+            logger.info(f"pypdf extraction note: {e}")
+
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+            pages = [page.extract_text() for page in reader.pages if page.extract_text()]
+            text = "\n\n".join(pages)
+            if text.strip():
+                return text, "PyPDF2"
+        except Exception as e:
+            logger.info(f"PyPDF2 extraction note: {e}")
+
+    # 3. DOCX parsing
+    if ext in [".docx", ".doc"]:
+        try:
+            import docx
+            doc = docx.Document(io.BytesIO(file_bytes))
+            text = "\n\n".join([p.text for p in doc.paragraphs if p.text])
+            if text.strip():
+                return text, "python-docx"
+        except Exception as e:
+            logger.info(f"python-docx extraction note: {e}")
+
+    # 4. PowerPoint parsing (.pptx, .ppt)
+    if ext in [".pptx", ".ppt"]:
+        try:
+            import pptx
+            prs = pptx.Presentation(io.BytesIO(file_bytes))
+            slide_texts = []
+            for slide_idx, slide in enumerate(prs.slides, 1):
+                text_runs = []
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text:
+                        text_runs.append(shape.text.strip())
+                if text_runs:
+                    slide_texts.append(f"--- Slide {slide_idx} ---\n" + "\n".join(text_runs))
+            text = "\n\n".join(slide_texts)
+            if text.strip():
+                return text, "python-pptx"
+        except Exception as e:
+            logger.info(f"pptx extraction note: {e}")
+
+    # 5. Excel parsing (.xlsx, .xls)
+    if ext in [".xlsx", ".xls"]:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            sheet_texts = []
+            for sheet in wb.sheetnames:
+                ws = wb[sheet]
+                rows = []
+                for row in ws.iter_rows(values_only=True):
+                    row_str = " | ".join([str(val) for val in row if val is not None])
+                    if row_str.strip():
+                        rows.append(row_str)
+                if rows:
+                    sheet_texts.append(f"--- Sheet: {sheet} ---\n" + "\n".join(rows))
+            text = "\n\n".join(sheet_texts)
+            if text.strip():
+                return text, "openpyxl"
+        except Exception as e:
+            logger.info(f"openpyxl extraction note: {e}")
+
+    # 6. Text / Markdown / JSON / HTML / CSV decoding
+    try:
+        text = file_bytes.decode("utf-8", errors="ignore")
+        if text.strip():
+            return text, "utf8_text_reader"
+    except Exception:
+        pass
+
+    return str(file_bytes), "raw_bytes_fallback"
+
 @app.post("/spaces/{space_name}/documents/upload-file")
 async def upload_document_file(
     space_name: str,
     project_id: str = Form(...),
     file: UploadFile = File(...)
 ):
-    """Uploads a file, extracts text using Docling (or fallback text reader), and indexes into RAG."""
+    """Uploads a PDF, DOCX, or text file, extracts text via Docling / PyPDF, and indexes into GraphRAG space."""
     file_bytes = await file.read()
     filename = file.filename or "uploaded_document"
 
-    extracted_text = ""
-    extraction_method = "direct_reader"
-
-    # Use Docling for document parsing if available
-    if DOCLING_AVAILABLE:
-        try:
-            converter = DocumentConverter()
-            result = converter.convert(file_bytes)
-            extracted_text = result.document.export_to_markdown()
-            extraction_method = "docling"
-        except Exception as e:
-            logger.warning(f"Docling extraction failed, falling back to direct reader: {e}")
-            try:
-                extracted_text = file_bytes.decode("utf-8", errors="ignore")
-            except Exception:
-                extracted_text = str(file_bytes)
-    else:
-        try:
-            extracted_text = file_bytes.decode("utf-8", errors="ignore")
-        except Exception:
-            extracted_text = str(file_bytes)
+    extracted_text, extraction_method = extract_text_from_file_bytes(file_bytes, filename)
 
     if not extracted_text.strip():
         extracted_text = f"Document content from file {filename}"
