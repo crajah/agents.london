@@ -224,7 +224,10 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
 
+@app.get("/")
 @app.get("/health")
+@app.get("/api")
+@app.get("/api/health")
 def health_check():
     return {"status": "ok", "service": "agent.london-backend", "active_websockets": len(ACTIVE_CONNECTIONS)}
 

@@ -179,6 +179,7 @@ class VerifySignatureRequest(BaseModel):
     signature: str
     payload_text: str
 
+@app.get("/")
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "agent-registry", "registered_agents": len(AGENT_REGISTRY), "persistence": "post-graph"}
