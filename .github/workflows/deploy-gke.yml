@@ -1,4 +1,4 @@
-name: Build and Deploy to GKE
+name: Build and Deploy to GKE (Parallel Pipeline)
 
 on:
   push:
@@ -10,13 +10,90 @@ env:
   GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
   GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
   GKE_LOCATION: ${{ secrets.GKE_LOCATION }}
-  DOCKER_TAG: ${{ github.sha }}
 
 jobs:
-  build-and-deploy:
-    name: Build Docker Images and Deploy to GKE
+  # =========================================================================
+  # JOB 1: PREPARE UNIFIED TIMESTAMP DOCKER TAG
+  # =========================================================================
+  prepare-tag:
+    name: Generate Unified Timestamp Tag
     runs-on: ubuntu-latest
+    outputs:
+      docker_tag: ${{ steps.tag_step.outputs.docker_tag }}
+    steps:
+      - id: tag_step
+        run: |
+          TAG=$(date +'%y%m%d.%H%M%S')
+          echo "docker_tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "[+] Generated Unified Docker Tag: ${TAG}"
 
+  # =========================================================================
+  # JOB 2: PARALLEL BUILD & PUSH MATRIX FOR 5 MICROSERVICES
+  # =========================================================================
+  build-and-push-parallel:
+    name: Build & Push (${{ matrix.service.name }})
+    needs: prepare-tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: agent-registry
+            context: services/agent-registry
+          - name: tool-registry
+            context: services/tool-registry
+          - name: document-registry-service
+            context: services/document-registry
+          - name: agent-london-backend
+            context: backend
+          - name: agent-london-frontend
+            context: frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Configure Docker for GCR
+        run: |
+          gcloud auth configure-docker gcr.io --quiet
+
+      - name: Build & Push Docker Image (${{ matrix.service.name }})
+        env:
+          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
+          GCR_REGISTRY: gcr.io/${{ env.GCP_PROJECT }}
+        run: |
+          IMAGE_NAME="${matrix.service.name}"
+          CONTEXT_DIR="${matrix.service.context}"
+          
+          REMOTE_TAGGED="${GCR_REGISTRY}/${IMAGE_NAME}:${DOCKER_TAG}"
+          REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
+
+          echo "[+] Building Docker Image: ${IMAGE_NAME} with tag '${DOCKER_TAG}'..."
+          docker build -t "${REMOTE_TAGGED}" -t "${REMOTE_LATEST}" "${CONTEXT_DIR}"
+
+          echo "[+] Pushing ${REMOTE_TAGGED} to GCR..."
+          docker push "${REMOTE_TAGGED}"
+
+          echo "[+] Pushing ${REMOTE_LATEST} to GCR..."
+          docker push "${REMOTE_LATEST}"
+
+  # =========================================================================
+  # JOB 3: DEPLOY ALL COMPONENTS TO KUBERNETES GKE CLUSTER
+  # =========================================================================
+  deploy-to-gke:
+    name: Deploy All Components to GKE
+    needs: [prepare-tag, build-and-push-parallel]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -37,10 +114,6 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_LOCATION }}
 
-      - name: Configure Docker for GCR and Artifact Registry
-        run: |
-          gcloud auth configure-docker gcr.io,europe-west2-docker.pkg.dev,us-docker.pkg.dev --quiet
-
       - name: Make Scripts Executable
         run: |
           chmod +x scripts/*.sh
@@ -49,29 +122,18 @@ jobs:
         run: |
           gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
 
-      - name: Generate Timestamp Docker Tag (YYmmDD.HHMMSS)
-        run: |
-          TS_TAG=$(date +'%y%m%d.%H%M%S')
-          echo "${TS_TAG}" > .docker_tag
-          echo "DOCKER_TAG=${TS_TAG}" >> $GITHUB_ENV
-          echo "[+] Generated Unified Timestamp Docker Tag: ${TS_TAG}"
-
-      - name: Build Docker Images
-        run: |
-          ./scripts/01_build_docker.sh
-
-      - name: Tag and Publish Images to GCR
-        run: |
-          ./scripts/02_publish_gcr.sh
-
-      - name: Update K8s Manifest Image Tags
+      - name: Update K8s Manifest Image Tags (${{ needs.prepare-tag.outputs.docker_tag }})
+        env:
+          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
         run: |
           sed -i "s|gcr.io/crajah-dev/|gcr.io/${GCP_PROJECT}/|g" deploy/k8s/*.yaml
           sed -i "s|:latest|:${DOCKER_TAG}|g" deploy/k8s/*.yaml
-          echo "[+] Updated Kubernetes Manifests:"
+          echo "[+] Updated Kubernetes Manifests to tag '${DOCKER_TAG}':"
           grep -i "image:" deploy/k8s/*.yaml
 
       - name: Deploy agent.london Components to GKE
+        env:
+          DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
         run: |
           ./scripts/03_deploy_k8s.sh
 

@@ -10,3 +10,4 @@ openai>=1.0.0
 post-graph>=0.3.0
 post-graph-rag>=0.1.4
 pyyaml>=6.0
+python-multipart>=0.0.6
