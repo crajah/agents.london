@@ -6,6 +6,7 @@ Embodying the 7x6 Matrix Architecture:
 - 4 Core Directives: Preservation, Purpose, Compliance, Efficiency
 - Dynamic Castes: Architect Builders, Task Workforce, Oversight Auditors, Guild Coordinators
 """
+from typing import Optional, List, Dict, Any
 
 PRIME_AGENT_SYSTEM_PROMPTS = {
     # =========================================================================
