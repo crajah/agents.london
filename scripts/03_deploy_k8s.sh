@@ -8,6 +8,9 @@ echo "============================================================"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 K8S_DIR="${PROJECT_ROOT}/deploy/k8s"
 
+echo "[+] 0. Deploying LiteLLM ConfigMap..."
+kubectl apply -f "${K8S_DIR}/00-litellm-configmap.yaml"
+
 echo "[+] 1. Deploying agent-registry service..."
 kubectl apply -f "${K8S_DIR}/01-agent-registry.yaml"
 

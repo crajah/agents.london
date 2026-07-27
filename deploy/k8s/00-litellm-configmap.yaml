@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: default
+  labels:
+    app: litellm-service
+    component: model-router
+data:
+  OPENAI_API_BASE: "http://litellm-service.default.svc.cluster.local:80/v1"
+  LITELLM_URL: "http://litellm-service.default.svc.cluster.local:80/v1"
+  LITELLM_PROXY_URL: "http://litellm-service.default.svc.cluster.local:80/v1"
+  MODEL_ROUTER_URL: "http://litellm-service.default.svc.cluster.local:80/v1"
+  DEFAULT_MODEL: "DeepSeek-V3.2"
+  RAG_MODEL: "DeepSeek-V3.2"
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  RAG_EMBEDDING_MODEL: "text-embedding-3-small"
+  RAG_EMBEDDING_DIM: "1536"
+  OPENAI_API_KEY: "BEVZ-6L81-OZ8Y"
