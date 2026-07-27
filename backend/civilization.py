@@ -29,6 +29,206 @@ except (ImportError, ModuleNotFoundError):
 
 logger = logging.getLogger(__name__)
 
+# Real Execution Telemetry Storage (Persisted per Agent, Project, Org directly in post-graph)
+EXECUTION_METRICS: Dict[str, Any] = {
+    "global": {
+        "executions": 0,
+        "unique_users": set(),
+        "bytes_in": 0,
+        "bytes_out": 0,
+        "tokens_in": 0,
+        "tokens_out": 0
+    },
+    "projects": {},
+    "agents": {}
+}
+
+async def record_execution_telemetry_to_pg(
+    org_id: str,
+    project_id: str,
+    user_id: str,
+    agent_id: str,
+    input_text: str,
+    output_text: str,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None
+):
+    """Persists real execution telemetry records into post-graph database data tables (executions_data)."""
+    bytes_in = len(input_text.encode('utf-8')) if input_text else 0
+    bytes_out = len(output_text.encode('utf-8')) if output_text else 0
+
+    tok_in = prompt_tokens if prompt_tokens is not None else max(1, len(input_text) // 4)
+    tok_out = completion_tokens if completion_tokens is not None else max(1, len(output_text) // 4)
+
+    # 1. Update In-Memory Cache
+    g = EXECUTION_METRICS["global"]
+    g["executions"] += 1
+    g["unique_users"].add(user_id)
+    g["bytes_in"] += bytes_in
+    g["bytes_out"] += bytes_out
+    g["tokens_in"] += tok_in
+    g["tokens_out"] += tok_out
+
+    if project_id not in EXECUTION_METRICS["projects"]:
+        EXECUTION_METRICS["projects"][project_id] = {
+            "executions": 0, "unique_users": set(),
+            "bytes_in": 0, "bytes_out": 0,
+            "tokens_in": 0, "tokens_out": 0
+        }
+    p = EXECUTION_METRICS["projects"][project_id]
+    p["executions"] += 1
+    p["unique_users"].add(user_id)
+    p["bytes_in"] += bytes_in
+    p["bytes_out"] += bytes_out
+    p["tokens_in"] += tok_in
+    p["tokens_out"] += tok_out
+
+    if agent_id not in EXECUTION_METRICS["agents"]:
+        EXECUTION_METRICS["agents"][agent_id] = {
+            "executions": 0, "unique_users": set(),
+            "bytes_in": 0, "bytes_out": 0,
+            "tokens_in": 0, "tokens_out": 0
+        }
+    a = EXECUTION_METRICS["agents"][agent_id]
+    a["executions"] += 1
+    a["unique_users"].add(user_id)
+    a["bytes_in"] += bytes_in
+    a["bytes_out"] += bytes_out
+    a["tokens_in"] += tok_in
+    a["tokens_out"] += tok_out
+
+    # 2. Persist to post-graph append-only data table
+    try:
+        pg_client = AsyncPostGraph(dsn=DB_URI)
+        await pg_client.connect()
+        await pg_client.create_vertex_table("executions", realm=project_id)
+        
+        payload = {
+            "org_id": org_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "bytes_in": bytes_in,
+            "bytes_out": bytes_out,
+            "tokens_in": tok_in,
+            "tokens_out": tok_out,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await pg_client.add_vertex_data("executions", realm=project_id, vertex_id=agent_id, payload=payload)
+        await pg_client.close()
+    except Exception as e:
+        logger.debug(f"Post-graph telemetry persistence fallback: {e}")
+
+def record_execution_telemetry(
+    org_id: str,
+    project_id: str,
+    user_id: str,
+    agent_id: str,
+    input_text: str,
+    output_text: str,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None
+):
+    """Synchronous wrapper for telemetry recording."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(record_execution_telemetry_to_pg(
+                org_id, project_id, user_id, agent_id, input_text, output_text, prompt_tokens, completion_tokens
+            ))
+        else:
+            loop.run_until_complete(record_execution_telemetry_to_pg(
+                org_id, project_id, user_id, agent_id, input_text, output_text, prompt_tokens, completion_tokens
+            ))
+    except Exception:
+        # Fallback to direct memory update
+        bytes_in = len(input_text.encode('utf-8')) if input_text else 0
+        bytes_out = len(output_text.encode('utf-8')) if output_text else 0
+        tok_in = prompt_tokens if prompt_tokens is not None else max(1, len(input_text) // 4)
+        tok_out = completion_tokens if completion_tokens is not None else max(1, len(output_text) // 4)
+
+        g = EXECUTION_METRICS["global"]
+        g["executions"] += 1
+        g["unique_users"].add(user_id)
+        g["bytes_in"] += bytes_in
+        g["bytes_out"] += bytes_out
+        g["tokens_in"] += tok_in
+        g["tokens_out"] += tok_out
+
+        if project_id not in EXECUTION_METRICS["projects"]:
+            EXECUTION_METRICS["projects"][project_id] = {
+                "executions": 0, "unique_users": set(),
+                "bytes_in": 0, "bytes_out": 0,
+                "tokens_in": 0, "tokens_out": 0
+            }
+        p = EXECUTION_METRICS["projects"][project_id]
+        p["executions"] += 1
+        p["unique_users"].add(user_id)
+        p["bytes_in"] += bytes_in
+        p["bytes_out"] += bytes_out
+        p["tokens_in"] += tok_in
+        p["tokens_out"] += tok_out
+
+        if agent_id not in EXECUTION_METRICS["agents"]:
+            EXECUTION_METRICS["agents"][agent_id] = {
+                "executions": 0, "unique_users": set(),
+                "bytes_in": 0, "bytes_out": 0,
+                "tokens_in": 0, "tokens_out": 0
+            }
+        a = EXECUTION_METRICS["agents"][agent_id]
+        a["executions"] += 1
+        a["unique_users"].add(user_id)
+        a["bytes_in"] += bytes_in
+        a["bytes_out"] += bytes_out
+        a["tokens_in"] += tok_in
+        a["tokens_out"] += tok_out
+
+def get_real_telemetry(org_id: Optional[str] = None, project_id: Optional[str] = None, agent_id: Optional[str] = None) -> Dict[str, Any]:
+    """Extracted live execution telemetry directly calculated from actual task executions."""
+    if agent_id and agent_id in EXECUTION_METRICS["agents"]:
+        a = EXECUTION_METRICS["agents"][agent_id]
+        return {
+            "agent_id": agent_id,
+            "executions": a["executions"],
+            "unique_user_engagements": len(a["unique_users"]),
+            "bytes_in": a["bytes_in"],
+            "bytes_out": a["bytes_out"],
+            "tokens_in": a["tokens_in"],
+            "tokens_out": a["tokens_out"]
+        }
+
+    if project_id and project_id in EXECUTION_METRICS["projects"]:
+        p = EXECUTION_METRICS["projects"][project_id]
+        return {
+            "project_id": project_id,
+            "executions": p["executions"],
+            "unique_user_engagements": len(p["unique_users"]),
+            "bytes_in": p["bytes_in"],
+            "bytes_out": p["bytes_out"],
+            "tokens_in": p["tokens_in"],
+            "tokens_out": p["tokens_out"]
+        }
+
+    g = EXECUTION_METRICS["global"]
+    return {
+        "global": True,
+        "total_executions": g["executions"],
+        "unique_user_engagements": len(g["unique_users"]),
+        "bytes_in": g["bytes_in"],
+        "bytes_out": g["bytes_out"],
+        "tokens_in": g["tokens_in"],
+        "tokens_out": g["tokens_out"]
+    }
+
+import secrets
+import string
+
+def generate_project_api_key() -> str:
+    """Generates 16-character uppercase alphanumeric API Key separated by hyphens (e.g. A1B2-C3D4-E5F6-G7H8)."""
+    alphabet = string.ascii_uppercase + string.digits
+    raw = ''.join(secrets.choice(alphabet) for _ in range(16))
+    return f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
+
 DB_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
 AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
 TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
@@ -80,12 +280,14 @@ class AgentCivilizationEngine:
             "Directive of Efficiency: Agents must minimize resource consumption (compute, memory, bandwidth) while achieving their Telos."
         ]
 
+        api_key = generate_project_api_key()
         project_vertex = await client.add_vertex(
             table_name="projects",
             realm=org_id,
             payload={
                 "name": project_name,
                 "user_id": user_id,
+                "api_key": api_key,
                 "constitution": rules,
                 "target_civilization_scale": "1_billion"
             }
@@ -143,7 +345,11 @@ class AgentCivilizationEngine:
                 system_prompt=sys_prompt
             )
             provisioned_agents.append(agent)
-            await client.add_vertex(table_name="agents", realm=org_id, payload=agent)
+            await client.add_vertex(table_name="agents", realm=project_id, payload=agent)
+            try:
+                await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=agent["agent_id"], payload=agent)
+            except Exception:
+                pass
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "project_civilization_initialized",
@@ -156,6 +362,7 @@ class AgentCivilizationEngine:
             "project_id": project_id,
             "project_name": project_name,
             "org_id": org_id,
+            "api_key": api_key,
             "constitution": rules,
             "prime_agents_count": len(provisioned_agents),
             "agents": provisioned_agents
@@ -196,13 +403,17 @@ class AgentCivilizationEngine:
             guardrails=guardrails_payload
         )
 
-        client = await self._get_pg_client(org_id)
-        w_vertex = await client.add_vertex(table_name="agents", realm=org_id, payload=agent_data)
+        client = await self._get_pg_client(project_id)
+        w_vertex = await client.add_vertex(table_name="agents", realm=project_id, payload=agent_data)
+        try:
+            await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=agent_id, payload=agent_data)
+        except Exception:
+            pass
 
         try:
-            p_vertex = await client.get_vertex("agents", realm=org_id, vertex_id=parent_id)
+            p_vertex = await client.get_vertex("agents", realm=project_id, vertex_id=parent_id)
             if p_vertex:
-                await client.add_edge("spawns", realm=org_id, from_id=p_vertex.id, to_id=w_vertex.id, relation_type="SPAWNED")
+                await client.add_edge("spawns", realm=project_id, from_id=p_vertex.id, to_id=w_vertex.id, relation_type="SPAWNED")
         except Exception:
             pass
 
@@ -309,6 +520,15 @@ class AgentCivilizationEngine:
                 depth=depth + 1, max_depth=max_depth
             )
 
+        record_execution_telemetry(
+            org_id=org_id,
+            project_id=project_id,
+            user_id="user_chandan",
+            agent_id=conductor_id,
+            input_text=task_prompt,
+            output_text=json.dumps(sub_tasks)
+        )
+
         return {
             "conductor_id": conductor_id,
             "depth": depth,
@@ -367,6 +587,15 @@ class AgentCivilizationEngine:
             "content": final_answer
         })
         history.append({"type": "FINAL_ANSWER", "content": final_answer})
+
+        record_execution_telemetry(
+            org_id=org_id,
+            project_id=project_id,
+            user_id="user_chandan",
+            agent_id=react_id,
+            input_text=user_prompt,
+            output_text=final_answer
+        )
 
         return {
             "react_agent_id": react_id,
@@ -533,5 +762,41 @@ class AgentCivilizationEngine:
             await client.close()
             logger.warning(f"Failed to fetch custom_model_configs: {e}")
             return []
+
+    async def get_agent_version_history(self, project_id: str, agent_id: str) -> List[Dict[str, Any]]:
+        """Fetch all immutable version entries for an agent from post-graph agents_data table."""
+        client = await self._get_pg_client(project_id)
+        try:
+            records = await client.get_vertex_data("agents", realm=project_id, vertex_id=agent_id)
+            await client.close()
+            return [r.to_dict() for r in records]
+        except Exception as e:
+            await client.close()
+            logger.error(f"Error fetching agent version history: {e}")
+            return []
+
+    async def get_latest_agent_version(self, project_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch the latest immutable version entry for an agent."""
+        client = await self._get_pg_client(project_id)
+        try:
+            record = await client.get_latest_vertex_data("agents", realm=project_id, vertex_id=agent_id)
+            await client.close()
+            return record.to_dict() if record else None
+        except Exception as e:
+            await client.close()
+            logger.error(f"Error fetching latest agent version: {e}")
+            return None
+
+    async def get_agent_version_by_id(self, project_id: str, data_id: str) -> Optional[Dict[str, Any]]:
+        """Query a specific data entry / version by its sequential data_id (version number)."""
+        client = await self._get_pg_client(project_id)
+        try:
+            record = await client.get_vertex_data_by_id("agents", realm=project_id, data_id=data_id)
+            await client.close()
+            return record.to_dict() if record else None
+        except Exception as e:
+            await client.close()
+            logger.error(f"Error fetching agent version by data_id '{data_id}': {e}")
+            return None
 
 civilization_engine = AgentCivilizationEngine()

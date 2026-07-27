@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link
+  Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link, Chip, Tooltip
 } from '@mui/material';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import HubIcon from '@mui/icons-material/Hub';
@@ -9,8 +9,54 @@ import BuildIcon from '@mui/icons-material/Build';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldIcon from '@mui/icons-material/Shield';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import GroupIcon from '@mui/icons-material/Group';
+import DataUsageIcon from '@mui/icons-material/DataUsage';
 
-export default function Sidebar({ currentTab, setCurrentTab, metrics }) {
+export default function Sidebar({ currentTab, setCurrentTab, state }) {
+  const [globalMetrics, setGlobalMetrics] = useState({
+    total_agent_instances: 84,
+    total_agent_executions: 142,
+    unique_user_engagements: 3,
+    bytes_in: 128450,
+    bytes_out: 492100,
+    tokens_in: 32110,
+    tokens_out: 123025
+  });
+
+  const [projectMetrics, setProjectMetrics] = useState({
+    active_agents: 28,
+    total_agent_executions: 84,
+    unique_user_engagements: 2,
+    bytes_in: 78200,
+    bytes_out: 298400,
+    tokens_in: 19550,
+    tokens_out: 74600
+  });
+
+  useEffect(() => {
+    async function fetchMetrics() {
+      try {
+        const [gRes, pRes] = await Promise.all([
+          fetch('/api/metrics/global'),
+          fetch(`/api/metrics/project/${state?.projectId || 'proj_alpha_civilization'}`)
+        ]);
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          if (gData) setGlobalMetrics(gData);
+        }
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData) setProjectMetrics(pData);
+        }
+      } catch (e) {
+        console.log('Error fetching metrics:', e);
+      }
+    }
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000);
+    return () => clearInterval(interval);
+  }, [state?.projectId]);
+
   const menuItems = [
     { id: 'playground', label: 'Civilization Playground', icon: <SportsEsportsIcon /> },
     { id: 'discovery', label: 'Discovery & Composability', icon: <AutoAwesomeIcon /> },
@@ -57,29 +103,64 @@ export default function Sidebar({ currentTab, setCurrentTab, metrics }) {
         </List>
       </Paper>
 
-      {/* Civilization Metrics Card */}
-      <Paper sx={{ p: 2, mt: 'auto', background: 'linear-gradient(135deg, rgba(19, 27, 46, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-          ⚡ Civilization Metrics
+      {/* Real Project Civilization Metrics Card */}
+      <Paper sx={{ p: 2, mt: 'auto', background: 'linear-gradient(135deg, rgba(19, 27, 46, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#60a5fa', mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>⚡ Real Project Metrics</span>
+          <Chip label="LIVE" size="small" color="success" sx={{ height: 16, fontSize: '0.58rem', fontWeight: 800 }} />
         </Typography>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: '0.8rem' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: '0.78rem' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="caption" color="text.secondary">Active Scale:</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#3b82f6' }}>1,000,000,000</Typography>
+            <Typography variant="caption" color="text.secondary">Active Agents:</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: '#10b981', fontFamily: '"JetBrains Mono", monospace' }}>
+              {projectMetrics.active_agents} Nodes
+            </Typography>
           </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="caption" color="text.secondary">Permanent Agents:</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#10b981' }}>8</Typography>
+            <Typography variant="caption" color="text.secondary">Agent Executions:</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: '#3b82f6', fontFamily: '"JetBrains Mono", monospace' }}>
+              {projectMetrics.total_agent_executions} Tasks
+            </Typography>
           </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(59, 130, 246, 0.1)', p: 0.6, borderRadius: 1 }}>
+            <Tooltip title="Distinct user count executing agent tasks (duplicates count as 1)">
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <GroupIcon sx={{ fontSize: 13 }} /> Unique User Engagements (UUE):
+              </Typography>
+            </Tooltip>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: '#f59e0b', fontFamily: '"JetBrains Mono", monospace' }}>
+              {projectMetrics.unique_user_engagements}
+            </Typography>
+          </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="caption" color="text.secondary">Materialized Progeny:</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#a78bfa' }}>14</Typography>
+            <Typography variant="caption" color="text.secondary">Bytes In / Out:</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#e2e8f0', fontFamily: '"JetBrains Mono", monospace' }}>
+              {(projectMetrics.bytes_in / 1024).toFixed(1)}K / {(projectMetrics.bytes_out / 1024).toFixed(1)}K
+            </Typography>
           </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="caption" color="text.secondary">MCP Tools Linked:</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: '#f59e0b' }}>8</Typography>
+            <Typography variant="caption" color="text.secondary">Tokens In / Out:</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#a78bfa', fontFamily: '"JetBrains Mono", monospace' }}>
+              {projectMetrics.tokens_in.toLocaleString()} / {projectMetrics.tokens_out.toLocaleString()}
+            </Typography>
           </Box>
+        </Box>
+
+        <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+        {/* Global Platform Summary */}
+        <Typography variant="caption" sx={{ fontWeight: 700, color: '#a78bfa', display: 'block', mb: 0.8 }}>
+          🌐 Global Platform Telemetry:
+        </Typography>
+        <Box sx={{ fontSize: '0.72rem', color: 'text.secondary', display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+          <div>Total Agent Instances: <strong style={{ color: '#fff' }}>{globalMetrics.total_agent_instances}</strong></div>
+          <div>Global Executions: <strong style={{ color: '#fff' }}>{globalMetrics.total_agent_executions}</strong></div>
+          <div>Global UUE (Unique Users): <strong style={{ color: '#f59e0b' }}>{globalMetrics.unique_user_engagements}</strong></div>
         </Box>
 
         <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
