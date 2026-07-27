@@ -21,6 +21,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import AutoFormatDetectorRenderer from './AutoFormatDetectorRenderer';
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 
 export default function PlaygroundView({ state }) {
@@ -487,9 +488,7 @@ export default function PlaygroundView({ state }) {
                         whiteSpace: 'pre-line'
                       }}
                     >
-                      <Typography variant="body2" sx={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-                        {msg.content}
-                      </Typography>
+                      <AutoFormatDetectorRenderer content={msg.content} />
 
                       {msg.sender === 'agent' && msg.thinking && (
                         <Accordion
@@ -612,9 +611,7 @@ export default function PlaygroundView({ state }) {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#38bdf8', mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                     <AutoAwesomeIcon /> Synthesized Solution & Pipeline Deliverable
                   </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'system-ui, sans-serif', whiteSpace: 'pre-wrap', lineHeight: 1.7, color: '#f8fafc' }}>
-                    {currentSession.finalOutput.answer}
-                  </Typography>
+                  <AutoFormatDetectorRenderer content={currentSession.finalOutput.answer} />
                 </Box>
 
                 {/* Execution Telemetry Footer */}

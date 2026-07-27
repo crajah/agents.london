@@ -37,7 +37,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 
 DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
-MODEL_ROUTER_URL = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
+MODEL_ROUTER_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_URL", "http://litellm-service.default.svc.cluster.local:80/v1"))
 
 # In-memory document space cache synced with post-graph
 DOCUMENT_SPACES: Dict[str, Dict[str, Any]] = {}

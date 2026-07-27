@@ -25,6 +25,9 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+          envFrom:
+            - configMapRef:
+                name: litellm-config
           env:
             - name: POSTGRES_HOST
               value: "postgres-service.default.svc.cluster.local"

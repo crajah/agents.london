@@ -40,6 +40,9 @@ spec:
               port: 8003
             initialDelaySeconds: 10
             periodSeconds: 15
+          envFrom:
+            - configMapRef:
+                name: litellm-config
           env:
             - name: POSTGRES_HOST
               value: "postgres-service.default.svc.cluster.local"
@@ -59,6 +62,10 @@ spec:
                   optional: true
             - name: POSTGRES_DB
               value: "postgres"
+            - name: OPENAI_API_BASE
+              value: "http://litellm-service.default.svc.cluster.local:4000/v1"
+            - name: OPENAI_API_KEY
+              value: "BEVZ-6L81-OZ8Y"
 ---
 apiVersion: v1
 kind: Service
