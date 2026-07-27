@@ -1,3 +1,12 @@
+# Hide secrets and keys
+**/*key*
+**/*pem*
+**/*secret*
+**/.env
+
+# Hide private keys
+**/*.private_key
+
 # Miscellaneous
 *.class
 *.lock
