@@ -2,19 +2,105 @@
 
 Registers every Model Context Protocol (MCP) tool available to agents.
 Tools can be linked and scoped to an {org} or a {project}.
+Persisted in post-graph database table (mcp_tools).
 """
+import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
+try:
+    from post_graph import AsyncPostGraph
+except ImportError:
+    AsyncPostGraph = None
+
+logger = logging.getLogger(__name__)
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "crajah")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+
+DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
+
+TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
+
+async def get_pg_client(realm: str = "global") -> Optional[Any]:
+    if not AsyncPostGraph:
+        return None
+
+    local_user = os.getenv("USER", "crajah")
+    candidate_dsns = [
+        DB_URI,
+        f"postgresql://{local_user}@localhost:5432/postgres",
+        f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
+        f"postgresql://postgres:postgres@localhost:5432/postgres"
+    ]
+    unique_dsns = []
+    for d in candidate_dsns:
+        if d and d not in unique_dsns:
+            unique_dsns.append(d)
+
+    for dsn in unique_dsns:
+        try:
+            client = AsyncPostGraph(dsn=dsn)
+            await client.connect()
+            await client.create_vertex_table("mcp_tools", realm=realm)
+            return client
+        except Exception as e:
+            logger.debug(f"PostGraph connection attempt to {dsn} failed: {e}")
+
+    return None
+
+async def sync_tools_from_post_graph():
+    client = await get_pg_client("global")
+    if not client:
+        return
+    try:
+        vertices = await client.get_vertices(table_name="mcp_tools", realm="global")
+        for v in vertices:
+            payload = v.payload if hasattr(v, "payload") else v
+            if isinstance(payload, dict) and "tool_id" in payload:
+                TOOL_REGISTRY[payload["tool_id"]] = payload
+        await client.close()
+        logger.info(f"Synced {len(TOOL_REGISTRY)} MCP tools from post-graph database.")
+    except Exception as e:
+        logger.warning(f"Failed to sync tool registry from post-graph: {e}")
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
+    client = await get_pg_client("global")
+    if not client:
+        return
+    try:
+        await client.add_vertex(table_name="mcp_tools", realm="global", payload=payload)
+        await client.close()
+    except Exception as e:
+        logger.warning(f"Error persisting tool '{tool_id}' to post-graph: {e}")
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await sync_tools_from_post_graph()
+    yield
+
 app = FastAPI(
     title="MCP Tool Registry Service",
     description="Kubernetes Service for registering and linking MCP tools to organizations and projects",
-    version="1.0.0"
+    version="1.1.0",
+    lifespan=lifespan
 )
-
-TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 class ToolRegistrationRequest(BaseModel):
     tool_id: str = Field(..., description="Unique MCP tool identifier (e.g. mcp-pgvector-search)")
@@ -30,13 +116,17 @@ class ToolRegistrationRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "tool-registry", "registered_tools": len(TOOL_REGISTRY)}
+    return {"status": "ok", "service": "tool-registry", "registered_tools": len(TOOL_REGISTRY), "persistence": "post-graph"}
 
 @app.post("/tools/register")
-def register_tool(req: ToolRegistrationRequest):
+async def register_tool(req: ToolRegistrationRequest):
     tool_dict = req.model_dump()
     tool_id = req.tool_id
     TOOL_REGISTRY[tool_id] = tool_dict
+
+    # Persist tool vertex to post-graph database
+    await persist_tool_to_pg(tool_id, tool_dict)
+
     return {"status": "registered", "tool_id": tool_id, "scope": req.scope_type}
 
 @app.get("/tools")

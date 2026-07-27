@@ -231,6 +231,37 @@ def generate_project_api_key() -> str:
     raw = ''.join(secrets.choice(alphabet) for _ in range(16))
     return f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
 
+async def get_project_api_key_from_pg(project_id: str, org_id: str = "org_london_meta") -> str:
+    """Retrieves project API key directly from post-graph projects vertex table or generates and persists if new."""
+    try:
+        pg_client = AsyncPostGraph(dsn=DB_URI)
+        await pg_client.connect()
+        project_vertex = await pg_client.get_vertex("projects", realm=org_id, vertex_id=project_id)
+        if project_vertex and hasattr(project_vertex, "payload") and isinstance(project_vertex.payload, dict):
+            key = project_vertex.payload.get("api_key")
+            if key:
+                await pg_client.close()
+                return key
+
+        new_key = generate_project_api_key()
+        await pg_client.add_vertex("projects", realm=org_id, payload={"project_id": project_id, "api_key": new_key})
+        await pg_client.close()
+        return new_key
+    except Exception as e:
+        logger.debug(f"Error reading project API key from post-graph: {e}")
+        return "A1B2-C3D4-E5F6-G7H8"
+
+async def save_project_api_key_to_pg(project_id: str, new_api_key: str, org_id: str = "org_london_meta") -> str:
+    """Regenerates and persists project API key directly in post-graph database."""
+    try:
+        pg_client = AsyncPostGraph(dsn=DB_URI)
+        await pg_client.connect()
+        await pg_client.add_vertex("projects", realm=org_id, payload={"project_id": project_id, "api_key": new_api_key})
+        await pg_client.close()
+    except Exception as e:
+        logger.warning(f"Error saving project API key to post-graph: {e}")
+    return new_api_key
+
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "crajah")

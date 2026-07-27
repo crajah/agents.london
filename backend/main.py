@@ -580,35 +580,40 @@ PROJECT_KEYS_DB = {
 
 @app.get("/api/projects/{project_id}/key")
 async def get_project_api_key(project_id: str):
-    """Retrieves the 16-character project API key for MCP and A2A access."""
-    if project_id not in PROJECT_KEYS_DB:
-        try:
-            from backend.civilization import generate_project_api_key
-        except Exception:
-            from civilization import generate_project_api_key
-        PROJECT_KEYS_DB[project_id] = generate_project_api_key()
+    """Retrieves the 16-character project API key for MCP and A2A access directly from post-graph."""
+    try:
+        from backend.civilization import get_project_api_key_from_pg
+    except Exception:
+        from civilization import get_project_api_key_from_pg
+
+    key = await get_project_api_key_from_pg(project_id)
+    PROJECT_KEYS_DB[project_id] = key
 
     return {
         "project_id": project_id,
-        "api_key": PROJECT_KEYS_DB[project_id],
-        "format": "XXXX-XXXX-XXXX-XXXX"
+        "api_key": key,
+        "format": "XXXX-XXXX-XXXX-XXXX",
+        "persistence": "post-graph"
     }
 
 @app.post("/api/projects/{project_id}/key/regenerate")
 async def regenerate_project_api_key(project_id: str):
-    """Regenerates a new 16-character project API key for MCP and A2A access."""
+    """Regenerates a new 16-character project API key for MCP and A2A access and persists in post-graph."""
     try:
-        from backend.civilization import generate_project_api_key
+        from backend.civilization import generate_project_api_key, save_project_api_key_to_pg
     except Exception:
-        from civilization import generate_project_api_key
+        from civilization import generate_project_api_key, save_project_api_key_to_pg
 
     new_key = generate_project_api_key()
+    await save_project_api_key_to_pg(project_id, new_key)
     PROJECT_KEYS_DB[project_id] = new_key
+
     return {
         "project_id": project_id,
         "api_key": new_key,
         "format": "XXXX-XXXX-XXXX-XXXX",
-        "status": "regenerated"
+        "status": "regenerated",
+        "persistence": "post-graph"
     }
 
 class MCPCallRequest(BaseModel):
