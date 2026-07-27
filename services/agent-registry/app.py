@@ -2,36 +2,136 @@
 
 Registers every agent as a unique, versioned entity bound with cryptographic keypairs, SHA-256 digests,
 Telos objectives, caste classifications, utility token balances, reputation scores, and progeny tracking.
+Persisted in post-graph database tables (agent_registry and agent_registry_data).
 """
+import asyncio
 import hashlib
+import logging
 import os
 import yaml
+from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-app = FastAPI(
-    title="Agent Registry & Ontological Service",
-    description="Kubernetes Service for versioned, cryptographically bound agent representations & RAG discovery",
-    version="1.2.0"
-)
+try:
+    from post_graph import AsyncPostGraph
+except ImportError:
+    AsyncPostGraph = None
 
-# In-memory registry with version history
+logger = logging.getLogger(__name__)
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "crajah")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+
+DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
+
+# Local in-memory cache synced with post-graph
 AGENT_REGISTRY: Dict[str, Dict[str, Any]] = {}
 AGENT_VERSIONS: Dict[str, List[Dict[str, Any]]] = {}
 
+async def get_pg_client(realm: str = "global") -> Optional[Any]:
+    """Helper to connect to post-graph PostgreSQL database."""
+    if not AsyncPostGraph:
+        return None
+
+    local_user = os.getenv("USER", "crajah")
+    candidate_dsns = [
+        DB_URI,
+        f"postgresql://{local_user}@localhost:5432/postgres",
+        f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
+        f"postgresql://postgres:postgres@localhost:5432/postgres"
+    ]
+    unique_dsns = []
+    for d in candidate_dsns:
+        if d and d not in unique_dsns:
+            unique_dsns.append(d)
+
+    for dsn in unique_dsns:
+        try:
+            client = AsyncPostGraph(dsn=dsn)
+            await client.connect()
+            await client.create_vertex_table("agent_registry", realm=realm)
+            return client
+        except Exception as e:
+            logger.debug(f"PostGraph connection attempt to {dsn} failed: {e}")
+
+    return None
+
+async def sync_from_post_graph():
+    """Populates local cache from post-graph database on startup."""
+    client = await get_pg_client("global")
+    if not client:
+        return
+    try:
+        vertices = await client.get_vertices(table_name="agent_registry", realm="global")
+        for v in vertices:
+            payload = v.payload if hasattr(v, "payload") else v
+            if isinstance(payload, dict) and "agent_id" in payload:
+                agent_id = payload["agent_id"]
+                AGENT_REGISTRY[agent_id] = payload
+                try:
+                    records = await client.get_vertex_data(table_name="agent_registry", realm="global", vertex_id=agent_id)
+                    AGENT_VERSIONS[agent_id] = [r.to_dict() for r in records]
+                except Exception:
+                    if agent_id not in AGENT_VERSIONS:
+                        AGENT_VERSIONS[agent_id] = [payload]
+        await client.close()
+        logger.info(f"Synced {len(AGENT_REGISTRY)} agents from post-graph database.")
+    except Exception as e:
+        logger.warning(f"Failed to sync agent registry from post-graph: {e}")
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
+    """Persists agent vertex and appends immutable version entry into post-graph tables."""
+    client = await get_pg_client("global")
+    if not client:
+        return
+    try:
+        await client.add_vertex(table_name="agent_registry", realm="global", payload=payload)
+        try:
+            await client.add_vertex_data(table_name="agent_registry", realm="global", vertex_id=agent_id, payload=payload)
+        except Exception:
+            pass
+        await client.close()
+    except Exception as e:
+        logger.warning(f"Error persisting agent '{agent_id}' to post-graph: {e}")
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await sync_from_post_graph()
+    yield
+
+app = FastAPI(
+    title="Agent Registry & Ontological Service",
+    description="Kubernetes Service for versioned, cryptographically bound agent representations & RAG discovery",
+    version="1.2.0",
+    lifespan=lifespan
+)
+
 class MemoryPolicy(BaseModel):
-    policy_type: str = "shared_session" # "shared_session", "isolated", "org_global"
+    policy_type: str = "shared_session"
     session_segregation: bool = True
     read_access: bool = True
     write_access: bool = True
 
 class Guardrail(BaseModel):
     guardrail_id: str
-    source: str = "constitution" # "constitution" or "discovered_prompt"
-    level: str = "project" # "org", "user", or "project"
+    source: str = "constitution"
+    level: str = "project"
     rule: str
-    action_on_violation: str = "block_and_audit" # "block_and_audit", "warn", "terminate"
+    action_on_violation: str = "block_and_audit"
 
 class AgentRegistrationRequest(BaseModel):
     agent_id: str = Field(..., description="Unique agent entity identifier")
@@ -74,10 +174,10 @@ class VerifySignatureRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "agent-registry", "registered_agents": len(AGENT_REGISTRY)}
+    return {"status": "ok", "service": "agent-registry", "registered_agents": len(AGENT_REGISTRY), "persistence": "post-graph"}
 
 @app.post("/agents/register")
-def register_agent(req: AgentRegistrationRequest):
+async def register_agent(req: AgentRegistrationRequest):
     agent_dict = req.model_dump()
     agent_id = req.agent_id
 
@@ -93,20 +193,24 @@ def register_agent(req: AgentRegistrationRequest):
     agent_dict["lifecycle_status"] = "INSTANTIATED"
     agent_dict["progeny_agent_ids"] = AGENT_REGISTRY.get(agent_id, {}).get("progeny_agent_ids", [])
 
-    # If spawned by a parent agent, update parent's progeny list
+    # Update parent progeny lineage
     if req.parent_agent_id and req.parent_agent_id in AGENT_REGISTRY:
         parent = AGENT_REGISTRY[req.parent_agent_id]
         if "progeny_agent_ids" not in parent:
             parent["progeny_agent_ids"] = []
         if agent_id not in parent["progeny_agent_ids"]:
             parent["progeny_agent_ids"].append(agent_id)
+            asyncio.create_task(persist_agent_to_pg(req.parent_agent_id, parent))
 
     # Track version history
     if agent_id not in AGENT_VERSIONS:
         AGENT_VERSIONS[agent_id] = []
     AGENT_VERSIONS[agent_id].append(agent_dict)
-
     AGENT_REGISTRY[agent_id] = agent_dict
+
+    # Persist to post-graph PostgreSQL database
+    await persist_agent_to_pg(agent_id, agent_dict)
+
     return {
         "status": "registered",
         "agent_id": agent_id,
@@ -125,8 +229,6 @@ def verify_agent(req: VerifySignatureRequest):
     
     agent = AGENT_REGISTRY[req.agent_id]
     computed_digest = hashlib.sha256(req.payload_text.encode()).hexdigest()
-    
-    # Verifiability check against registered public key and signature
     is_valid = (agent.get("public_key") == req.public_key) or (len(req.signature) > 10)
     return {
         "agent_id": req.agent_id,
@@ -136,13 +238,18 @@ def verify_agent(req: VerifySignatureRequest):
     }
 
 @app.post("/agents/{agent_id}/audit")
-def audit_agent(agent_id: str, req: AuditRequest):
+async def audit_agent(agent_id: str, req: AuditRequest):
     if agent_id not in AGENT_REGISTRY:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.")
     
     agent = AGENT_REGISTRY[agent_id]
     agent["reputation_score"] = max(0.0, min(100.0, agent.get("reputation_score", 100.0) + req.reputation_delta))
     agent["lifecycle_status"] = "AUDITED"
+
+    if agent_id in AGENT_VERSIONS:
+        AGENT_VERSIONS[agent_id].append(dict(agent))
+
+    await persist_agent_to_pg(agent_id, agent)
 
     return {
         "status": "audited",
@@ -153,7 +260,7 @@ def audit_agent(agent_id: str, req: AuditRequest):
     }
 
 @app.post("/agents/{agent_id}/allocate-tokens")
-def allocate_tokens(agent_id: str, req: TokenAllocationRequest):
+async def allocate_tokens(agent_id: str, req: TokenAllocationRequest):
     if agent_id not in AGENT_REGISTRY:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.")
     
@@ -162,6 +269,11 @@ def allocate_tokens(agent_id: str, req: TokenAllocationRequest):
 
     if agent["token_balance"] <= 0.0:
         agent["lifecycle_status"] = "TERMINATED_ECONOMIC"
+
+    if agent_id in AGENT_VERSIONS:
+        AGENT_VERSIONS[agent_id].append(dict(agent))
+
+    await persist_agent_to_pg(agent_id, agent)
 
     return {
         "status": "updated",
