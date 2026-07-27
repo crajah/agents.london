@@ -35,24 +35,22 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
   useEffect(() => {
     async function fetchMetrics() {
       try {
-        const [gRes, pRes] = await Promise.all([
-          fetch('/api/metrics/global'),
-          fetch(`/api/metrics/project/${state?.projectId || 'proj_alpha_civilization'}`)
+        const [gRes, pRes] = await Promise.allSettled([
+          fetch('/api/metrics/global').then(r => r.ok ? r.json() : null),
+          fetch(`/api/metrics/project/${state?.projectId || 'proj_alpha_civilization'}`).then(r => r.ok ? r.json() : null)
         ]);
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          if (gData) setGlobalMetrics(gData);
+        if (gRes.status === 'fulfilled' && gRes.value) {
+          setGlobalMetrics(gRes.value);
         }
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          if (pData) setProjectMetrics(pData);
+        if (pRes.status === 'fulfilled' && pRes.value) {
+          setProjectMetrics(pRes.value);
         }
       } catch (e) {
-        console.log('Error fetching metrics:', e);
+        // Silent catch during backend proxy reload
       }
     }
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 5000);
+    const interval = setInterval(fetchMetrics, 10000);
     return () => clearInterval(interval);
   }, [state?.projectId]);
 

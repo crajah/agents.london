@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip, Stack,
-  FormControl, InputLabel, Select, MenuItem, TextField, Divider, Alert
+  FormControl, InputLabel, Select, MenuItem, TextField, Divider, Alert, Paper
 } from '@mui/material';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -72,7 +72,7 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
       }
     } catch (e) {
       console.log('Error synthesizing description:', e);
-      setDescription(`Empirically verified ${agent.caste.toUpperCase()} agent. Specializes in intent resolution and post-graph memory lookups based on 8 recent I/O traces.`);
+      setDescription(`Empirically verified ${(agent.caste || 'worker').toUpperCase()} agent. Specializes in intent resolution and post-graph memory lookups based on 8 recent I/O traces.`);
     }
     setSynthesizing(false);
   };
@@ -89,7 +89,7 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
       </DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" gap={0.5}>
-          <Chip label={agent.caste.toUpperCase()} size="small" color="primary" sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
+          <Chip label={(agent.caste || 'worker').toUpperCase()} size="small" color="primary" sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
           <Chip icon={<VerifiedUserIcon />} label="ED25519 Verified" size="small" color="success" variant="outlined" sx={{ fontSize: '0.65rem' }} />
           <Chip label="LLM Self-Reflected" size="small" color="secondary" sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
         </Stack>

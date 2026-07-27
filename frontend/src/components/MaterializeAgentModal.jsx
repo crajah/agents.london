@@ -5,6 +5,7 @@ import {
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 const AVAILABLE_MCP_TOOLS = [
+  'mcp-google-search',
   'mcp-pgvector-search',
   'mcp-redis-queue',
   'mcp-sql-query',
