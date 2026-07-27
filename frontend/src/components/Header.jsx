@@ -1,7 +1,8 @@
 import React from 'react';
 import {
-  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link
+  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link, IconButton
 } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
 import LockIcon from '@mui/icons-material/Lock';
 import AddIcon from '@mui/icons-material/Add';
 import KeyIcon from '@mui/icons-material/Key';
@@ -9,13 +10,22 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 export default function Header({
-  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM
+  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM, onToggleMobileSidebar
 }) {
   return (
-    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: 2 }}>
-      <Toolbar sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, py: 1 }}>
-        {/* Brand & Creator Byline */}
+    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: { xs: 1, sm: 2 } }}>
+      <Toolbar sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, py: 1 }}>
+        {/* Mobile Hamburger Menu Button & Brand */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <IconButton
+            color="inherit"
+            edge="start"
+            onClick={onToggleMobileSidebar}
+            sx={{ display: { lg: 'none' }, color: '#60a5fa' }}
+          >
+            <MenuIcon />
+          </IconButton>
+
           <Box sx={{ fontSize: '1.8rem', lineHeight: 1 }}>🏛️</Box>
           <Box>
             <Typography variant="h6" sx={{
@@ -27,10 +37,10 @@ export default function Header({
             }}>
               agent.london
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Chip label="1B Agent Civilization" size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-                Brainchild of <Link href="https://www.linkedin.com/in/crajah/" target="_blank" rel="noopener" underline="hover" sx={{ color: '#60a5fa', fontWeight: 600 }}>Chandan Rajah</Link> (<Link href="https://github.com/crajah" target="_blank" rel="noopener" underline="hover" sx={{ color: '#60a5fa' }}>GitHub</Link>)
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', display: { xs: 'none', sm: 'inline' } }}>
+                Brainchild of <Link href="https://www.linkedin.com/in/crajah/" target="_blank" rel="noopener" underline="hover" sx={{ color: '#60a5fa', fontWeight: 600 }}>Chandan Rajah</Link>
               </Typography>
             </Box>
           </Box>
@@ -38,7 +48,7 @@ export default function Header({
 
         {/* Tenancy Selector Bar */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 160 } }}>
             <InputLabel sx={{ fontSize: '0.75rem' }}>Organization</InputLabel>
             <Select
               value={state.orgId}
@@ -55,7 +65,7 @@ export default function Header({
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 160 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 160 } }}>
             <InputLabel sx={{ fontSize: '0.75rem' }}>User Identity</InputLabel>
             <Select
               value={state.userId}
@@ -71,7 +81,7 @@ export default function Header({
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 170 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 130, sm: 170 } }}>
             <InputLabel sx={{ fontSize: '0.75rem' }}>Project Universe</InputLabel>
             <Select
               value={state.projectId}
@@ -84,7 +94,7 @@ export default function Header({
             </Select>
           </FormControl>
 
-          <Button variant="outlined" color="info" startIcon={<KeyIcon />} onClick={onOpenBYOM} size="small">
+          <Button variant="outlined" color="info" startIcon={<KeyIcon />} onClick={onOpenBYOM} size="small" sx={{ fontSize: '0.75rem' }}>
             BYOM / BYOK
           </Button>
 
@@ -97,18 +107,18 @@ export default function Header({
               sx={{ fontWeight: 600, fontSize: '0.8rem' }}
             />
           ) : (
-            <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small">
+            <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small" sx={{ fontSize: '0.75rem' }}>
               Sign In
             </Button>
           )}
 
-          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={onOpenMaterialize} size="small">
+          <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={onOpenMaterialize} size="small" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
             Materialize Agent
           </Button>
         </Box>
 
         {/* Connection Badge */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 0.8 }}>
           <FiberManualRecordIcon sx={{ fontSize: 12, color: state.wsConnected ? '#10b981' : '#f59e0b' }} />
           <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
             {state.wsConnected ? 'Redis Bus Active' : 'Local Stream Mode'}

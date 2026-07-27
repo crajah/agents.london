@@ -1,58 +1,40 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: agent_london_postgres
-    environment:
-      POSTGRES_USER: crajah
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
   redis:
-    image: redis:7-alpine
-    container_name: agent_london_redis
+    image: redis:alpine
+    container_name: agent-london-local-redis
     ports:
       - "6379:6379"
 
-  agent-registry:
-    build:
-      context: ./services/agent-registry
-      dockerfile: Dockerfile
-    container_name: agent_london_agent_registry
+  postgres:
+    image: postgres:15-alpine
+    container_name: agent-london-local-postgres
+    environment:
+      - POSTGRES_USER=crajah
+      - POSTGRES_PASSWORD=postgrespassword
+      - POSTGRES_DB=postgres
     ports:
-      - "8001:8001"
-
-  tool-registry:
-    build:
-      context: ./services/tool-registry
-      dockerfile: Dockerfile
-    container_name: agent_london_tool_registry
-    ports:
-      - "8002:8002"
+      - "5432:5432"
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: agent_london_backend
-    environment:
-      POSTGRES_URI: postgresql://crajah:postgrespassword@postgres:5432/postgres
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      AGENT_REGISTRY_URL: http://agent-registry:8001
-      TOOL_REGISTRY_URL: http://tool-registry:8002
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: agent-london-local-backend
     ports:
       - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=crajah
+      - POSTGRES_PASSWORD=postgrespassword
+      - POSTGRES_DB=postgres
+      - POSTGRES_URI=postgresql://crajah:postgrespassword@postgres:5432/postgres
+      - OPENAI_API_BASE=http://localhost:4000/v1
+      - OPENAI_API_KEY=BEVZ-6L81-OZ8Y
     depends_on:
-      - postgres
       - redis
-      - agent-registry
-      - tool-registry
-
-volumes:
-  pgdata:
+      - postgres
