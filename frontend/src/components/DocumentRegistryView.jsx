@@ -132,33 +132,55 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
     }
   };
 
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
-  const handleUploadFile = async () => {
-    if (!selectedFile) return;
+  const handleUploadFiles = async () => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
     setUploading(true);
     setUploadStatus(null);
     const targetSpace = selectedSpace === 'all' ? 'default' : selectedSpace;
     const formData = new FormData();
-    formData.append('file', selectedFile);
 
-    try {
-      const res = await fetch(`/api/projects/${projectId}/spaces/${targetSpace}/documents/upload-file`, {
-        method: 'POST',
-        body: formData
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUploadStatus({ success: true, message: data.message });
-        setSelectedFile(null);
-        fetchSpaces();
-      } else {
-        setUploadStatus({ success: false, message: 'File upload failed' });
+    if (selectedFiles.length === 1) {
+      formData.append('file', selectedFiles[0]);
+      try {
+        const res = await fetch(`/api/projects/${projectId}/spaces/${targetSpace}/documents/upload-file`, {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUploadStatus({ success: true, message: data.message });
+          setSelectedFiles([]);
+          fetchSpaces();
+        } else {
+          setUploadStatus({ success: false, message: 'File upload failed' });
+        }
+      } catch (e) {
+        setUploadStatus({ success: false, message: e.message });
+      } finally {
+        setUploading(false);
       }
-    } catch (e) {
-      setUploadStatus({ success: false, message: e.message });
-    } finally {
-      setUploading(false);
+    } else {
+      Array.from(selectedFiles).forEach(f => formData.append('files', f));
+      try {
+        const res = await fetch(`/api/projects/${projectId}/spaces/${targetSpace}/documents/upload-multiple-files`, {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUploadStatus({ success: true, message: data.message });
+          setSelectedFiles([]);
+          fetchSpaces();
+        } else {
+          setUploadStatus({ success: false, message: 'Batch file upload failed' });
+        }
+      } catch (e) {
+        setUploadStatus({ success: false, message: e.message });
+      } finally {
+        setUploading(false);
+      }
     }
   };
 
@@ -173,7 +195,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
               Document Spaces & Knowledge Graph RAG
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              PDF, DOCX, Markdown, Text Extraction via Docling / PyPDF • post-graph-rag Knowledge Graph Indexing
+              Batch Upload Multiple Documents (PDF, PPTX, XLSX, DOCX, Markdown) • post-graph-rag Knowledge Graph Indexing
             </Typography>
           </Box>
         </Box>
@@ -251,10 +273,10 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
               ))}
             </Grid>
 
-            {/* UPLOAD DOCUMENT FILE CARD */}
+            {/* UPLOAD MULTIPLE DOCUMENT FILES CARD */}
             <Paper sx={{ p: 2.5, backgroundColor: 'rgba(15, 23, 42, 0.5)', borderRadius: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <UploadFileIcon /> Upload PDF / DOCX / Document into Space: {selectedSpace}
+                <UploadFileIcon /> Batch Upload Multiple Files into Space: {selectedSpace}
               </Typography>
 
               <Stack spacing={2}>
@@ -264,24 +286,33 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                   startIcon={<UploadFileIcon />}
                   sx={{ py: 1.5, borderStyle: 'dashed' }}
                 >
-                  {selectedFile ? `Selected: ${selectedFile.name}` : 'Select PDF, PPTX, XLSX, DOCX, Markdown, or Text File'}
+                  {selectedFiles.length > 0 ? `Selected ${selectedFiles.length} file(s)` : 'Select Multiple Documents (PDF, PPTX, XLSX, DOCX, TXT)'}
                   <input
                     type="file"
                     hidden
+                    multiple
                     accept=".pdf,.pptx,.ppt,.xlsx,.xls,.docx,.doc,.txt,.md,.json,.csv,.html"
-                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                    onChange={(e) => setSelectedFiles(Array.from(e.target.files))}
                   />
                 </Button>
 
-                {selectedFile && (
+                {selectedFiles.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, maxMaxHeight: 120, overflowY: 'auto' }}>
+                    {selectedFiles.map((f, i) => (
+                      <Chip key={i} label={f.name} size="small" variant="outlined" sx={{ borderColor: '#38bdf8', color: '#93c5fd' }} />
+                    ))}
+                  </Box>
+                )}
+
+                {selectedFiles.length > 0 && (
                   <Button
                     variant="contained"
                     color="primary"
-                    onClick={handleUploadFile}
+                    onClick={handleUploadFiles}
                     disabled={uploading}
                     startIcon={uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
                   >
-                    {uploading ? 'Extracting PDF/Doc via Docling & Indexing...' : `Extract & Index '${selectedFile.name}'`}
+                    {uploading ? `Extracting & Indexing ${selectedFiles.length} files...` : `Batch Index ${selectedFiles.length} File(s) into Space '${selectedSpace}'`}
                   </Button>
                 )}
 
