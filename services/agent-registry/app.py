@@ -142,6 +142,10 @@ class Guardrail(BaseModel):
 
 class AgentRegistrationRequest(BaseModel):
     agent_id: str = Field(..., description="Unique agent entity identifier")
+    uaid: Optional[str] = Field(None, description="Unique Agent Identifier (UAID) Digital Passport issued by Federated Root CA")
+    entra_agent365_principal_id: Optional[str] = Field(None, description="Entra Agent 365 Security Principal ID")
+    codebase_hash_attestation: Optional[str] = Field(None, description="Cryptographic SHA256 codebase and prompt hash digest")
+    x509_certificate: Optional[Dict[str, Any]] = Field(default_factory=dict, description="X.509 Digital Passport Certificate issued by Federated Root CA")
     parent_agent_id: Optional[str] = Field(None, description="ID of parent agent if spawned as progeny")
     org_id: str
     user_id: str

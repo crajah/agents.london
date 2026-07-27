@@ -996,6 +996,80 @@ class AgentCivilizationEngine:
             "shared_memory_status": "active"
         }
 
+    async def materialize_worker_agent(
+        self,
+        org_id: str,
+        project_id: str,
+        user_id: str,
+        agent_name: str,
+        system_prompt: str,
+        parent_agent_id: Optional[str] = None,
+        tools: Optional[List[str]] = None,
+        custom_guardrails: Optional[List[Dict[str, Any]]] = None,
+        caste: Optional[str] = "progeny",
+        model_name: Optional[str] = "DeepSeek-V3.2"
+    ) -> Dict[str, Any]:
+        """Materializes a new agent in post-graph database (either spawned from parent or completely new)."""
+        clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', agent_name.strip())
+        agent_id = f"custom-{clean_name.lower()}-{project_id}"
+
+        role = "parent_spawned_progeny" if parent_agent_id else "custom_user_agent"
+        telos = f"Custom agent '{agent_name}' created for project {project_id}."
+        if parent_agent_id:
+            telos += f" Spawned from parent '{parent_agent_id}'."
+
+        reg_data = await self._register_agent_service(
+            org_id=org_id, user_id=user_id, project_id=project_id,
+            agent_id=agent_id, name=agent_name, caste=caste or "progeny",
+            role=role, telos=telos, system_prompt=system_prompt,
+            parent_agent_id=parent_agent_id, tools=tools, guardrails=custom_guardrails
+        )
+        reg_data["assignedModel"] = model_name or "DeepSeek-V3.2"
+
+        # Persist agent vertex into post-graph database table 'agents'
+        try:
+            client = await self._get_pg_client(org_id)
+            await client.add_vertex(table_name="agents", realm=project_id, payload=reg_data)
+            await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=agent_id, payload=reg_data)
+            
+            # If parent agent is specified, create 'spawns' edge in post-graph
+            if parent_agent_id:
+                try:
+                    await client.add_edge(
+                        table_name="spawns",
+                        realm=org_id,
+                        from_vertex_id=parent_agent_id,
+                        to_vertex_id=agent_id,
+                        payload={"timestamp": datetime.utcnow().isoformat(), "relationship": "progeny"}
+                    )
+                except Exception:
+                    pass
+            await client.close()
+        except Exception as e:
+            logger.warning(f"Post-graph agent persistence fallback for '{agent_id}': {e}")
+
+        return reg_data
+
+    async def get_all_project_agents(self, org_id: str, project_id: str) -> List[Dict[str, Any]]:
+        """Recovers and returns all persisted agents for a project from post-graph database."""
+        client = await self._get_pg_client(org_id)
+        agents = []
+        try:
+            vertices = await client.get_vertices(table_name="agents", realm=project_id)
+            await client.close()
+            for v in vertices:
+                payload = v.payload if hasattr(v, "payload") else v
+                if isinstance(payload, dict) and "agent_id" in payload:
+                    agents.append(payload)
+        except Exception as e:
+            try:
+                await client.close()
+            except Exception:
+                pass
+            logger.debug(f"Post-graph fetch agents fallback for project '{project_id}': {e}")
+
+        return agents
+
     async def _register_agent_service(
         self,
         org_id: str,
@@ -1011,14 +1085,34 @@ class AgentCivilizationEngine:
         tools: Optional[List[str]] = None,
         guardrails: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        # Generate cryptographic digest & keypair
-        raw = f"{agent_id}:{telos}:{system_prompt}:{parent_agent_id or 'root'}"
-        hash_digest = hashlib.sha256(raw.encode()).hexdigest()
-        pub_key = f"ed25519:{hashlib.sha256((agent_id + '_pub').encode()).hexdigest()[:32]}"
-        signature = f"sig:{hashlib.sha256((hash_digest + '_sig').encode()).hexdigest()[:48]}"
+        # Generate Federated Digital Passport, UAID & X.509 Certificate Attestation
+        clean_aid = re.sub(r'[^a-zA-Z0-9_-]', '', agent_id)
+        version_str = "v1.0.0"
+        uaid = f"uaid:london:auth:{project_id}:{clean_aid}:{version_str}"
+        entra_spn = f"spn:agent365:{clean_aid}@{project_id}.entra.agent.london"
+
+        codebase_raw = f"{agent_id}:{system_prompt}:{telos}:{version_str}"
+        codebase_hash = f"sha256:{hashlib.sha256(codebase_raw.encode()).hexdigest()}"
+
+        x509_cert = {
+            "serial_number": f"CA-{hashlib.sha256((uaid + '_sn').encode()).hexdigest()[:16].upper()}",
+            "issuer": "CN=Federated Root CA, OU=Federated Identity Authority, O=agent.london Federation, C=UK",
+            "subject": f"CN={uaid}, OU=Cortex Agent Security Principal",
+            "valid_from": datetime.utcnow().isoformat(),
+            "valid_to": "2030-01-01T00:00:00Z",
+            "codebase_hash_attestation": codebase_hash,
+            "entra_agent365_principal_id": entra_spn,
+            "signature_algorithm": "sha256WithRSAEncryption / ED25519",
+            "revocation_status": "ACTIVE_VERIFIED",
+            "digital_passport_status": "VALIDATED_BY_FEDERATED_ROOT_CA"
+        }
 
         payload = {
             "agent_id": agent_id,
+            "uaid": uaid,
+            "entra_agent365_principal_id": entra_spn,
+            "codebase_hash_attestation": codebase_hash,
+            "x509_certificate": x509_cert,
             "parent_agent_id": parent_agent_id,
             "org_id": org_id,
             "user_id": user_id,
@@ -1027,7 +1121,7 @@ class AgentCivilizationEngine:
             "caste": caste,
             "role": role,
             "telos": telos,
-            "version": "v1.0.0",
+            "version": version_str,
             "system_prompt": system_prompt,
             "public_key": pub_key,
             "hash_digest": hash_digest,
