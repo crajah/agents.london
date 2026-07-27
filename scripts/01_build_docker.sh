@@ -6,7 +6,19 @@ echo "STEP 1: BUILDING DOCKER IMAGES FOR AGENT.LONDON COMPONENTS"
 echo "============================================================"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TAG="${DOCKER_TAG:-latest}"
+TAG_FILE="${PROJECT_ROOT}/.docker_tag"
+
+if [ -n "${DOCKER_TAG:-}" ]; then
+    TAG="${DOCKER_TAG}"
+elif [ -f "${TAG_FILE}" ]; then
+    TAG="$(cat "${TAG_FILE}")"
+else
+    TAG="$(date +'%y%m%d.%H%M%S')"
+    echo "${TAG}" > "${TAG_FILE}"
+fi
+
+export DOCKER_TAG="${TAG}"
+echo "[+] Docker Image Tag: ${TAG}"
 
 echo "[+] Building agent-registry image..."
 docker build -t "agent-registry:${TAG}" "${PROJECT_ROOT}/services/agent-registry"

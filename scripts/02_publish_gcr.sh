@@ -5,11 +5,23 @@ echo "============================================================"
 echo "STEP 2: PUBLISHING DOCKER IMAGES TO GCR (gcr.io)"
 echo "============================================================"
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TAG_FILE="${PROJECT_ROOT}/.docker_tag"
+
 GCP_PROJECT="${GCP_PROJECT:-crajah-dev}"
 GCR_REGISTRY="${GCR_REGISTRY:-gcr.io/${GCP_PROJECT}}"
-TAG="${DOCKER_TAG:-latest}"
 
-echo "[+] Target Registry: ${GCR_REGISTRY}"
+if [ -n "${DOCKER_TAG:-}" ]; then
+    TAG="${DOCKER_TAG}"
+elif [ -f "${TAG_FILE}" ]; then
+    TAG="$(cat "${TAG_FILE}")"
+else
+    TAG="$(date +'%y%m%d.%H%M%S')"
+    echo "${TAG}" > "${TAG_FILE}"
+fi
+
+export DOCKER_TAG="${TAG}"
+echo "[+] Target Registry: ${GCR_REGISTRY} | Image Tag: ${TAG}"
 
 components=("agent-registry" "tool-registry" "document-registry-service" "agent-london-backend" "agent-london-frontend")
 
