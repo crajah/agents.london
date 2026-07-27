@@ -118,6 +118,7 @@ class ToolRegistrationRequest(BaseModel):
     input_schema: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+@app.get("/")
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "tool-registry", "registered_tools": len(TOOL_REGISTRY), "persistence": "post-graph"}
