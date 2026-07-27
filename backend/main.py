@@ -483,7 +483,7 @@ def enqueue_task(req: EnqueueTaskRequest):
         "agent_id": req.agent_id,
         "task_description": req.task_description,
         "parameters": req.parameters
-    })
+    }, project_id=req.project_id)
 
     redis_bus.publish_event(req.org_id, req.project_id, {
         "event": "task_enqueued",
@@ -492,14 +492,15 @@ def enqueue_task(req: EnqueueTaskRequest):
         "description": req.task_description
     })
 
-    return {"status": "enqueued", "task_id": task_id, "agent_id": req.agent_id}
+    return {"status": "enqueued", "task_id": task_id, "agent_id": req.agent_id, "project_id": req.project_id}
 
 @app.post("/api/tasks/dequeue/{agent_id}")
-def dequeue_task(agent_id: str):
-    task = redis_bus.dequeue_task(agent_id)
+def dequeue_task(agent_id: str, project_id: Optional[str] = Query(None)):
+    proj = project_id or "proj_alpha_civilization"
+    task = redis_bus.dequeue_task(agent_id, project_id=proj)
     if not task:
         return {"status": "empty", "task": None}
-    return {"status": "fetched", "task": task}
+    return {"status": "dequeued", "task": task}
 
 @app.get("/api/events/{org_id}/{project_id}")
 def get_civilization_events(org_id: str, project_id: str, limit: int = Query(50)):
@@ -572,22 +573,16 @@ async def get_agent_real_metrics(agent_id: str):
 # =========================================================================
 # MCP & A2A PROJECT API KEY ACCESS PROTOCOL (XXXX-XXXX-XXXX-XXXX)
 # =========================================================================
-PROJECT_KEYS_DB = {
-    "proj_alpha_civilization": "A1B2-C3D4-E5F6-G7H8",
-    "proj_quantum_agents": "K9L8-M7N6-P5O4-R3S2",
-    "proj_neural_swarm": "X1Y2-Z3A4-B5C6-D7E8"
-}
 
 @app.get("/api/projects/{project_id}/key")
 async def get_project_api_key(project_id: str):
-    """Retrieves the 16-character project API key for MCP and A2A access directly from post-graph."""
+    """Retrieves the randomly generated 16-character project API key for MCP and A2A access directly from post-graph database."""
     try:
         from backend.civilization import get_project_api_key_from_pg
     except Exception:
         from civilization import get_project_api_key_from_pg
 
     key = await get_project_api_key_from_pg(project_id)
-    PROJECT_KEYS_DB[project_id] = key
 
     return {
         "project_id": project_id,
@@ -598,7 +593,7 @@ async def get_project_api_key(project_id: str):
 
 @app.post("/api/projects/{project_id}/key/regenerate")
 async def regenerate_project_api_key(project_id: str):
-    """Regenerates a new 16-character project API key for MCP and A2A access and persists in post-graph."""
+    """Regenerates a brand new random 16-character project API key for MCP and A2A access and persists in post-graph database."""
     try:
         from backend.civilization import generate_project_api_key, save_project_api_key_to_pg
     except Exception:
@@ -606,7 +601,6 @@ async def regenerate_project_api_key(project_id: str):
 
     new_key = generate_project_api_key()
     await save_project_api_key_to_pg(project_id, new_key)
-    PROJECT_KEYS_DB[project_id] = new_key
 
     return {
         "project_id": project_id,

@@ -232,11 +232,12 @@ def generate_project_api_key() -> str:
     return f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
 
 async def get_project_api_key_from_pg(project_id: str, org_id: str = "org_london_meta") -> str:
-    """Retrieves project API key directly from post-graph projects vertex table or generates and persists if new."""
+    """Retrieves project API key directly from post-graph projects vertex table (realm = project_id) or generates and persists a new random key."""
     try:
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
-        project_vertex = await pg_client.get_vertex("projects", realm=org_id, vertex_id=project_id)
+        await pg_client.create_vertex_table("projects", realm=project_id)
+        project_vertex = await pg_client.get_vertex("projects", realm=project_id, vertex_id=project_id)
         if project_vertex and hasattr(project_vertex, "payload") and isinstance(project_vertex.payload, dict):
             key = project_vertex.payload.get("api_key")
             if key:
@@ -244,19 +245,22 @@ async def get_project_api_key_from_pg(project_id: str, org_id: str = "org_london
                 return key
 
         new_key = generate_project_api_key()
-        await pg_client.add_vertex("projects", realm=org_id, payload={"project_id": project_id, "api_key": new_key})
+        payload = {"project_id": project_id, "org_id": org_id, "api_key": new_key, "created_at": datetime.utcnow().isoformat()}
+        await pg_client.add_vertex("projects", realm=project_id, payload=payload)
         await pg_client.close()
         return new_key
     except Exception as e:
         logger.debug(f"Error reading project API key from post-graph: {e}")
-        return "A1B2-C3D4-E5F6-G7H8"
+        return generate_project_api_key()
 
 async def save_project_api_key_to_pg(project_id: str, new_api_key: str, org_id: str = "org_london_meta") -> str:
-    """Regenerates and persists project API key directly in post-graph database."""
+    """Regenerates and persists project API key directly in post-graph database (realm = project_id)."""
     try:
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
-        await pg_client.add_vertex("projects", realm=org_id, payload={"project_id": project_id, "api_key": new_api_key})
+        await pg_client.create_vertex_table("projects", realm=project_id)
+        payload = {"project_id": project_id, "org_id": org_id, "api_key": new_api_key, "updated_at": datetime.utcnow().isoformat()}
+        await pg_client.add_vertex("projects", realm=project_id, payload=payload)
         await pg_client.close()
     except Exception as e:
         logger.warning(f"Error saving project API key to post-graph: {e}")
@@ -274,6 +278,45 @@ AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
 TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_PROXY_URL", os.getenv("LITELLM_URL", "http://localhost:4000/v1")))
 API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
+
+def evaluate_user_prompt(prompt: str) -> str:
+    """Evaluates user prompt via arithmetic solver or LLM inference."""
+    clean = prompt.strip().lower()
+    
+    # 1. Check for arithmetic queries (e.g. "what is 2 + 2", "2+2", "100 / 4", "calc 5 * 8")
+    math_match = re.search(r'(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$', clean)
+    if math_match:
+        expr = math_match.group(1).strip()
+        if expr and re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', expr):
+            try:
+                val = eval(expr)
+                if isinstance(val, (int, float)):
+                    if isinstance(val, float) and val.is_integer():
+                        val = int(val)
+                    return str(val)
+            except Exception:
+                pass
+
+    # 2. Try LLM inference via LiteLLM API
+    try:
+        res = httpx.post(
+            f"{LITELLM_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json={
+                "model": "DeepSeek-V3.2",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200
+            },
+            timeout=2.5
+        )
+        if res.status_code == 200:
+            ans = res.json()["choices"][0]["message"]["content"].strip()
+            if ans:
+                return ans
+    except Exception:
+        pass
+
+    return f"Processed query '{prompt}'."
 
 class AgentCivilizationEngine:
     def __init__(self):
@@ -430,6 +473,7 @@ class AgentCivilizationEngine:
             "api_key": api_key,
             "constitution": rules,
             "prime_agents_count": len(provisioned_agents),
+            "permanent_agents": {a["caste"]: a["agent_id"] for a in provisioned_agents},
             "agents": provisioned_agents
         }
 
@@ -603,45 +647,6 @@ class AgentCivilizationEngine:
             "nested_sub_conductor": nested_orchestration,
             "status": "orchestrated"
         }
-
-def evaluate_user_prompt(prompt: str) -> str:
-    """Evaluates user prompt via arithmetic solver or LLM inference."""
-    clean = prompt.strip().lower()
-    
-    # 1. Check for arithmetic queries (e.g. "what is 2 + 2", "2+2", "100 / 4", "calc 5 * 8")
-    math_match = re.search(r'(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$', clean)
-    if math_match:
-        expr = math_match.group(1).strip()
-        if expr and re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', expr):
-            try:
-                val = eval(expr)
-                if isinstance(val, (int, float)):
-                    if isinstance(val, float) and val.is_integer():
-                        val = int(val)
-                    return str(val)
-            except Exception:
-                pass
-
-    # 2. Try LLM inference via LiteLLM API
-    try:
-        res = httpx.post(
-            f"{LITELLM_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-            json={
-                "model": "DeepSeek-V3.2",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200
-            },
-            timeout=2.5
-        )
-        if res.status_code == 200:
-            ans = res.json()["choices"][0]["message"]["content"].strip()
-            if ans:
-                return ans
-    except Exception:
-        pass
-
-    return f"Processed query '{prompt}'."
 
     async def run_react_loop(
         self,
@@ -955,14 +960,15 @@ def evaluate_user_prompt(prompt: str) -> str:
         api_endpoint: str,
         api_key: str
     ) -> Dict[str, Any]:
-        """Saves custom BYOM/BYOK model config in post-graph PostgreSQL database."""
-        client = await self._get_pg_client(org_id)
+        """Saves custom BYOM/BYOK model config in post-graph PostgreSQL database using project realm."""
+        target_realm = project_id if project_id else org_id
+        client = await self._get_pg_client(target_realm)
         
         masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
 
         config_vertex = await client.add_vertex(
             table_name="custom_model_configs",
-            realm=org_id,
+            realm=target_realm,
             payload={
                 "org_id": org_id,
                 "user_id": user_id,
@@ -980,6 +986,7 @@ def evaluate_user_prompt(prompt: str) -> str:
         return {
             "config_id": config_vertex.id,
             "org_id": org_id,
+            "project_id": project_id,
             "scope_level": scope_level,
             "custom_model_id": custom_model_id,
             "api_endpoint": api_endpoint,
@@ -987,10 +994,11 @@ def evaluate_user_prompt(prompt: str) -> str:
         }
 
     async def get_custom_model_configs(self, org_id: str, user_id: str, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Retrieves custom model configurations from post-graph database."""
-        client = await self._get_pg_client(org_id)
+        """Retrieves custom model configurations from post-graph database using project realm."""
+        target_realm = project_id if project_id else org_id
+        client = await self._get_pg_client(target_realm)
         try:
-            vertices = await client.get_vertices(table_name="custom_model_configs", realm=org_id)
+            vertices = await client.get_vertices(table_name="custom_model_configs", realm=target_realm)
             await client.close()
             configs = []
             for v in vertices:
