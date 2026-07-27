@@ -413,6 +413,25 @@ async def playground_chat(req: PlaygroundChatRequest):
         await broadcast_ws_event({"type": "direct_chat_completed", "data": res})
         return res
 
+class AgentInteractRequest(BaseModel):
+    org_id: str = Field(default="org_london_meta")
+    project_id: str = Field(default="proj_alpha_civilization")
+    prompt: str
+    session_id: Optional[str] = None
+
+@app.post("/api/agent/interact")
+async def agent_interact(req: AgentInteractRequest):
+    """Uses LLM Intent Router to evaluate user prompt and dynamically dispatch execution:
+    SIMPLE_CHAT, RAG_QUERY, MULTI_AGENT_ORCHESTRATION, REACT_TOOL_LOOP, or MULTI_TURN_CONVERSATION.
+    """
+    res = await civilization_engine.process_user_prompt_with_llm(
+        org_id=req.org_id,
+        project_id=req.project_id,
+        user_prompt=req.prompt,
+        session_id=req.session_id
+    )
+    return res
+
 @app.post("/api/conductor/orchestrate")
 async def conductor_orchestrate(org_id: str, project_id: str, prompt: str):
     res = await civilization_engine.run_conductor_orchestration(org_id, project_id, prompt)
