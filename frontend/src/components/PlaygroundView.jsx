@@ -82,9 +82,10 @@ export default function PlaygroundView({ state }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, loading]);
 
-  const handleExecuteGoal = async () => {
-    if (!prompt.trim()) return;
-    const userPrompt = prompt;
+  const handleExecuteGoal = async (overridePrompt) => {
+    const rawTarget = typeof overridePrompt === 'string' ? overridePrompt : prompt;
+    if (!rawTarget || typeof rawTarget !== 'string' || !rawTarget.trim()) return;
+    const userPrompt = rawTarget.trim();
     setPrompt('');
     setLoading(true);
 
@@ -399,7 +400,7 @@ export default function PlaygroundView({ state }) {
               variant="contained"
               color="primary"
               endIcon={<PlayArrowIcon />}
-              onClick={handleExecuteGoal}
+              onClick={() => handleExecuteGoal()}
               disabled={loading}
               sx={{ px: 3 }}
             >
