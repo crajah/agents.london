@@ -1224,4 +1224,9 @@ class AgentCivilizationEngine:
             logger.error(f"Error fetching agent version by data_id '{data_id}': {e}")
             return None
 
-civilization_engine = AgentCivilizationEngine()
+try:
+    from backend.civilization_factory import get_civilization_engine
+except (ImportError, ModuleNotFoundError):
+    from civilization_factory import get_civilization_engine
+
+civilization_engine = get_civilization_engine()
