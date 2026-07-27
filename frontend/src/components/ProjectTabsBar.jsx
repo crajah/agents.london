@@ -16,11 +16,39 @@ export default function ProjectTabsBar({ state, setState }) {
   const [copied, setCopied] = useState(false);
   const [projectApiKey, setProjectApiKey] = useState('A1B2-C3D4-E5F6-G7H8');
 
+  const orgId = state.orgId || 'org_london_meta';
+  const userId = state.userId || 'user_chandan';
+
   const projects = state.projects || [
     { id: 'proj_alpha_civilization', name: 'Alpha Civilization Universe', agentsCount: 28, status: 'ACTIVE' },
-    { id: 'proj_quantum_agents', name: 'Quantum Swarm Universe', agentsCount: 28, status: 'ACTIVE' },
-    { id: 'proj_neural_synth', name: 'Neural Synthesis Universe', agentsCount: 28, status: 'ACTIVE' }
+    { id: 'proj_quantum_agents', name: 'Quantum Swarm Universe', agentsCount: 16, status: 'ACTIVE' },
+    { id: 'proj_neural_synth', name: 'Neural Synthesis Universe', agentsCount: 12, status: 'ACTIVE' }
   ];
+
+  // Fetch authorized projects for the current Org & User
+  useEffect(() => {
+    async function fetchOrgUserProjects() {
+      try {
+        const res = await fetch(`/api/orgs/${orgId}/users/${userId}/projects`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.projects && data.projects.length > 0) {
+            setState(prev => {
+              const hasCurrentProj = data.projects.some(p => p.id === prev.projectId);
+              return {
+                ...prev,
+                projects: data.projects,
+                projectId: hasCurrentProj ? prev.projectId : data.projects[0].id
+              };
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Could not fetch org/user projects:", e);
+      }
+    }
+    fetchOrgUserProjects();
+  }, [orgId, userId]);
 
   useEffect(() => {
     // Fetch 16-character project API key for active project
@@ -46,25 +74,35 @@ export default function ProjectTabsBar({ state, setState }) {
     setState(prev => ({ ...prev, projectId: newValue }));
   };
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
-    const cleanId = `proj_${newProjectName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-
-    const newProjObj = {
-      id: cleanId,
-      name: newProjectName.trim(),
-      agentsCount: 28,
-      status: 'ACTIVE'
-    };
-
-    setState(prev => ({
-      ...prev,
-      projectId: cleanId,
-      projects: [...(prev.projects || projects), newProjObj]
-    }));
-
-    setNewProjectName('');
-    setCreateOpen(false);
+    try {
+      const res = await fetch(`/api/orgs/${orgId}/users/${userId}/projects?name=${encodeURIComponent(newProjectName.trim())}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.project) {
+          setState(prev => ({
+            ...prev,
+            projectId: data.project.id,
+            projects: [...(prev.projects || []), data.project]
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn("Create project fallback:", e);
+      const cleanId = `proj_${newProjectName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const newProjObj = { id: cleanId, name: newProjectName.trim(), agentsCount: 1, status: 'ACTIVE' };
+      setState(prev => ({
+        ...prev,
+        projectId: cleanId,
+        projects: [...(prev.projects || projects), newProjObj]
+      }));
+    } finally {
+      setNewProjectName('');
+      setCreateOpen(false);
+    }
   };
 
   const handleCopyKey = () => {
