@@ -132,6 +132,36 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
     }
   };
 
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const handleUploadFile = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadStatus(null);
+    const targetSpace = selectedSpace === 'all' ? 'default' : selectedSpace;
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/spaces/${targetSpace}/documents/upload-file`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUploadStatus({ success: true, message: data.message });
+        setSelectedFile(null);
+        fetchSpaces();
+      } else {
+        setUploadStatus({ success: false, message: 'File upload failed' });
+      }
+    } catch (e) {
+      setUploadStatus({ success: false, message: e.message });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, p: 3 }}>
       {/* HEADER BAR */}
@@ -143,7 +173,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
               Document Spaces & Knowledge Graph RAG
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Docling Content Extraction • post-graph-rag Knowledge Graph Indexing • Space-Scoped Sub-grouping
+              PDF, DOCX, Markdown, Text Extraction via Docling / PyPDF • post-graph-rag Knowledge Graph Indexing
             </Typography>
           </Box>
         </Box>
@@ -221,13 +251,42 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
               ))}
             </Grid>
 
-            {/* UPLOAD DOCUMENT CARD */}
+            {/* UPLOAD DOCUMENT FILE CARD */}
             <Paper sx={{ p: 2.5, backgroundColor: 'rgba(15, 23, 42, 0.5)', borderRadius: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <UploadFileIcon /> Upload & Parse Document with Docling into Space: {selectedSpace}
+                <UploadFileIcon /> Upload PDF / DOCX / Document into Space: {selectedSpace}
               </Typography>
 
               <Stack spacing={2}>
+                <Button
+                  variant="outlined"
+                  component="label"
+                  startIcon={<UploadFileIcon />}
+                  sx={{ py: 1.5, borderStyle: 'dashed' }}
+                >
+                  {selectedFile ? `Selected: ${selectedFile.name}` : 'Select PDF, PPTX, XLSX, DOCX, Markdown, or Text File'}
+                  <input
+                    type="file"
+                    hidden
+                    accept=".pdf,.pptx,.ppt,.xlsx,.xls,.docx,.doc,.txt,.md,.json,.csv,.html"
+                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                  />
+                </Button>
+
+                {selectedFile && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleUploadFile}
+                    disabled={uploading}
+                    startIcon={uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
+                  >
+                    {uploading ? 'Extracting PDF/Doc via Docling & Indexing...' : `Extract & Index '${selectedFile.name}'`}
+                  </Button>
+                )}
+
+                <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.08)' }}>OR PASTE TEXT</Divider>
+
                 <TextField
                   fullWidth
                   size="small"
@@ -239,7 +298,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                 <TextField
                   fullWidth
                   multiline
-                  rows={4}
+                  rows={3}
                   size="small"
                   label="Document Content / Text"
                   placeholder="Paste document text or markdown specification..."
@@ -247,13 +306,13 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                   onChange={(e) => setUploadText(e.target.value)}
                 />
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={handleUploadText}
                   disabled={uploading || !uploadText.trim() || !documentTitle.trim()}
                   startIcon={uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
                 >
-                  {uploading ? 'Extracting via Docling & Indexing...' : `Index into Space '${selectedSpace}'`}
+                  {uploading ? 'Indexing Text...' : `Index Text into Space '${selectedSpace}'`}
                 </Button>
                 {uploadStatus && (
                   <Chip
