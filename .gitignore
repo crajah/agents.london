@@ -3,6 +3,7 @@
 **/*pem*
 **/*secret*
 **/.env
+.docker_tag
 
 # Hide private keys
 **/*.private_key

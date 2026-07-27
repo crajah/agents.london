@@ -49,6 +49,13 @@ jobs:
         run: |
           gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
 
+      - name: Generate Timestamp Docker Tag (YYmmDD.HHMMSS)
+        run: |
+          TS_TAG=$(date +'%y%m%d.%H%M%S')
+          echo "${TS_TAG}" > .docker_tag
+          echo "DOCKER_TAG=${TS_TAG}" >> $GITHUB_ENV
+          echo "[+] Generated Unified Timestamp Docker Tag: ${TS_TAG}"
+
       - name: Build Docker Images
         run: |
           ./scripts/01_build_docker.sh
