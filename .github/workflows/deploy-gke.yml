@@ -74,7 +74,7 @@ jobs:
         run: |
           IMAGE_NAME="${{ matrix.service.name }}"
           CONTEXT_DIR="${{ matrix.service.context }}"
-          
+
           REMOTE_TAGGED="${GCR_REGISTRY}/${IMAGE_NAME}:${DOCKER_TAG}"
           REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
 
@@ -160,7 +160,7 @@ jobs:
 
           if [ "${{ matrix.k8s.type }}" = "deployment" ]; then
             echo "[+] Verifying rollout status for deployment/${{ matrix.k8s.target }}..."
-            kubectl rollout status deployment/${{ matrix.k8s.target }} --namespace default --timeout=180s
+            kubectl rollout status deployment/${{ matrix.k8s.target }} --namespace default --timeout=300s
           fi
 
   # =========================================================================
