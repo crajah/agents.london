@@ -19,6 +19,9 @@ spec:
         - name: agent-london-frontend
           image: gcr.io/crajah-dev/agent-london-frontend:latest
           imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: oidc-auth-secret
           ports:
             - containerPort: 80
           resources:
