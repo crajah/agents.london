@@ -15,6 +15,7 @@ import AuthLockScreen from './components/AuthLockScreen';
 import BYOMModal from './components/BYOMModal';
 import ProjectTabsBar from './components/ProjectTabsBar';
 import AgentDiscoveryView from './components/AgentDiscoveryView';
+import DocumentRegistryView from './components/DocumentRegistryView';
 
 export default function App() {
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
@@ -152,6 +153,7 @@ export default function App() {
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
               {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} />}
+              {currentTab === 'documents' && <DocumentRegistryView currentProject={{ id: state.projectId }} orgId={state.orgId} />}
               {currentTab === 'sessions' && <SharedMemoryView state={state} />}
               {currentTab === 'guardrails' && <GuardrailsView state={state} />}
             </Box>

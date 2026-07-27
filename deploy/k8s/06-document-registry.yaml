@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-registry
+  namespace: default
+  labels:
+    app: document-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: document-registry
+  template:
+    metadata:
+      labels:
+        app: document-registry
+    spec:
+      containers:
+        - name: document-registry
+          image: gcr.io/crajah-dev/document-registry-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8003
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres-service.default.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_USER
+                  optional: true
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_PASSWORD
+                  optional: true
+            - name: POSTGRES_DB
+              value: "postgres"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: document-registry-service
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: document-registry
+  ports:
+    - protocol: TCP
+      port: 8003
+      targetPort: 8003

@@ -11,6 +11,8 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import GroupIcon from '@mui/icons-material/Group';
 
+import StorageIcon from '@mui/icons-material/Storage';
+
 export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, onCloseMobile }) {
   const [globalMetrics, setGlobalMetrics] = useState({
     total_agent_instances: 84,
@@ -60,6 +62,7 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
     { id: 'civilization', label: 'Civilization Graph', icon: <HubIcon /> },
     { id: 'agents', label: 'Agent Registry & Kagent', icon: <SmartToyIcon /> },
     { id: 'tools', label: 'MCP Tool Registry', icon: <BuildIcon /> },
+    { id: 'documents', label: 'Document Spaces (RAG)', icon: <StorageIcon /> },
     { id: 'sessions', label: 'Shared Memory (post-graph-rag)', icon: <PsychologyIcon /> },
     { id: 'guardrails', label: 'Constitutional Guardrails', icon: <ShieldIcon /> },
   ];
