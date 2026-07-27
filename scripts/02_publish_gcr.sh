@@ -11,7 +11,7 @@ TAG="${DOCKER_TAG:-latest}"
 
 echo "[+] Target Registry: ${GCR_REGISTRY}"
 
-components=("agent-registry" "tool-registry" "agent-london-backend" "agent-london-frontend")
+components=("agent-registry" "tool-registry" "document-registry-service" "agent-london-backend" "agent-london-frontend")
 
 for component in "${components[@]}"; do
     local_image="${component}:${TAG}"
