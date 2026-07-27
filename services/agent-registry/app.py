@@ -159,7 +159,7 @@ class AgentRegistrationRequest(BaseModel):
     tools: List[str] = Field(default_factory=list, description="List of linked MCP tool IDs")
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
     guardrails: List[Guardrail] = Field(default_factory=list)
-    token_balance: float = 1000.0
+    token_balance: float = 10000000.0
     reputation_score: float = 100.0
     public_key: Optional[str] = None
     signature: Optional[str] = None

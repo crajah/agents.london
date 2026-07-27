@@ -187,8 +187,8 @@ def record_execution_telemetry(
 
 def get_real_telemetry(org_id: Optional[str] = None, project_id: Optional[str] = None, agent_id: Optional[str] = None) -> Dict[str, Any]:
     """Extracted live execution telemetry directly calculated from actual task executions."""
-    if agent_id and agent_id in EXECUTION_METRICS["agents"]:
-        a = EXECUTION_METRICS["agents"][agent_id]
+    if agent_id:
+        a = EXECUTION_METRICS["agents"].get(agent_id, {"executions": 0, "unique_users": set(), "bytes_in": 0, "bytes_out": 0, "tokens_in": 0, "tokens_out": 0})
         return {
             "agent_id": agent_id,
             "executions": a["executions"],
@@ -199,8 +199,8 @@ def get_real_telemetry(org_id: Optional[str] = None, project_id: Optional[str] =
             "tokens_out": a["tokens_out"]
         }
 
-    if project_id and project_id in EXECUTION_METRICS["projects"]:
-        p = EXECUTION_METRICS["projects"][project_id]
+    if project_id:
+        p = EXECUTION_METRICS["projects"].get(project_id, {"executions": 0, "unique_users": set(), "bytes_in": 0, "bytes_out": 0, "tokens_in": 0, "tokens_out": 0})
         return {
             "project_id": project_id,
             "executions": p["executions"],
@@ -214,6 +214,7 @@ def get_real_telemetry(org_id: Optional[str] = None, project_id: Optional[str] =
     g = EXECUTION_METRICS["global"]
     return {
         "global": True,
+        "executions": g["executions"],
         "total_executions": g["executions"],
         "unique_user_engagements": len(g["unique_users"]),
         "bytes_in": g["bytes_in"],
@@ -317,7 +318,7 @@ def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_ci
                     },
                     {"role": "user", "content": clean_prompt}
                 ],
-                "max_tokens": 1200
+                "max_tokens": 8192
             },
             timeout=6.0
         )
@@ -1126,7 +1127,7 @@ class AgentCivilizationEngine:
             "public_key": pub_key,
             "hash_digest": hash_digest,
             "signature": signature,
-            "token_balance": 1000.0,
+            "token_balance": 10000000.0,
             "reputation_score": 100.0,
             "tools": tools or [],
             "memory_policy": {"policy_type": "shared_session", "session_segregation": True, "read_access": True, "write_access": True},
