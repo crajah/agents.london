@@ -188,9 +188,9 @@ export default function PlaygroundView({ state }) {
       </Box>
 
       {/* Main Split Layout: Left Chat (70%), Right Process Side Panel (30%) */}
-      <Box sx={{ display: 'flex', gap: 2.5, flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 2.5, flex: 1, overflow: 'auto' }}>
         {/* LEFT COLUMN: CHAT INTERFACE */}
-        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', p: 2 }}>
+        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 480, p: 2 }}>
           {/* Chat Messages Timeline */}
           <Box sx={{ flex: 1, overflowY: 'auto', p: 1, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
             {chatMessages.map((msg) => (
@@ -321,7 +321,7 @@ export default function PlaygroundView({ state }) {
         </Paper>
 
         {/* RIGHT COLUMN: PROCESS STEPS & TOOL TRACE SIDE PANEL */}
-        <Paper sx={{ width: 340, p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'hidden' }}>
+        <Paper sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0, p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, minHeight: 300, overflow: 'hidden' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#60a5fa' }}>
             <TimelineIcon sx={{ fontSize: 18 }} /> Process Steps & Tool Trace
           </Typography>

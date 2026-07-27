@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link, Chip, Tooltip
+  Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link, Chip, Tooltip, Drawer
 } from '@mui/material';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import HubIcon from '@mui/icons-material/Hub';
@@ -10,9 +10,8 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import ShieldIcon from '@mui/icons-material/Shield';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import GroupIcon from '@mui/icons-material/Group';
-import DataUsageIcon from '@mui/icons-material/DataUsage';
 
-export default function Sidebar({ currentTab, setCurrentTab, state }) {
+export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, onCloseMobile }) {
   const [globalMetrics, setGlobalMetrics] = useState({
     total_agent_instances: 84,
     total_agent_executions: 142,
@@ -67,8 +66,13 @@ export default function Sidebar({ currentTab, setCurrentTab, state }) {
     { id: 'guardrails', label: 'Constitutional Guardrails', icon: <ShieldIcon /> },
   ];
 
-  return (
-    <Box sx={{ width: 280, flexShrink: 0, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+  const handleTabSelect = (tabId) => {
+    setCurrentTab(tabId);
+    if (onCloseMobile) onCloseMobile();
+  };
+
+  const sidebarContent = (
+    <Box sx={{ width: 280, p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
       {/* Navigation List */}
       <Paper sx={{ p: 1 }}>
         <List disablePadding>
@@ -78,7 +82,7 @@ export default function Sidebar({ currentTab, setCurrentTab, state }) {
               <ListItem disablePadding key={item.id} sx={{ mb: 0.5 }}>
                 <ListItemButton
                   selected={isSelected}
-                  onClick={() => setCurrentTab(item.id)}
+                  onClick={() => handleTabSelect(item.id)}
                   sx={{
                     borderRadius: 2,
                     '&.Mui-selected': {
@@ -170,5 +174,33 @@ export default function Sidebar({ currentTab, setCurrentTab, state }) {
         </Typography>
       </Paper>
     </Box>
+  );
+
+  return (
+    <>
+      {/* Desktop Inline Sidebar */}
+      <Box sx={{ display: { xs: 'none', lg: 'flex' }, flexShrink: 0 }}>
+        {sidebarContent}
+      </Box>
+
+      {/* Mobile Drawer Sidebar */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onCloseMobile}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', lg: 'none' },
+          '& .MuiDrawer-paper': {
+            boxSizing: 'border-box',
+            width: 280,
+            backgroundColor: '#0b0f19',
+            borderRight: '1px solid rgba(255,255,255,0.08)'
+          }
+        }}
+      >
+        {sidebarContent}
+      </Drawer>
+    </>
   );
 }

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 class RedisBus:
     def __init__(self):
@@ -22,15 +23,46 @@ class RedisBus:
         self._init_redis()
 
     def _init_redis(self):
-        try:
-            import redis
-            client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, socket_timeout=2)
-            client.ping()
-            self.redis_client = client
-            logger.info(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
-        except Exception as e:
-            logger.warning(f"Redis unavailable ({e}); utilizing in-memory fallback bus.")
-            self.redis_client = None
+        import redis
+        hosts_to_try = [
+            REDIS_HOST,
+            "redis-master",
+            "redis-master.default.svc.cluster.local",
+            "redis-service.default.svc.cluster.local",
+            "redis-service",
+            "localhost"
+        ]
+        
+        # Deduplicate preserving order
+        unique_hosts = []
+        for h in hosts_to_try:
+            if h and h not in unique_hosts:
+                unique_hosts.append(h)
+
+        for host in unique_hosts:
+            # 1. Try with password if provided
+            if REDIS_PASSWORD:
+                try:
+                    client = redis.Redis(host=host, port=REDIS_PORT, password=REDIS_PASSWORD, db=0, socket_timeout=2)
+                    client.ping()
+                    self.redis_client = client
+                    logger.info(f"Connected to Redis at {host}:{REDIS_PORT} (Password Authenticated)")
+                    return
+                except Exception as e:
+                    logger.debug(f"Authenticated connection to {host}:{REDIS_PORT} failed: {e}")
+
+            # 2. Try unauthenticated connection (Local Redis dev instance)
+            try:
+                client = redis.Redis(host=host, port=REDIS_PORT, db=0, socket_timeout=2)
+                client.ping()
+                self.redis_client = client
+                logger.info(f"Connected to Redis at {host}:{REDIS_PORT} (Local Unauthenticated)")
+                return
+            except Exception as e:
+                logger.debug(f"Unauthenticated connection to {host}:{REDIS_PORT} failed: {e}")
+
+        logger.warning(f"Redis unavailable across all host candidates ({unique_hosts}); utilizing in-memory fallback bus.")
+        self.redis_client = None
 
     def publish_event(self, org_id: str, project_id: str, event_data: Dict[str, Any]):
         """Publish event to civilization stream."""

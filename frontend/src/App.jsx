@@ -106,6 +106,8 @@ export default function App() {
     }));
   };
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -125,6 +127,7 @@ export default function App() {
             onOpenSSO={() => setSsoModalOpen(true)}
             onOpenMaterialize={() => setMaterializeModalOpen(true)}
             onOpenBYOM={() => setByomModalOpen(true)}
+            onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
           />
 
           {/* Project Universes Sub-Header Tabs Bar */}
@@ -132,11 +135,17 @@ export default function App() {
 
           {/* Main Content Area */}
           <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-            {/* Left Sidebar */}
-            <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
+            {/* Left Sidebar (Desktop Inline + Mobile Drawer) */}
+            <Sidebar
+              currentTab={currentTab}
+              setCurrentTab={setCurrentTab}
+              state={state}
+              mobileOpen={mobileSidebarOpen}
+              onCloseMobile={() => setMobileSidebarOpen(false)}
+            />
 
             {/* Active View Panel */}
-            <Box component="main" sx={{ flex: 1, overflow: 'hidden' }}>
+            <Box component="main" sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 } }}>
               {currentTab === 'playground' && <PlaygroundView state={state} />}
               {currentTab === 'discovery' && <AgentDiscoveryView state={state} />}
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}

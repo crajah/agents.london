@@ -11,7 +11,7 @@ import os
 import re
 import httpx
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 try:

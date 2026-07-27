@@ -5,12 +5,14 @@ provisions full Prime Caste (GenesisNode, OntologicalRegistry, ResourceArbiter, 
 tracks progeny lineage, generates cryptographic identities (public key, hash digest, parent signature),
 indexes agent metadata into post-graph-rag, and executes recursive Conductor orchestration & ReAct loops.
 """
+import asyncio
 import hashlib
 import os
 import json
 import logging
 import httpx
 import re
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from post_graph import AsyncPostGraph
 from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
@@ -229,7 +231,14 @@ def generate_project_api_key() -> str:
     raw = ''.join(secrets.choice(alphabet) for _ in range(16))
     return f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
 
-DB_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "crajah")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+
+DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
 TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_PROXY_URL", os.getenv("LITELLM_URL", "http://localhost:4000/v1")))
@@ -240,8 +249,33 @@ class AgentCivilizationEngine:
         self.db_uri = DB_URI
 
     async def _get_pg_client(self, org_id: str) -> AsyncPostGraph:
-        client = AsyncPostGraph(dsn=self.db_uri)
-        await client.connect()
+        local_user = os.getenv("USER", "crajah")
+        candidate_dsns = [
+            self.db_uri,
+            f"postgresql://{local_user}@localhost:5432/postgres",
+            f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
+            f"postgresql://postgres:postgres@localhost:5432/postgres"
+        ]
+
+        unique_dsns = []
+        for d in candidate_dsns:
+            if d and d not in unique_dsns:
+                unique_dsns.append(d)
+
+        client = None
+        last_error = None
+        for dsn in unique_dsns:
+            try:
+                c = AsyncPostGraph(dsn=dsn)
+                await c.connect()
+                client = c
+                break
+            except Exception as e:
+                last_error = e
+
+        if not client:
+            raise RuntimeError(f"Could not connect to PostgreSQL across candidates ({unique_dsns}): {last_error}")
+
         await client.create_vertex_table("users", realm=org_id)
         await client.create_vertex_table("projects", realm=org_id)
         await client.create_vertex_table("agents", realm=org_id)
@@ -382,7 +416,7 @@ class AgentCivilizationEngine:
     ) -> Dict[str, Any]:
         """Materialize a new worker agent (progeny) with cryptographic keypair and signed provenance."""
         parent_id = parent_agent_id or f"creator-{project_id}"
-        agent_id = f"worker-{int(httpx.ByteStream(agent_name.encode()).__hash__() % 1000000)}"
+        agent_id = f"worker-{abs(hash(agent_name)) % 1000000}"
         
         guardrails_payload = []
         if custom_guardrails:

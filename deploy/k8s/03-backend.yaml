@@ -29,12 +29,46 @@ spec:
               cpu: 500m
               memory: 512Mi
           env:
-            - name: POSTGRES_URI
-              value: "postgresql://crajah:postgrespassword@postgres-service.default.svc.cluster.local:5432/postgres"
+            - name: POSTGRES_HOST
+              value: "postgres-service.default.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_USER
+                  optional: true
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_PASSWORD
+                  optional: true
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_DB
+                  optional: true
             - name: REDIS_HOST
-              value: "redis-service.default.svc.cluster.local"
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_HOST
+                  optional: true
             - name: REDIS_PORT
-              value: "6379"
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_PORT
+                  optional: true
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_PASSWORD
+                  optional: true
             - name: AGENT_REGISTRY_URL
               value: "http://agent-registry-service.default.svc.cluster.local:8001"
             - name: TOOL_REGISTRY_URL
