@@ -725,6 +725,88 @@ class AgentCivilizationEngine:
                 matched.append(f"Agent ID: {a.get('agent_id') or a.get('id')}\nName: {a.get('name')}\nTelos: {a.get('telos')}\nRole: {a.get('role')}\nTools: {a.get('tools')}")
         return matched
 
+    async def register_pipeline_in_registry(
+        self,
+        org_id: str,
+        project_id: str,
+        pipeline_name: str,
+        task_prompt: str,
+        graph_nodes: List[Dict[str, Any]],
+        graph_edges: List[Dict[str, Any]],
+        assigned_agent_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Registers a multi-agent execution pipeline graph in Agent Registry microservice, post-graph, and post-graph-rag."""
+        pipeline_id = f"pipeline_{hashlib.md5(task_prompt.encode()).hexdigest()[:8]}"
+        payload = {
+            "agent_id": pipeline_id,
+            "id": pipeline_id,
+            "pipeline_id": pipeline_id,
+            "name": pipeline_name,
+            "caste": "pipeline",
+            "role": "multi_agent_execution_pipeline",
+            "telos": f"Multi-Agent Pipeline Graph for: {task_prompt[:100]}",
+            "system_prompt": f"Execution graph for directive: {task_prompt}",
+            "graph": {
+                "nodes": graph_nodes,
+                "edges": graph_edges
+            },
+            "assigned_agents": assigned_agent_ids,
+            "project_id": project_id,
+            "org_id": org_id,
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+        # HTTP registration to agent-registry microservice & post-graph fallback
+        unique_urls = [u for u in [os.getenv("AGENT_REGISTRY_URL"), "http://agent-registry-service.default.svc.cluster.local:8001", "http://agent-registry-service:8001", "http://localhost:8001"] if u]
+        for base in unique_urls:
+            try:
+                url = f"{base.rstrip('/')}/agents/register"
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    await client.post(url, json=payload)
+            except Exception as e:
+                logger.debug(f"Agent Registry HTTP pipeline registration note for {base}: {e}")
+
+        try:
+            pg_client = AsyncPostGraph(dsn=self.db_uri)
+            await pg_client.connect()
+            await pg_client.create_vertex_table("agent_registry", realm=project_id)
+            await pg_client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+            await pg_client.close()
+        except Exception as e:
+            logger.debug(f"Post-graph pipeline registration note for Native engine: {e}")
+
+        doc_text = (
+            f"Pipeline ID: {pipeline_id}\n"
+            f"Name: {pipeline_name}\n"
+            f"Caste: pipeline\n"
+            f"Role: Multi-Agent Execution Pipeline Graph\n"
+            f"Telos: Multi-Agent Pipeline Graph for: {task_prompt}\n"
+            f"Nodes: {json.dumps(graph_nodes)}\n"
+            f"Edges: {json.dumps(graph_edges)}\n"
+            f"Agents Involved: {', '.join(assigned_agent_ids)}"
+        )
+        try:
+            rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            meta = DocumentMetadata(title=f"Pipeline_{pipeline_id}", doc_type="pipeline_specification")
+            await rag.insert_document(doc_text, metadata=meta)
+            await rag.close()
+        except Exception as e:
+            logger.debug(f"GraphRAG pipeline indexing note for Native engine: {e}")
+
+        redis_bus.publish_event(org_id, project_id, {
+            "event": "pipeline_registered_and_indexed",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "nodes_count": len(graph_nodes),
+            "edges_count": len(graph_edges),
+            "prompt": task_prompt
+        })
+
+        return payload
+
     async def _evaluate_agent_registry_rag_match(
         self,
         org_id: str,
@@ -734,16 +816,16 @@ class AgentCivilizationEngine:
     ) -> Dict[str, Any]:
         """Uses LLM to evaluate if an existing registered agent/workflow/pipeline matches the task prompt."""
         if not candidates:
-            return {"match_found": False, "reasoning": "No candidate agents found in registry RAG index."}
+            return {"match_found": False, "reasoning": "No candidate entities found in registry RAG index."}
 
         cand_str = "\n---\n".join([f"Candidate {idx+1}:\n{c}" for idx, c in enumerate(candidates)])
         prompt = (
             f"You are the Agent Registry Conductor Router.\n"
             f"Task Prompt: {task_prompt}\n\n"
             f"Retrieved Agent Registry Candidates:\n{cand_str}\n\n"
-            f"Determine if any existing registered agent, workflow, or pipeline is ready/suitable to execute this task prompt.\n"
+            f"Determine if any existing registered agent, workflow, or pipeline graph is ready/suitable to execute this task prompt.\n"
             f"Return JSON ONLY with format:\n"
-            f'"{{"match_found": true|false, "matched_agent_id": "id or null", "matched_agent_name": "name or null", "reasoning": "...", "new_agent_name": "...", "new_agent_telos": "...", "new_agent_prompt": "..."}}"'
+            f'"{{"match_found": true|false, "matched_entity_type": "pipeline|agent", "matched_pipeline_id": "id or null", "matched_agent_id": "id or null", "matched_agent_name": "name or null", "reasoning": "...", "new_pipeline_name": "..."}}"'
         )
 
         try:
@@ -754,7 +836,7 @@ class AgentCivilizationEngine:
                     json={
                         "model": "DeepSeek-V3.2",
                         "messages": [
-                            {"role": "system", "content": "You analyze agent registry matches for task execution."},
+                            {"role": "system", "content": "You analyze agent and pipeline registry matches for task execution."},
                             {"role": "user", "content": prompt}
                         ],
                         "response_format": {"type": "json_object"},
@@ -771,17 +853,29 @@ class AgentCivilizationEngine:
         clean = task_prompt.lower()
         for idx, c in enumerate(candidates):
             c_clean = c.lower()
+            if "pipeline id:" in c_clean or "caste: pipeline" in c_clean:
+                pid_match = re.search(r'Pipeline ID:\s*([^\s\n]+)', c)
+                pid = pid_match.group(1) if pid_match else None
+                return {
+                    "match_found": True,
+                    "matched_entity_type": "pipeline",
+                    "matched_pipeline_id": pid,
+                    "matched_agent_id": pid,
+                    "matched_agent_name": f"Pipeline Candidate {idx+1}",
+                    "reasoning": "Matched existing registered multi-agent execution graph pipeline in registry RAG index."
+                }
             if any(k in c_clean for k in ["worker", "architect", "analyst", "synthesizer", "polymath", "custom"]) and any(w in c_clean for w in clean.split() if len(w) > 4):
                 aid_match = re.search(r'Agent ID:\s*([^\s\n]+)', c)
                 aid = aid_match.group(1) if aid_match else None
                 return {
                     "match_found": True,
+                    "matched_entity_type": "agent",
                     "matched_agent_id": aid,
                     "matched_agent_name": f"Candidate {idx+1}",
-                    "reasoning": f"Heuristic matched candidate in registry RAG index for directive."
+                    "reasoning": f"Heuristic matched candidate agent in registry RAG index for directive."
                 }
 
-        return {"match_found": False, "reasoning": "No existing registered agent matches directive."}
+        return {"match_found": False, "reasoning": "No existing registered agent or pipeline matches directive."}
 
     async def run_conductor_orchestration(
         self,
@@ -798,20 +892,32 @@ class AgentCivilizationEngine:
         match_decision = await self._evaluate_agent_registry_rag_match(org_id, project_id, task_prompt, rag_candidates)
 
         reused_agent_id = None
+        reused_pipeline_id = None
         materialized_agent_id = None
+        registered_pipeline_id = None
         execution_source = "newly_created_and_registered"
 
-        if match_decision.get("match_found") and match_decision.get("matched_agent_id"):
-            reused_agent_id = match_decision.get("matched_agent_id")
-            execution_source = "registry_reuse"
-            redis_bus.publish_event(org_id, project_id, {
-                "event": "agent_reused_from_registry",
-                "matched_agent_id": reused_agent_id,
-                "matched_agent_name": match_decision.get("matched_agent_name"),
-                "prompt": task_prompt
-            })
+        if match_decision.get("match_found"):
+            if match_decision.get("matched_entity_type") == "pipeline" or match_decision.get("matched_pipeline_id"):
+                reused_pipeline_id = match_decision.get("matched_pipeline_id") or match_decision.get("matched_agent_id")
+                execution_source = "pipeline_registry_reuse"
+                redis_bus.publish_event(org_id, project_id, {
+                    "event": "pipeline_reused_from_registry",
+                    "matched_pipeline_id": reused_pipeline_id,
+                    "matched_name": match_decision.get("matched_agent_name"),
+                    "prompt": task_prompt
+                })
+            else:
+                reused_agent_id = match_decision.get("matched_agent_id")
+                execution_source = "registry_reuse"
+                redis_bus.publish_event(org_id, project_id, {
+                    "event": "agent_reused_from_registry",
+                    "matched_agent_id": reused_agent_id,
+                    "matched_agent_name": match_decision.get("matched_agent_name"),
+                    "prompt": task_prompt
+                })
         else:
-            # Dynamically materialize & register a new progeny worker agent
+            # Dynamically materialize worker agent & construct multi-agent execution pipeline graph
             clean_token = re.sub(r'[^a-zA-Z0-9]', '', task_prompt)[:12] or "WorkerNode"
             agent_name = match_decision.get("new_agent_name") or f"DataSynthesizerWorker_{clean_token}"
             sys_prompt = match_decision.get("new_agent_prompt") or f"Execute specialized directive: {task_prompt}"
@@ -825,11 +931,39 @@ class AgentCivilizationEngine:
                 tools=["mcp-pgvector-search", "mcp-redis-queue"]
             )
             materialized_agent_id = new_agent.get("agent_id")
+
+            # Build complex execution graph (DAG nodes and directed edges)
+            graph_nodes = [
+                {"id": "node_1", "name": "Context Ingestion", "agent_id": f"signal-router-{project_id}", "assigned_task": f"Ingest context for {task_prompt[:30]}"},
+                {"id": "node_2", "name": "Strategy Synthesis", "agent_id": f"tool-master-{project_id}", "assigned_task": f"Synthesize plan for {task_prompt[:30]}"},
+                {"id": "node_3", "name": "Worker Execution", "agent_id": materialized_agent_id, "assigned_task": f"Execute payload for {task_prompt[:30]}"},
+                {"id": "node_4", "name": "Quality Audit", "agent_id": f"synchronicity-engine-{project_id}", "assigned_task": f"Audit deliverable for {task_prompt[:30]}"}
+            ]
+            graph_edges = [
+                {"from": "node_1", "to": "node_2", "relationship": "depends_on"},
+                {"from": "node_2", "to": "node_3", "relationship": "depends_on"},
+                {"from": "node_3", "to": "node_4", "relationship": "depends_on"}
+            ]
+            assigned_agents = [f"signal-router-{project_id}", f"tool-master-{project_id}", materialized_agent_id, f"synchronicity-engine-{project_id}"]
+
+            pipeline_name = match_decision.get("new_pipeline_name") or f"PipelineGraph_{hashlib.md5(task_prompt.encode()).hexdigest()[:6]}"
+            registered_pipeline = await self.register_pipeline_in_registry(
+                org_id=org_id,
+                project_id=project_id,
+                pipeline_name=pipeline_name,
+                task_prompt=task_prompt,
+                graph_nodes=graph_nodes,
+                graph_edges=graph_edges,
+                assigned_agent_ids=assigned_agents
+            )
+            registered_pipeline_id = registered_pipeline.get("pipeline_id")
             execution_source = "newly_created_and_registered"
+
             redis_bus.publish_event(org_id, project_id, {
-                "event": "agent_materialized_and_registered",
+                "event": "pipeline_materialized_and_registered",
+                "pipeline_id": registered_pipeline_id,
+                "pipeline_name": pipeline_name,
                 "agent_id": materialized_agent_id,
-                "agent_name": agent_name,
                 "prompt": task_prompt
             })
 
@@ -877,6 +1011,8 @@ class AgentCivilizationEngine:
             "task_prompt": task_prompt,
             "execution_source": execution_source,
             "reused_agent_id": reused_agent_id,
+            "reused_pipeline_id": reused_pipeline_id,
+            "registered_pipeline_id": registered_pipeline_id,
             "materialized_agent_id": materialized_agent_id,
             "discovered_agent_contexts": rag_candidates,
             "sub_tasks_orchestrated": sub_tasks,
