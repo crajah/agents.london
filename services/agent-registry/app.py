@@ -107,6 +107,47 @@ async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
             await client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=agent_id, payload=payload)
         except Exception:
             pass
+
+        # If payload is a multi-agent execution pipeline graph, persist explicit post-graph graph edges!
+        if payload.get("caste") == "pipeline" or payload.get("role") == "multi_agent_execution_pipeline":
+            try:
+                await client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+            except Exception:
+                pass
+
+            assigned = payload.get("assigned_agents", [])
+            for target_agent_id in assigned:
+                try:
+                    await client.add_edge(
+                        "composes_pipeline",
+                        realm=project_id,
+                        from_id=agent_id,
+                        to_id=target_agent_id,
+                        payload={"relation": "contains_agent", "pipeline_id": agent_id}
+                    )
+                except Exception:
+                    pass
+
+            graph_data = payload.get("graph", {})
+            edges = graph_data.get("edges", [])
+            nodes = {n.get("id"): n for n in graph_data.get("nodes", []) if n.get("id")}
+            for edge in edges:
+                src_node_id = edge.get("from")
+                dst_node_id = edge.get("to")
+                src_agent = nodes.get(src_node_id, {}).get("agent_id", src_node_id)
+                dst_agent = nodes.get(dst_node_id, {}).get("agent_id", dst_node_id)
+                if src_agent and dst_agent:
+                    try:
+                        await client.add_edge(
+                            "pipeline_step_dependency",
+                            realm=project_id,
+                            from_id=src_agent,
+                            to_id=dst_agent,
+                            payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": agent_id, "from_step": src_node_id, "to_step": dst_node_id}
+                        )
+                    except Exception:
+                        pass
         await client.close()
     except Exception as e:
         logger.warning(f"Error persisting agent '{agent_id}' to post-graph in realm '{project_id}': {e}")
@@ -450,6 +491,59 @@ def generate_kagent_manifest(agent_id: str):
         "agent_id": agent_id,
         "manifest_object": manifest,
         "yaml_manifest": yaml_str
+    }
+
+@app.get("/pipelines/{pipeline_id}/graph")
+async def get_pipeline_graph(pipeline_id: str):
+    """Retrieves pipeline entity and post-graph edge connections composing the execution workflow."""
+    if pipeline_id not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found in registry.")
+
+    pipeline_entity = AGENT_REGISTRY[pipeline_id]
+    project_id = pipeline_entity.get("project_id", "proj_alpha_civilization")
+
+    contained_agents = []
+    step_dependencies = []
+
+    client = await get_pg_client(project_id)
+    if client:
+        try:
+            edges_composes = await client.get_edges(table_name="composes_pipeline", realm=project_id, from_id=pipeline_id)
+            contained_agents = [e.to_id for e in edges_composes if hasattr(e, "to_id")]
+        except Exception as e:
+            logger.debug(f"Post-graph fetch composes_pipeline note: {e}")
+
+        try:
+            edges_deps = await client.get_edges(table_name="pipeline_step_dependency", realm=project_id)
+            step_dependencies = [
+                {
+                    "from_agent": e.from_id,
+                    "to_agent": e.to_id,
+                    "payload": e.payload if hasattr(e, "payload") else {}
+                }
+                for e in edges_deps
+                if hasattr(e, "from_id") and hasattr(e, "to_id")
+            ]
+        except Exception as e:
+            logger.debug(f"Post-graph fetch pipeline_step_dependency note: {e}")
+
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+    return {
+        "pipeline_id": pipeline_id,
+        "name": pipeline_entity.get("name"),
+        "caste": pipeline_entity.get("caste"),
+        "role": pipeline_entity.get("role"),
+        "telos": pipeline_entity.get("telos"),
+        "graph_specification": pipeline_entity.get("graph", {}),
+        "post_graph_representation": {
+            "root_vertex_id": pipeline_id,
+            "contained_agent_vertices": contained_agents or pipeline_entity.get("assigned_agents", []),
+            "step_dependency_edges": step_dependencies
+        }
     }
 
 if __name__ == "__main__":

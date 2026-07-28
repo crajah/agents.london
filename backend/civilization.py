@@ -771,6 +771,27 @@ class AgentCivilizationEngine:
             await pg_client.connect()
             await pg_client.create_vertex_table("agent_registry", realm=project_id)
             await pg_client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+            try:
+                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+
+                for target_agent_id in assigned_agent_ids:
+                    try:
+                        await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id})
+                    except Exception:
+                        pass
+
+                nodes_by_id = {n.get("id"): n for n in graph_nodes if n.get("id")}
+                for edge in graph_edges:
+                    src_agent = nodes_by_id.get(edge.get("from"), {}).get("agent_id", edge.get("from"))
+                    dst_agent = nodes_by_id.get(edge.get("to"), {}).get("agent_id", edge.get("to"))
+                    if src_agent and dst_agent:
+                        try:
+                            await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id})
+                        except Exception:
+                            pass
+            except Exception as edge_err:
+                logger.debug(f"Post-graph edge table creation note for pipeline: {edge_err}")
             await pg_client.close()
         except Exception as e:
             logger.debug(f"Post-graph pipeline registration note for Native engine: {e}")
@@ -1303,8 +1324,12 @@ class AgentCivilizationEngine:
         # Persist agent vertex into post-graph database table 'agents'
         try:
             client = await self._get_pg_client(org_id)
-            await client.add_vertex(table_name="agents", realm=project_id, payload=reg_data)
-            await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=agent_id, payload=reg_data)
+            v_res = await client.add_vertex(table_name="agents", realm=project_id, payload=reg_data)
+            if v_res and isinstance(v_res, dict) and "id" in v_res:
+                try:
+                    await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=v_res["id"], payload=reg_data)
+                except Exception:
+                    pass
             
             # If parent agent is specified, create 'spawns' edge in post-graph
             if parent_agent_id:
