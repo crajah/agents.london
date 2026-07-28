@@ -107,14 +107,36 @@ async def main():
     rag_res = await civilization_engine.index_agent_registry_for_rag(org_id, project_id)
     print(f"    RAG Indexing Status: {rag_res.get('status', 'success')}, Indexed={rag_res.get('indexed_agents', 28)}")
 
-    print("\n[+] 7B. Performing RAG Vector Search over Agent Registry...")
-    search_res = await civilization_engine.search_agent_registry_rag(org_id, project_id, "DataSynthesizerWorker raw payload streams", top_k=2)
-    print(f"    Agent Registry RAG Candidates Found: Count={len(search_res)}")
+    print("\n[+] 7B. Registering Custom Multi-Agent Execution Pipeline Graph...")
+    graph_nodes = [
+        {"id": "node_1", "name": "IngestionNode", "agent_id": f"worker-1-{project_id}"},
+        {"id": "node_2", "name": "ProcessingNode", "agent_id": f"worker-2-{project_id}"}
+    ]
+    graph_edges = [
+        {"from": "node_1", "to": "node_2", "relationship": "depends_on"}
+    ]
+    pipe_res = await civilization_engine.register_pipeline_in_registry(
+        org_id=org_id,
+        project_id=project_id,
+        pipeline_name="CustomAnalyticsPipeline",
+        task_prompt="Process raw payload streams into structured JSON schemas",
+        graph_nodes=graph_nodes,
+        graph_edges=graph_edges,
+        assigned_agent_ids=[f"worker-1-{project_id}", f"worker-2-{project_id}"]
+    )
+    print(f"    Pipeline Graph Registered: ID={pipe_res.get('pipeline_id')}, Name={pipe_res.get('name')}")
 
-    print("\n[+] 8. Executing Conductor Multi-Agent Composition & ReAct Loop...")
-    conductor_res = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
-    sub_tasks = conductor_res.get('sub_tasks_orchestrated', [])
-    print(f"    Conductor ID: {conductor_res.get('conductor_id', 'N/A')}, Execution Source={conductor_res.get('execution_source')}, Sub-tasks={len(sub_tasks)}")
+    print("\n[+] 7C. Performing RAG Vector Search over Agent Registry & Pipeline Graphs...")
+    search_res = await civilization_engine.search_agent_registry_rag(org_id, project_id, "CustomAnalyticsPipeline raw payload streams", top_k=2)
+    print(f"    Agent & Pipeline RAG Candidates Found: Count={len(search_res)}")
+
+    print("\n[+] 8. Executing Conductor Multi-Agent Composition & Pipeline Graph Reuse Loop...")
+    conductor_res_1 = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
+    sub_tasks_1 = conductor_res_1.get('sub_tasks_orchestrated', [])
+    print(f"    Run 1 Conductor ID: {conductor_res_1.get('conductor_id', 'N/A')}, Execution Source={conductor_res_1.get('execution_source')}, Sub-tasks={len(sub_tasks_1)}")
+
+    conductor_res_2 = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
+    print(f"    Run 2 Conductor ID: {conductor_res_2.get('conductor_id', 'N/A')}, Execution Source={conductor_res_2.get('execution_source')} (Reused Pipeline/Agent={conductor_res_2.get('reused_pipeline_id') or conductor_res_2.get('reused_agent_id')})")
 
     react_res = await civilization_engine.run_react_loop(org_id, project_id, "Query knowledge vectors for Q3 analytics")
     steps = react_res.get('steps', [])
@@ -125,3 +147,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

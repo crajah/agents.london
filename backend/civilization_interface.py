@@ -98,3 +98,18 @@ class AbstractCivilizationEngine(ABC):
     async def search_agent_registry_rag(self, org_id: str, project_id: str, query_prompt: str, top_k: int = 3) -> list:
         """Searches post-graph-rag for matching candidate agents/workflows in the agent registry."""
         pass
+
+    @abstractmethod
+    async def register_pipeline_in_registry(
+        self,
+        org_id: str,
+        project_id: str,
+        pipeline_name: str,
+        task_prompt: str,
+        graph_nodes: list,
+        graph_edges: list,
+        assigned_agent_ids: list
+    ) -> Dict[str, Any]:
+        """Registers a multi-agent execution pipeline graph in Agent Registry microservice, post-graph, and post-graph-rag."""
+        pass
+
