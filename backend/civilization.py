@@ -1038,22 +1038,49 @@ class AgentCivilizationEngine:
         return reg_data
 
     async def get_all_project_agents(self, org_id: str, project_id: str) -> List[Dict[str, Any]]:
-        """Recovers and returns all persisted agents for a project from post-graph database."""
-        client = await self._get_pg_client(org_id)
-        agents = []
-        try:
-            vertices = await client.get_vertices(table_name="agents", realm=project_id)
-            await client.close()
-            for v in vertices:
-                payload = v.payload if hasattr(v, "payload") else v
-                if isinstance(payload, dict) and "agent_id" in payload:
-                    agents.append(payload)
-        except Exception as e:
+        """Queries Agent Registry microservice (or post-graph agent_registry) for all registered project agents."""
+        candidate_urls = [
+            os.getenv("AGENT_REGISTRY_URL"),
+            "http://agent-registry-service.default.svc.cluster.local:8001",
+            "http://agent-registry-service:8001",
+            "http://localhost:8001"
+        ]
+        unique_urls = [u for u in candidate_urls if u]
+
+        for base in unique_urls:
             try:
-                await client.close()
-            except Exception:
-                pass
-            logger.debug(f"Post-graph fetch agents fallback for project '{project_id}': {e}")
+                url = f"{base.rstrip('/')}/agents?project_id={project_id}"
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    res = await client.get(url)
+                    if res.status_code == 200:
+                        agents = res.json().get("agents", [])
+                        if agents:
+                            return agents
+            except Exception as e:
+                logger.debug(f"HTTP call to Agent Registry on {base} note: {e}")
+
+        # Post-graph direct query fallback across agent_registry and agents tables
+        agents = []
+        seen_ids = set()
+
+        client = await self._get_pg_client(project_id)
+        for tbl in ["agent_registry", "agents"]:
+            try:
+                vertices = await client.get_vertices(table_name=tbl, realm=project_id)
+                for v in vertices:
+                    payload = v.payload if hasattr(v, "payload") else v
+                    if isinstance(payload, dict) and "agent_id" in payload:
+                        aid = payload["agent_id"]
+                        if aid not in seen_ids:
+                            seen_ids.add(aid)
+                            agents.append(payload)
+            except Exception as e:
+                logger.debug(f"Post-graph fetch table '{tbl}' note for project '{project_id}': {e}")
+
+        try:
+            await client.close()
+        except Exception:
+            pass
 
         return agents
 
@@ -1124,13 +1151,36 @@ class AgentCivilizationEngine:
             "guardrails": guardrails or []
         }
 
+        candidate_urls = [
+            os.getenv("AGENT_REGISTRY_URL"),
+            "http://agent-registry-service.default.svc.cluster.local:8001",
+            "http://agent-registry-service:8001",
+            "http://localhost:8001"
+        ]
+        unique_urls = [u for u in candidate_urls if u]
+
+        for base in unique_urls:
+            try:
+                url = f"{base.rstrip('/')}/agents/register"
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    res = await client.post(url, json=payload)
+                    if res.status_code == 200:
+                        break
+            except Exception as e:
+                logger.debug(f"Agent registry service call note for {base}: {e}")
+
+        # Post-graph direct persistence in table agent_registry using project realm
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(f"{AGENT_REGISTRY_URL}/agents/register", json=payload)
-                if res.status_code == 200:
-                    return payload
+            client = await self._get_pg_client(project_id)
+            await client.create_vertex_table("agent_registry", realm=project_id)
+            await client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+            try:
+                await client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=agent_id, payload=payload)
+            except Exception:
+                pass
+            await client.close()
         except Exception as e:
-            logger.debug(f"Agent registry service call fallback: {e}")
+            logger.debug(f"Post-graph direct agent_registry write note: {e}")
 
         return payload
 
