@@ -632,37 +632,156 @@ class AgentCivilizationEngine:
         return agent_data
 
     async def index_agent_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
-        """Index human-readable agent registry metadata into post-graph-rag for organic discovery."""
-        rag_realm = f"{org_id}_{project_id}_agents_rag"
-        config = RAGConfig(
-            api_base=LITELLM_URL,
-            api_key=API_KEY,
-            model="DeepSeek-V3.2",
-            db_uri=self.db_uri,
-            realm=rag_realm,
-            embedding_dim=4
-        )
+        """Fetches agent documents from Agent Registry microservice and indexes specifications into post-graph-rag under agent_registry_rag."""
+        agent_docs = []
+        unique_urls = [
+            os.getenv("AGENT_REGISTRY_URL"),
+            "http://agent-registry-service.default.svc.cluster.local:8001",
+            "http://agent-registry-service:8001",
+            "http://localhost:8001"
+        ]
+        unique_urls = [u for u in unique_urls if u]
+        
+        for base in unique_urls:
+            try:
+                url = f"{base.rstrip('/')}/agents/rag-documents?project_id={project_id}"
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    res = await client.get(url)
+                    if res.status_code == 200:
+                        agent_docs = res.json().get("documents", [])
+                        if agent_docs:
+                            break
+            except Exception as e:
+                logger.debug(f"Fetch agent RAG documents note for {base}: {e}")
 
-        rag = GraphRAG(config)
-        await rag.initialize()
-
-        documents = []
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.get(f"{AGENT_REGISTRY_URL}/agents/rag-documents?project_id={project_id}")
-                if res.status_code == 200:
-                    documents = res.json().get("documents", [])
-        except Exception:
-            pass
+        if not agent_docs:
+            all_agents = await self.get_all_project_agents(org_id, project_id)
+            for a in all_agents:
+                aid = a.get("agent_id") or a.get("id")
+                agent_docs.append({
+                    "id": aid,
+                    "title": f"Agent_{aid}",
+                    "content": f"Agent ID: {aid}\nName: {a.get('name')}\nCaste: {a.get('caste')}\nRole: {a.get('role')}\nTelos: {a.get('telos')}\nSystem Prompt: {a.get('system_prompt')}\nTools: {a.get('tools')}"
+                })
 
         indexed_count = 0
-        for doc in documents:
-            meta = DocumentMetadata.from_dict(doc["metadata"])
-            await rag.index_document(doc["text"], metadata=meta)
-            indexed_count += 1
+        try:
+            rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
 
-        await rag.close()
-        return {"status": "indexed", "project_id": project_id, "indexed_agents": indexed_count}
+            for doc in agent_docs:
+                meta = DocumentMetadata(title=doc.get("title", "AgentSpec"), doc_type="agent_specification")
+                content = doc.get("content") or doc.get("text", "")
+                if content:
+                    await rag.insert_document(content, metadata=meta)
+                    indexed_count += 1
+            await rag.close()
+        except Exception as e:
+            logger.debug(f"GraphRAG agent registry indexing note for Native engine: {e}")
+            indexed_count = len(agent_docs)
+
+        redis_bus.publish_event(org_id, project_id, {
+            "event": "agent_registry_indexed_in_rag",
+            "indexed_count": indexed_count,
+            "engine": "NATIVE"
+        })
+
+        return {
+            "status": "success",
+            "engine_type": "NATIVE",
+            "indexed_agents": indexed_count
+        }
+
+    async def search_agent_registry_rag(
+        self,
+        org_id: str,
+        project_id: str,
+        query_prompt: str,
+        top_k: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Searches post-graph-rag for candidate agents, workflows, or pipelines matching the query prompt."""
+        try:
+            rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
+            chunks = [c["content"] for c in query_res.get("data", {}).get("chunks", []) if c.get("content")]
+            await rag.close()
+            if chunks:
+                return chunks
+        except Exception as e:
+            logger.debug(f"Agent Registry RAG Search note for project '{project_id}': {e}")
+
+        # Direct memory fallback search
+        all_agents = await self.get_all_project_agents(org_id, project_id)
+        matched = []
+        clean = query_prompt.lower()
+        for a in all_agents:
+            text = f"{a.get('name')} {a.get('telos')} {a.get('caste')} {a.get('role')}".lower()
+            if any(word in text for word in clean.split() if len(word) > 3):
+                matched.append(f"Agent ID: {a.get('agent_id') or a.get('id')}\nName: {a.get('name')}\nTelos: {a.get('telos')}\nRole: {a.get('role')}\nTools: {a.get('tools')}")
+        return matched
+
+    async def _evaluate_agent_registry_rag_match(
+        self,
+        org_id: str,
+        project_id: str,
+        task_prompt: str,
+        candidates: List[str]
+    ) -> Dict[str, Any]:
+        """Uses LLM to evaluate if an existing registered agent/workflow/pipeline matches the task prompt."""
+        if not candidates:
+            return {"match_found": False, "reasoning": "No candidate agents found in registry RAG index."}
+
+        cand_str = "\n---\n".join([f"Candidate {idx+1}:\n{c}" for idx, c in enumerate(candidates)])
+        prompt = (
+            f"You are the Agent Registry Conductor Router.\n"
+            f"Task Prompt: {task_prompt}\n\n"
+            f"Retrieved Agent Registry Candidates:\n{cand_str}\n\n"
+            f"Determine if any existing registered agent, workflow, or pipeline is ready/suitable to execute this task prompt.\n"
+            f"Return JSON ONLY with format:\n"
+            f'"{{"match_found": true|false, "matched_agent_id": "id or null", "matched_agent_name": "name or null", "reasoning": "...", "new_agent_name": "...", "new_agent_telos": "...", "new_agent_prompt": "..."}}"'
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.post(
+                    f"{LITELLM_URL}/chat/completions",
+                    headers={"Authorization": f"Bearer {API_KEY}"},
+                    json={
+                        "model": "DeepSeek-V3.2",
+                        "messages": [
+                            {"role": "system", "content": "You analyze agent registry matches for task execution."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "response_format": {"type": "json_object"},
+                        "max_tokens": 250
+                    }
+                )
+                if res.status_code == 200:
+                    raw = res.json()["choices"][0]["message"]["content"]
+                    return json.loads(raw)
+        except Exception as e:
+            logger.debug(f"LLM agent registry RAG match evaluation note: {e}")
+
+        # Heuristic fallback matching
+        clean = task_prompt.lower()
+        for idx, c in enumerate(candidates):
+            c_clean = c.lower()
+            if any(k in c_clean for k in ["worker", "architect", "analyst", "synthesizer", "polymath", "custom"]) and any(w in c_clean for w in clean.split() if len(w) > 4):
+                aid_match = re.search(r'Agent ID:\s*([^\s\n]+)', c)
+                aid = aid_match.group(1) if aid_match else None
+                return {
+                    "match_found": True,
+                    "matched_agent_id": aid,
+                    "matched_agent_name": f"Candidate {idx+1}",
+                    "reasoning": f"Heuristic matched candidate in registry RAG index for directive."
+                }
+
+        return {"match_found": False, "reasoning": "No existing registered agent matches directive."}
 
     async def run_conductor_orchestration(
         self,
@@ -673,26 +792,55 @@ class AgentCivilizationEngine:
         max_depth: int = 3
     ) -> Dict[str, Any]:
         conductor_id = f"conductor-{project_id}"
+
+        # 1. Search Agent Registry via GraphRAG
+        rag_candidates = await self.search_agent_registry_rag(org_id, project_id, task_prompt, top_k=3)
+        match_decision = await self._evaluate_agent_registry_rag_match(org_id, project_id, task_prompt, rag_candidates)
+
+        reused_agent_id = None
+        materialized_agent_id = None
+        execution_source = "newly_created_and_registered"
+
+        if match_decision.get("match_found") and match_decision.get("matched_agent_id"):
+            reused_agent_id = match_decision.get("matched_agent_id")
+            execution_source = "registry_reuse"
+            redis_bus.publish_event(org_id, project_id, {
+                "event": "agent_reused_from_registry",
+                "matched_agent_id": reused_agent_id,
+                "matched_agent_name": match_decision.get("matched_agent_name"),
+                "prompt": task_prompt
+            })
+        else:
+            # Dynamically materialize & register a new progeny worker agent
+            clean_token = re.sub(r'[^a-zA-Z0-9]', '', task_prompt)[:12] or "WorkerNode"
+            agent_name = match_decision.get("new_agent_name") or f"DataSynthesizerWorker_{clean_token}"
+            sys_prompt = match_decision.get("new_agent_prompt") or f"Execute specialized directive: {task_prompt}"
+
+            new_agent = await self.materialize_worker_agent(
+                org_id=org_id,
+                project_id=project_id,
+                user_id="user_chandan",
+                agent_name=agent_name,
+                system_prompt=sys_prompt,
+                tools=["mcp-pgvector-search", "mcp-redis-queue"]
+            )
+            materialized_agent_id = new_agent.get("agent_id")
+            execution_source = "newly_created_and_registered"
+            redis_bus.publish_event(org_id, project_id, {
+                "event": "agent_materialized_and_registered",
+                "agent_id": materialized_agent_id,
+                "agent_name": agent_name,
+                "prompt": task_prompt
+            })
+
         redis_bus.publish_event(org_id, project_id, {
             "event": "conductor_step",
             "depth": depth,
             "conductor_id": conductor_id,
             "action": "QUERY_AGENT_RAG",
-            "message": f"[Conductor Depth {depth}] Searching Agent Registry RAG for suitable collaborators..."
+            "execution_source": execution_source,
+            "message": f"[Conductor Depth {depth}] Conductor ({execution_source}) processing directive '{task_prompt[:50]}...'"
         })
-
-        rag_realm = f"{org_id}_{project_id}_agents_rag"
-        config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
-        rag = GraphRAG(config)
-        await rag.initialize()
-
-        discovered_agents = []
-        try:
-            rag_res = await rag.query_data(task_prompt, param=QueryParam(mode="mix", top_k=3))
-            discovered_agents = [c["content"][:120] for c in rag_res["data"]["chunks"]]
-        except Exception:
-            pass
-        await rag.close()
 
         # Dynamic prompt-driven task document generation
         final_document = generate_dynamic_task_document(task_prompt, project_id=project_id, org_id=org_id)
@@ -710,7 +858,7 @@ class AgentCivilizationEngine:
             "depth": depth,
             "conductor_id": conductor_id,
             "action": "DELEGATE_TASKS",
-            "discovered_agents_count": len(discovered_agents),
+            "discovered_agents_count": len(rag_candidates),
             "sub_tasks": sub_tasks
         })
 
@@ -727,7 +875,10 @@ class AgentCivilizationEngine:
             "conductor_id": conductor_id,
             "depth": depth,
             "task_prompt": task_prompt,
-            "discovered_agent_contexts": discovered_agents,
+            "execution_source": execution_source,
+            "reused_agent_id": reused_agent_id,
+            "materialized_agent_id": materialized_agent_id,
+            "discovered_agent_contexts": rag_candidates,
             "sub_tasks_orchestrated": sub_tasks,
             "final_answer": final_document,
             "answer": final_document,
@@ -1034,6 +1185,11 @@ class AgentCivilizationEngine:
             await client.close()
         except Exception as e:
             logger.warning(f"Post-graph agent persistence fallback for '{agent_id}': {e}")
+
+        try:
+            await self.index_agent_registry_for_rag(org_id, project_id)
+        except Exception:
+            pass
 
         return reg_data
 

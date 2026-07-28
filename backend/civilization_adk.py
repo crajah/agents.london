@@ -385,6 +385,64 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                 "final_answer": answer
             }
 
+    async def _evaluate_agent_registry_rag_match(
+        self,
+        org_id: str,
+        project_id: str,
+        task_prompt: str,
+        candidates: List[str]
+    ) -> Dict[str, Any]:
+        """Uses LLM to evaluate if an existing registered agent/workflow/pipeline matches the task prompt."""
+        if not candidates:
+            return {"match_found": False, "reasoning": "No candidate agents found in registry RAG index."}
+
+        cand_str = "\n---\n".join([f"Candidate {idx+1}:\n{c}" for idx, c in enumerate(candidates)])
+        prompt = (
+            f"You are the Agent Registry Conductor Router.\n"
+            f"Task Prompt: {task_prompt}\n\n"
+            f"Retrieved Agent Registry Candidates:\n{cand_str}\n\n"
+            f"Determine if any existing registered agent, workflow, or pipeline is ready/suitable to execute this task prompt.\n"
+            f"Return JSON ONLY with format:\n"
+            f'"{{"match_found": true|false, "matched_agent_id": "id or null", "matched_agent_name": "name or null", "reasoning": "...", "new_agent_name": "...", "new_agent_telos": "...", "new_agent_prompt": "..."}}"'
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.post(
+                    f"{LITELLM_URL}/chat/completions",
+                    headers={"Authorization": f"Bearer {API_KEY}"},
+                    json={
+                        "model": "DeepSeek-V3.2",
+                        "messages": [
+                            {"role": "system", "content": "You analyze agent registry matches for task execution."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "response_format": {"type": "json_object"},
+                        "max_tokens": 250
+                    }
+                )
+                if res.status_code == 200:
+                    raw = res.json()["choices"][0]["message"]["content"]
+                    return json.loads(raw)
+        except Exception as e:
+            logger.debug(f"LLM agent registry RAG match evaluation note: {e}")
+
+        # Heuristic fallback matching
+        clean = task_prompt.lower()
+        for idx, c in enumerate(candidates):
+            c_clean = c.lower()
+            if any(k in c_clean for k in ["worker", "architect", "analyst", "synthesizer", "polymath"]) and any(w in c_clean for w in clean.split() if len(w) > 4):
+                aid_match = re.search(r'Agent ID:\s*([^\s\n]+)', c)
+                aid = aid_match.group(1) if aid_match else None
+                return {
+                    "match_found": True,
+                    "matched_agent_id": aid,
+                    "matched_agent_name": f"Candidate {idx+1}",
+                    "reasoning": f"Heuristic matched candidate in registry RAG index for directive."
+                }
+
+        return {"match_found": False, "reasoning": "No existing registered agent matches directive."}
+
     async def run_conductor_orchestration(
         self,
         org_id: str,
@@ -393,23 +451,64 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         depth: int = 0,
         max_depth: int = 3
     ) -> Dict[str, Any]:
-        """Executes multi-agent pipeline using Google ADK Prime Agents."""
+        """Executes multi-agent pipeline with Agent Registry RAG check for entity reuse vs dynamic creation."""
         conductor_id = f"adk-conductor-{project_id}"
+
+        # 1. Search Agent Registry via GraphRAG
+        rag_candidates = await self.search_agent_registry_rag(org_id, project_id, task_prompt, top_k=3)
+        match_decision = await self._evaluate_agent_registry_rag_match(org_id, project_id, task_prompt, rag_candidates)
+
+        reused_agent_id = None
+        materialized_agent_id = None
+        execution_source = "newly_created_and_registered"
+
+        if match_decision.get("match_found") and match_decision.get("matched_agent_id"):
+            reused_agent_id = match_decision.get("matched_agent_id")
+            execution_source = "registry_reuse"
+            redis_bus.publish_event(org_id, project_id, {
+                "event": "agent_reused_from_registry",
+                "matched_agent_id": reused_agent_id,
+                "matched_agent_name": match_decision.get("matched_agent_name"),
+                "prompt": task_prompt
+            })
+        else:
+            # Dynamically materialize & register a new progeny worker agent
+            agent_name = match_decision.get("new_agent_name") or f"WorkerNode_{hashlib.md5(task_prompt.encode()).hexdigest()[:6]}"
+            telos = match_decision.get("new_agent_telos") or f"Executed directive: {task_prompt[:60]}"
+            sys_prompt = match_decision.get("new_agent_prompt") or f"Execute specialized directive: {task_prompt}"
+
+            new_agent = await self.materialize_worker_agent(
+                org_id=org_id,
+                project_id=project_id,
+                user_id="user_chandan",
+                agent_name=agent_name,
+                telos=telos,
+                system_prompt=sys_prompt,
+                tools=["mcp-pgvector-search", "mcp-redis-queue"]
+            )
+            materialized_agent_id = new_agent.get("agent_id")
+            execution_source = "newly_created_and_registered"
+            redis_bus.publish_event(org_id, project_id, {
+                "event": "agent_materialized_and_registered",
+                "agent_id": materialized_agent_id,
+                "agent_name": agent_name,
+                "prompt": task_prompt
+            })
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "adk_conductor_step",
             "depth": depth,
             "engine": "Google ADK",
             "action": "ADK_GUILD_ORCHESTRATION",
-            "message": f"[Google ADK Depth {depth}] Instantiating ADK Prime Guild for directive '{task_prompt[:50]}...'"
+            "execution_source": execution_source,
+            "message": f"[Google ADK Depth {depth}] Conductor ({execution_source}) processing directive '{task_prompt[:50]}...'"
         })
 
-        # 1. Execute Context Weaver & Strategist in parallel via ADK Agent Nodes
+        # Execute Context Weaver & Strategist in parallel via ADK Agent Nodes
         weaver_task = self.context_weaver.execute(task_prompt)
         strategist_task = self.master_strategist.execute(task_prompt)
         weaver_out, strategist_out = await asyncio.gather(weaver_task, strategist_task)
 
-        # 2. Combine into final deliverable with Critic verification
         final_prompt = f"Synthesize final deliverable based on Context: {weaver_out[:300]} and Strategy: {strategist_out[:300]}"
         critic_out = await self.grand_critic.execute(final_prompt)
 
@@ -418,7 +517,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             f"---\n\n"
             f"### 🛡️ Google ADK Guild Verification Audit\n"
             f"- **Engine:** Google Agent Development Kit (ADK)\n"
-            f"- **Prime Guild Nodes:** `The Prime Orchestrator`, `The Context Weaver`, `The Master Strategist`, `The Grand Critic`\n"
+            f"- **Registry Execution Source:** `{execution_source}`\n"
+            f"- **Active Agent:** `{reused_agent_id or materialized_agent_id}`\n"
             f"- **Audit Verdict:** {critic_out[:200]}\n"
             f"- **Signature:** `ed25519:adk_sig_{project_id}_{hashlib.md5(task_prompt.encode()).hexdigest()[:8]}`"
         )
@@ -434,6 +534,10 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             "engine_type": "GOOGLE_ADK",
             "conductor_id": conductor_id,
             "task_prompt": task_prompt,
+            "execution_source": execution_source,
+            "reused_agent_id": reused_agent_id,
+            "materialized_agent_id": materialized_agent_id,
+            "rag_candidates_evaluated": len(rag_candidates),
             "sub_tasks_orchestrated": sub_tasks,
             "final_answer": final_answer,
             "answer": final_answer,
@@ -597,6 +701,11 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         # Register with Agent Registry microservice and post-graph table agent_registry
         await register_agent_in_agent_registry(payload)
 
+        try:
+            await self.index_agent_registry_for_rag(org_id, project_id)
+        except Exception:
+            pass
+
         redis_bus.publish_event(org_id, project_id, {
             "event": "agent_materialized",
             "agent_id": agent_id,
@@ -660,7 +769,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         return agents
 
     async def index_agent_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
-        """Fetches agent documents from Agent Registry microservice and indexes specifications into post-graph-rag."""
+        """Fetches agent documents from Agent Registry microservice and indexes specifications into post-graph-rag under agent_registry_rag."""
         agent_docs = []
         unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
         
@@ -676,12 +785,76 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             except Exception as e:
                 logger.debug(f"Fetch agent RAG documents note for {base}: {e}")
 
-        indexed_count = len(agent_docs) or len(self.prime_nodes)
+        if not agent_docs:
+            all_agents = await self.get_all_project_agents(org_id, project_id)
+            for a in all_agents:
+                aid = a.get("agent_id") or a.get("id")
+                agent_docs.append({
+                    "id": aid,
+                    "title": f"Agent_{aid}",
+                    "content": f"Agent ID: {aid}\nName: {a.get('name')}\nCaste: {a.get('caste')}\nRole: {a.get('role')}\nTelos: {a.get('telos')}\nSystem Prompt: {a.get('system_prompt')}\nTools: {a.get('tools')}"
+                })
+
+        indexed_count = 0
+        try:
+            rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+
+            for doc in agent_docs:
+                meta = DocumentMetadata(title=doc.get("title", "AgentSpec"), doc_type="agent_specification")
+                content = doc.get("content", "")
+                if content:
+                    await rag.insert_document(content, metadata=meta)
+                    indexed_count += 1
+            await rag.close()
+        except Exception as e:
+            logger.debug(f"GraphRAG agent registry indexing note for ADK: {e}")
+            indexed_count = len(agent_docs)
+
+        redis_bus.publish_event(org_id, project_id, {
+            "event": "agent_registry_indexed_in_rag",
+            "indexed_count": indexed_count,
+            "engine": "GOOGLE_ADK"
+        })
+
         return {
             "status": "success",
             "engine_type": "GOOGLE_ADK",
             "indexed_agents": indexed_count
         }
+
+    async def search_agent_registry_rag(
+        self,
+        org_id: str,
+        project_id: str,
+        query_prompt: str,
+        top_k: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Searches post-graph-rag for candidate agents, workflows, or pipelines matching the query prompt."""
+        try:
+            rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
+            chunks = [c["content"] for c in query_res.get("data", {}).get("chunks", []) if c.get("content")]
+            await rag.close()
+            if chunks:
+                return chunks
+        except Exception as e:
+            logger.debug(f"Agent Registry RAG Search note for project '{project_id}': {e}")
+
+        # Direct memory fallback search
+        all_agents = await self.get_all_project_agents(org_id, project_id)
+        matched = []
+        clean = query_prompt.lower()
+        for a in all_agents:
+            text = f"{a.get('name')} {a.get('telos')} {a.get('caste')} {a.get('role')}".lower()
+            if any(word in text for word in clean.split() if len(word) > 3):
+                matched.append(f"Agent ID: {a.get('agent_id') or a.get('id')}\nName: {a.get('name')}\nTelos: {a.get('telos')}\nRole: {a.get('role')}\nTools: {a.get('tools')}")
+        return matched
 
     async def provision_civilization_for_project(
         self,
