@@ -120,10 +120,28 @@ async def lifespan(app: FastAPI):
     await sync_from_post_graph()
     yield
 
+tags_metadata = [
+    {"name": "Agent Registration", "description": "Register, retrieve, update, and manage agent version histories."},
+    {"name": "GraphRAG Indexing", "description": "Generate dynamic Markdown documents and index agent specifications into post-graph-rag."},
+    {"name": "System", "description": "Health check and microservice status endpoints."}
+]
+
 app = FastAPI(
-    title="Agent Registry & Ontological Service",
-    description="Kubernetes Service for versioned, cryptographically bound agent representations & RAG discovery",
-    version="1.2.0",
+    title="Agent Registry & Ontological Microservice",
+    description="""
+    # 🤖 agent.london Agent Registry OpenAPI Specs
+    
+    Manages versioned, cryptographically bound agent representations (Telos, Castes, Cryptographic Signatures, Progeny Tracking) backed by PostgreSQL `post-graph` and `post-graph-rag`.
+    
+    - **Interactive Swagger Documentation:** [/docs](/docs)
+    - **ReDoc API Documentation:** [/redoc](/redoc)
+    - **OpenAPI Schema JSON:** [/openapi.json](/openapi.json)
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata,
     lifespan=lifespan
 )
 

@@ -122,10 +122,27 @@ async def lifespan(app: FastAPI):
     await register_default_google_search_tool()
     yield
 
+tags_metadata = [
+    {"name": "Tool Registry", "description": "Register, retrieve, link, and execute Model Context Protocol (MCP) tools."},
+    {"name": "System", "description": "Health check and microservice status endpoints."}
+]
+
 app = FastAPI(
-    title="MCP Tool Registry Service",
-    description="Kubernetes Service for registering and linking MCP tools to organizations and projects",
-    version="1.1.0",
+    title="MCP Tool Registry Microservice",
+    description="""
+    # 🧰 agent.london MCP Tool Registry OpenAPI Specs
+    
+    Manages registration, capability discovery, and execution binding for Model Context Protocol (MCP) tools (Search, Code Execution, SQL Queries, Kubernetes Operators) backed by `post-graph`.
+    
+    - **Interactive Swagger Documentation:** [/docs](/docs)
+    - **ReDoc API Documentation:** [/redoc](/redoc)
+    - **OpenAPI Schema JSON:** [/openapi.json](/openapi.json)
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata,
     lifespan=lifespan
 )
 
