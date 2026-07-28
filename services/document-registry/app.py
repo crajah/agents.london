@@ -77,10 +77,29 @@ def get_rag_engine(realm: str, space: Optional[str] = "default") -> Optional[Any
     )
     return GraphRAG(config)
 
+tags_metadata = [
+    {"name": "Document Spaces", "description": "Create and manage document spaces scoped per project."},
+    {"name": "Document Upload & Ingestion", "description": "Upload PDFs, DOCX, Markdown files with Docling / PyPDF text extraction."},
+    {"name": "GraphRAG Knowledge Queries", "description": "Query indexed knowledge graph vector memory across spaces or project-wide."},
+    {"name": "System", "description": "Health check and microservice status endpoints."}
+]
+
 app = FastAPI(
     title="agent.london Document Registry Microservice",
-    description="Document Space Management, Docling Content Extraction, and post-graph-rag Knowledge Graph Indexing",
-    version="2.0.0"
+    description="""
+    # 📄 agent.london Document Registry OpenAPI Specs
+    
+    Manages project document spaces, multi-document uploading, Docling structured text extraction, and `post-graph-rag` knowledge graph indexing.
+    
+    - **Interactive Swagger Documentation:** [/docs](/docs)
+    - **ReDoc API Documentation:** [/redoc](/redoc)
+    - **OpenAPI Schema JSON:** [/openapi.json](/openapi.json)
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata
 )
 
 # Models

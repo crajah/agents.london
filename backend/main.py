@@ -28,10 +28,30 @@ except (ImportError, ModuleNotFoundError):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+tags_metadata = [
+    {"name": "Civilization Engine", "description": "Core multi-agent Conductor orchestration, ReAct loops, and dynamic task synthesis."},
+    {"name": "Playground", "description": "Interactive prompt testing, detector-renderers, and live LLM streaming."},
+    {"name": "Document Registry", "description": "Multi-document space uploading, Docling parsing, and GraphRAG indexing."},
+    {"name": "Agent Management", "description": "Materialize progeny worker nodes and inspect 28 Prime Node hierarchies."},
+    {"name": "System & Telemetry", "description": "Health checks, live cluster metrics, and Redis bus events."}
+]
+
 app = FastAPI(
     title="agent.london Backend API",
-    description="Multi-Tenant Agent Civilization API scaling to 1 Billion Agents",
-    version="1.1.0"
+    description="""
+    # 🏛️ agent.london OpenAPI / Swagger Specifications
+    
+    Multi-tenant Agent Civilization API scaling to 1 Billion Autonomous Agents with Google ADK, post-graph, post-graph-rag, and Model Context Protocol (MCP).
+    
+    - **Interactive Swagger Documentation:** [/docs](/docs)
+    - **ReDoc API Documentation:** [/redoc](/redoc)
+    - **OpenAPI Schema JSON:** [/openapi.json](/openapi.json)
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata
 )
 
 app.add_middleware(

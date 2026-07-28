@@ -182,6 +182,75 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         self.master_strategist = self.prime_nodes["master-strategist"]
         self.grand_critic = self.prime_nodes["grand-critic"]
 
+    async def fetch_session_chat_history(
+        self,
+        org_id: str,
+        project_id: str,
+        session_id: str,
+        limit: int = 6
+    ) -> List[Dict[str, str]]:
+        """Fetches recent short-term conversation turns from post-graph sessions table."""
+        if not session_id:
+            return []
+        try:
+            pg_client = AsyncPostGraph(dsn=self.db_uri)
+            await pg_client.connect()
+            session_vertex = await pg_client.get_vertex("sessions", realm=org_id, vertex_id=session_id)
+            if session_vertex and hasattr(session_vertex, "payload") and isinstance(session_vertex.payload, dict):
+                history = session_vertex.payload.get("chat_history", [])
+                await pg_client.close()
+                return history[-limit:]
+            await pg_client.close()
+        except Exception as e:
+            logger.debug(f"Note fetching chat history for session '{session_id}': {e}")
+        return []
+
+    async def index_chat_turn_to_rag(
+        self,
+        org_id: str,
+        project_id: str,
+        user_prompt: str,
+        agent_answer: str
+    ):
+        """Indexes user turn into post-graph-rag vector memory for long-term semantic retrieval."""
+        try:
+            rag_realm = f"{org_id}_{project_id}_chat_memory"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            meta = DocumentMetadata(title=f"ChatTurn_{datetime.utcnow().isoformat()}", doc_type="chat_history")
+            chunk_content = f"User: {user_prompt}\nAssistant: {agent_answer}"
+            await rag.insert_document(chunk_content, metadata=meta)
+            await rag.close()
+        except Exception as e:
+            logger.debug(f"Note indexing chat turn to post-graph-rag: {e}")
+
+    async def fetch_document_registry_rag_context(
+        self,
+        project_id: str,
+        user_prompt: str,
+        top_k: int = 3
+    ) -> List[str]:
+        """Queries post-graph-rag across all document registry spaces for the given project_id."""
+        try:
+            config = RAGConfig(
+                api_base=LITELLM_URL,
+                api_key=API_KEY,
+                model="DeepSeek-V3.2",
+                db_uri=self.db_uri,
+                realm=project_id,
+                space="default"
+            )
+            rag = GraphRAG(config)
+            await rag.initialize()
+            query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=top_k))
+            chunks = [c["content"] for c in query_res.get("data", {}).get("chunks", []) if c.get("content")]
+            await rag.close()
+            return chunks
+        except Exception as e:
+            logger.debug(f"Note querying document registry RAG for project '{project_id}': {e}")
+        return []
+
     async def process_user_prompt_with_llm(
         self,
         org_id: str,
@@ -189,10 +258,45 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         user_prompt: str,
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """ADK Intent Router & Dispatcher."""
+        """ADK Intent Router & Dispatcher incorporating chat history & Document Registry RAG context."""
         clean = user_prompt.strip().lower()
 
-        # Check for RAG memory query intent
+        # 1. Fetch short-term chat history from session
+        short_term_history = []
+        if session_id:
+            short_term_history = await self.fetch_session_chat_history(org_id, project_id, session_id)
+
+        # 2. Fetch long-term past chat memory via post-graph-rag vector search
+        long_term_chat_rag = []
+        try:
+            rag_realm = f"{org_id}_{project_id}_chat_memory"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=2))
+            long_term_chat_rag = [c["content"] for c in query_res.get("data", {}).get("chunks", [])]
+            await rag.close()
+        except Exception:
+            pass
+
+        # 3. Fetch Document Registry Knowledge RAG context (uploaded PDFs, DOCX, Markdown)
+        doc_registry_rag = await self.fetch_document_registry_rag_context(project_id, user_prompt, top_k=3)
+
+        # Build Tri-Tier Combined Context Prompt
+        context_prefix = ""
+        if short_term_history:
+            turns_text = "\n".join([f"{t.get('role', 'user').capitalize()}: {t.get('content', '')}" for t in short_term_history])
+            context_prefix += f"### 💬 Recent Conversation Turns:\n{turns_text}\n\n"
+        if long_term_chat_rag:
+            rag_text = "\n---\n".join(long_term_chat_rag)
+            context_prefix += f"### 🧠 Relevant Past Chat Memory:\n{rag_text}\n\n"
+        if doc_registry_rag:
+            doc_text = "\n---\n".join(doc_registry_rag)
+            context_prefix += f"### 📄 Document Registry Knowledge Context:\n{doc_text}\n\n"
+
+        augmented_prompt = f"{context_prefix}Current User Directive: {user_prompt}" if context_prefix else user_prompt
+
+        # Check for explicit RAG memory query intent
         if any(k in clean for k in ["search", "find document", "rag", "knowledge", "lookup"]):
             rag_realm = f"{org_id}_{project_id}_agents_rag"
             config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
@@ -206,30 +310,36 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                 pass
             await rag.close()
 
-            answer = await self.context_weaver.execute(f"Context Docs: {rag_docs}\nQuery: {user_prompt}")
+            answer = await self.context_weaver.execute(f"Document Context: {rag_docs}\n\n{augmented_prompt}", project_id=project_id, org_id=org_id)
+            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, answer))
             return {
                 "mode": "RAG_QUERY",
                 "engine_type": "GOOGLE_ADK",
-                "reasoning": "Executed via Google ADK Context Weaver Node with post-graph-rag.",
+                "reasoning": "Executed via Google ADK Context Weaver Node with combined chat history & post-graph-rag.",
                 "retrieved_chunks": rag_docs,
+                "chat_history_used": len(short_term_history),
                 "answer": answer,
                 "final_answer": answer
             }
 
         elif any(k in clean for k in ["gtm", "strategy", "orchestrate", "build", "workflow", "plan"]):
-            res = await self.run_conductor_orchestration(org_id, project_id, user_prompt)
+            res = await self.run_conductor_orchestration(org_id, project_id, augmented_prompt)
             res["engine_type"] = "GOOGLE_ADK"
+            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, res.get("final_answer", "")))
             return res
         elif any(k in clean for k in ["tool", "query", "audit"]):
-            res = await self.run_react_loop(org_id, project_id, user_prompt)
+            res = await self.run_react_loop(org_id, project_id, augmented_prompt)
             res["engine_type"] = "GOOGLE_ADK"
+            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, res.get("final_answer", "")))
             return res
         else:
-            answer = await self.conductor.execute(user_prompt)
+            answer = await self.conductor.execute(augmented_prompt, project_id=project_id, org_id=org_id)
+            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, answer))
             return {
                 "mode": "SIMPLE_CHAT",
                 "engine_type": "GOOGLE_ADK",
-                "reasoning": "Executed via Google ADK Prime Orchestrator Node.",
+                "reasoning": "Executed via Google ADK Prime Orchestrator Node with chat memory.",
+                "chat_history_used": len(short_term_history),
                 "answer": answer,
                 "final_answer": answer
             }
