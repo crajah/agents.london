@@ -1,6 +1,6 @@
 # agent.london — Multi-Tenant Agent Civilization at Scale (1B Agents)
 
-**agent.london** is an enterprise-grade platform for materializing, orchestrating, and governing an agent civilization scaling up to **1 billion synthetic agents**. Built on **PostgreSQL graph database tables (`post-graph`)**, **`{space}` sub-grouping**, **shared session memory (`post-graph-rag`)**, **Redis work queues**, **LiteLLM router integration**, **Google Custom Search GCP MCP tools**, **Federated Enterprise Identity (UAID & X.509 Attestation)**, and **Kubernetes microservices (`Kagent` CRDs)**.
+**agent.london** is an enterprise-grade platform for materializing, orchestrating, and governing an agent civilization scaling up to **1 billion synthetic agents**. Built on **Google Agent Development Kit (ADK)**, **PostgreSQL graph database tables (`post-graph`)**, **`{space}` sub-grouping**, **shared session memory (`post-graph-rag`)**, **Redis work queues**, **in-cluster LiteLLM service integration**, **Google Custom Search GCP MCP tools**, **Federated Enterprise Identity (UAID & X.509 Attestation)**, and **Kubernetes microservices (`Kagent` CRDs)**.
 
 ---
 
@@ -9,26 +9,27 @@
 ```
 +-----------------------------------------------------------------------------------+
 |                                  REACT FRONTEND UI                                |
-|   (ChatGPT Playground, Solitary/Workflow Modes, 28 Prime Visualizer, BYOM)         |
+|  (Playground Detector-Renderer, Universes Scoping, 28 Prime Visualizer, BYOM)      |
 +------------------------------------------+----------------------------------------+
                                            | WebSocket / REST
                                            v
 +-----------------------------------------------------------------------------------+
 |                            BACKEND BFF & INTENT ROUTER                            |
-| FastApi service with LLM Intent Classifier (SOLITARY, WORKFLOW, RAG, REACT, CHAT) |
+|  FastAPI service with Google ADK Engine Factory (GOOGLE_ADK / NATIVE Strategies)  |
+|  Tri-Tier Context Fusion: Short-Term Session + Chat RAG + Document Registry RAG   |
 +---------------+--------------------------+------------------------+---------------+
                 |                          |                        |
                 v                          v                        v
 +---------------+-------+  +---------------+-------+  +-------------+---------------+
-|    SERVICES /         |  |    SERVICES /         |  |     REDIS WORK & PUB/SUB      |
-|   AGENT-REGISTRY      |  |   TOOL-REGISTRY       |  |  Task Queues per {project},   |
-| (UAID, X.509 & Kagent)|  | (GCP Search & MCP)    |  |   Event Stream & Pub/Sub      |
+|    SERVICES /         |  |    SERVICES /         |  |    SERVICES /             |
+|   AGENT-REGISTRY      |  |   TOOL-REGISTRY       |  |   DOCUMENT-REGISTRY       |
+| (UAID, X.509 & Kagent)|  | (GCP Search & MCP)    |  | (Docling & post-graph-rag) |
 +---------------+-------+  +---------------+-------+  +-------------+---------------+
                 |                          |                        |
-                +--------------------+-----+                        |
-                                     |                              |
-                                     v                              v
-+------------------------------------+------------------------------+---------------+
+                +--------------------+-----+------------------------+
+                                     |
+                                     v
++------------------------------------+----------------------------------------------+
 |                         POSTGRESQL POSTGRAPH DATABASE                             |
 |   post-graph: Isolated Project {realm} & {space} Sub-grouping (Agents & Progeny) |
 |   post-graph-rag: Shared Session Memory, Embeddings & Guardrail Evaluation        |
@@ -39,51 +40,38 @@
 
 ## 🔑 Key Architectural Pillars
 
-### 1. 💬 ChatGPT-style Interactive Playground & Execution Modes
-The Playground interface ([PlaygroundView.jsx](file:///Users/crajah/Dropbox/_CREATIVE_/_GITHUB_ME/agents.london/frontend/src/components/PlaygroundView.jsx)) provides a ChatGPT-like interaction model:
-- **Solitary Agent Mode**: Direct 1-on-1 interaction with a specific target agent (one of the 28 Primes or custom progeny worker) using its specific Telos system prompt and assigned LLM model.
-- **Multi-Agent Workflow Mode**: Conductor DAG guild orchestration decomposing user prompts into parallel sub-tasks across governing agents with multi-page consensus reports.
-- **Model Router Selector**: Select models on the fly (`DeepSeek-V3.2`, `Meta-Llama-3.3-70B`, `GPT-OSS 120B`, `Gemma 4 31B`, `MiniMax M2.7`).
-- **Full Document Output**: Synthesizes structured 5-section Markdown reports (Executive Summary, Guild Allocation, Quantitative Data Tables, Strategic Synthesis, and Cryptographic Signoff).
+### 1. 🤖 Google Agent Development Kit (ADK) Engine & Dual Strategy Architecture
+- **Primary Engine Strategy (`GOOGLE_ADK`)**: Leverages Google GenAI SDK & Agent Development Kit (ADK) agent specs (`ADKAgentNode`), multi-agent delegation, and structured tool calling.
+- **Native Python Strategy (`NATIVE`)**: High-performance Python engine with zero framework dependencies.
+- **Dynamic Factory Switcher (`backend/civilization_factory.py`)**: Seamless hot-swapping controlled by `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` or `"NATIVE"`).
 
 ---
 
-### 2. 🏛️ Federated Enterprise Identity (UAID, Entra & X.509 Attestation)
-- **Unique Agent Identifier (UAID)**: Digital Passport issued by Federated Root CA:
-  `uaid:london:auth:{project_id}:{agent_id}:v{version}`
-- **Entra Agent 365 Principal**: Security principal mapping for IAM access control within Cortex:
-  `spn:agent365:{agent_id}@{project_id}.entra.agent.london`
-- **X.509 Certificate Codebase Attestation**: Cryptographically binds the agent's identity to the SHA-256 hash digest of its system prompt, codebase, and configuration (`codebase_hash_attestation: sha256:{hash}`).
+### 2. 🧠 Tri-Tier Context Fusion Architecture
+- **Tier 1 (Short-Term Session Memory)**: Reads recent conversation turns for `session_id` from `post-graph` table `sessions`.
+- **Tier 2 (Long-Term Chat History RAG)**: Embeds and retrieves past chat turns via `post-graph-rag` under realm `{org_id}_{project_id}_chat_memory`.
+- **Tier 3 (Document Registry Knowledge RAG)**: Embeds and retrieves uploaded PDFs, DOCX, Markdown, and spreadsheets parsed by Docling/PyPDF across project document spaces.
 
 ---
 
-### 3. 📜 Comprehensive 6-Section Production System Prompts
-Every agent operates under an exhaustive 6-section system prompt:
-1. **Identity & Cognitive Mandate** (Caste, Topology, Telos, Cryptographic Provenance).
-2. **Constitutional Bindings & 4 Inviolable Directives** (Preservation, Purpose, Compliance, Efficiency).
-3. **Standard Operating Protocol & Execution Workflow** (Ingestion, RAG Search, Decomposed Execution, Self-Correction, Signoff).
-4. **Tool Execution & MCP Integration Guidelines** (Defensive error handling & schema compliance).
-5. **Response Formatting & Presentation Standards** (GitHub-Flavored Markdown, LaTeX math, comparative tables).
-6. **Provenance Signature Header** (`[ED25519 VERIFIED: sig_...]`).
+### 3. 🎯 In-Cluster LiteLLM Service Target Priority
+- **Primary In-Cluster Target**: Connects to in-cluster LiteLLM / Model Router Kubernetes service (`http://litellm-service.default.svc.cluster.local:80/v1` via ConfigMap `00-litellm-configmap.yaml`).
+- **Persisted User Custom Model Exception**: Automatically checks `custom_model_configs` table in `post-graph`. If a user/project has saved a custom model and API key, requests route to the custom model endpoint.
 
 ---
 
-### 4. 🔒 Dual Isolation: `{realm}` & `{space}` Sub-grouping (`post-graph`)
-- **Macro-Isolation (`realm = project_id`)**: Strict project-level data separation across all PostgreSQL tables and Redis queues.
-- **Micro-Isolation (`space`)**: Application-level sub-grouping (`space VARCHAR(255) DEFAULT 'default'`) allowing teams to segregate datasets (e.g. `production`, `sandbox`, `staging`) within a project.
+### 4. 💬 ChatGPT-style Interactive Playground & Detector-Renderer
+- **Detector-Renderer Architecture**: Automatically detects model output formats (HTML, SVG, Markdown, Code, Data Tables) and renders them cleanly in iframe sandboxes or rich UI widgets.
+- **Project Universes Scoping**: Filters visible projects and spaces dynamically based on the authenticated user's organization permissions (`{org_id}` $\to$ `{user}` $\to$ `{project}`).
 
 ---
 
-### 5. 🔍 GCP Google Custom Search MCP Microservice (`mcp-google-search`)
-- Integrated into `services/tool-registry/app.py` (`POST /tools/google-search`).
-- Leverages GCP Custom Search API with secret key management (`GOOGLE_SEARCH_API_KEY`) and fallback Search Engine ID (`GOOGLE_SEARCH_CX`).
-- Accessible to authorized agents when configured in their tool registry access policy.
-
----
-
-### 6. 🏰 28 Prime Agent Castes & Persistent Progeny Recovery
-- Every project provisions 28 permanent Prime Agents spanning 4 core castes (Genesis, Archivist, Architect, Auditor).
-- **Agent Recovery (`GET /api/projects/{project_id}/agents`)**: Persists and recovers all Primes and custom progeny agents from `post-graph` tables (`agents`, `agents_data`).
+### 5. 📚 Interactive Swagger / OpenAPI 3.0 Specifications
+Every backend component provides interactive Swagger & ReDoc API documentation:
+- **Backend BFF API (`:8000`)**: [/docs](http://localhost:8000/docs) | [/redoc](http://localhost:8000/redoc) | `/openapi.json`
+- **Agent Registry (`:8001`)**: [/docs](http://localhost:8001/docs) | [/redoc](http://localhost:8001/redoc) | `/openapi.json`
+- **Tool Registry (`:8002`)**: [/docs](http://localhost:8002/docs) | [/redoc](http://localhost:8002/redoc) | `/openapi.json`
+- **Document Registry (`:8003`)**: [/docs](http://localhost:8003/docs) | [/redoc](http://localhost:8003/redoc) | `/openapi.json`
 
 ---
 
@@ -92,30 +80,34 @@ Every agent operates under an exhaustive 6-section system prompt:
 ```
 agents.london/
 ├── frontend/                     # Modern React + Vite Frontend UI
-│   ├── src/components/           # Playground, Visualizer, Agent & Tool Registries
+│   ├── src/components/           # Playground, Detector-Renderer, Document Registry, Visualizer
 │   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
 ├── backend/                      # Backend for Frontend (BFF) FastAPI Service
-│   ├── main.py                   # Playground endpoints, REST, WebSocket broadcast, LLM Router
-│   ├── civilization.py           # 1B Civilization Engine & PostGraph persistence
-│   ├── prompts.py                # Comprehensive 6-Section System Prompt Generator
+│   ├── main.py                   # FastAPI app, OpenAPI tags, WebSocket broadcast, LLM Router
+│   ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
+│   ├── civilization_adk.py       # Google ADK Engine Implementation & 28 Prime Nodes
+│   ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
+│   ├── civilization.py           # Native Python Engine & PostGraph persistence
+│   ├── prompts.py                # 6-Section Production System Prompts
 │   ├── redis_bus.py              # Redis Pub/Sub & Task Queues per project
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── services/                     # Kubernetes Microservices
 │   ├── agent-registry/           # UAID, X.509 Attestation & Kagent Materialization Service
-│   │   ├── app.py
-│   │   ├── requirements.txt
-│   │   ├── Dockerfile
-│   │   └── README.md
-│   └── tool-registry/            # MCP Tool Registry Microservice (GCP Search, SQL, pgvector)
-│       ├── app.py
-│       ├── requirements.txt
-│       ├── Dockerfile
-│       └── README.md
-├── deploy/k8s/                   # Kubernetes deployment manifests & secret templates
-├── scripts/                      # Deployment & test runner scripts
+│   ├── tool-registry/            # MCP Tool Registry Microservice (GCP Search, SQL, pgvector)
+│   └── document-registry/        # Multi-document upload, Docling parsing, post-graph-rag indexing
+├── deploy/k8s/                   # Kubernetes deployment manifests & ConfigMaps
+│   ├── 00-litellm-configmap.yaml # Central LiteLLM service & CIVILIZATION_ENGINE_TYPE config
+│   ├── 00-secrets.yaml
+│   ├── 01-agent-registry.yaml
+│   ├── 02-tool-registry.yaml
+│   ├── 03-backend.yaml
+│   ├── 04-frontend.yaml
+│   ├── 05-ingress.yaml
+│   └── 06-document-registry.yaml
+├── scripts/                      # Automated deployment & test runner scripts
 ├── test_civilization.py          # Standalone verification test suite
 └── docker-compose.yml            # Local Redis + Postgres + Backend compose manifest
 ```
@@ -135,7 +127,7 @@ chmod +x scripts/run_local_backend.sh
 docker-compose up --build
 ```
 
-### Option 3: Manual Startup
+### Option 3: Manual Microservices Startup
 ```bash
 # Terminal 1: Agent Registry Microservice
 cd services/agent-registry && uvicorn app:app --port 8001
@@ -143,10 +135,13 @@ cd services/agent-registry && uvicorn app:app --port 8001
 # Terminal 2: Tool Registry Microservice
 cd services/tool-registry && uvicorn app:app --port 8002
 
-# Terminal 3: Backend BFF Service
-cd backend && uvicorn main:app --port 8000
+# Terminal 3: Document Registry Microservice
+cd services/document-registry && uvicorn app:app --port 8003
 
-# Terminal 4: React Frontend UI
+# Terminal 4: Backend BFF Service (Google ADK default)
+cd backend && export CIVILIZATION_ENGINE_TYPE="GOOGLE_ADK" && uvicorn main:app --port 8000
+
+# Terminal 5: React Frontend UI
 cd frontend && npm install && npm run dev
 ```
 
@@ -160,4 +155,4 @@ Run the full end-to-end test suite:
 python test_civilization.py
 ```
 
-Validates user creation, project provisioning, 28 Prime Caste scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Google Search MCP tool execution, and Playground chat workflows.
+Validates user creation, project provisioning, Google ADK 28 Prime Node scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Document Registry RAG, Google Search MCP tool execution, and Playground chat workflows.

@@ -21,6 +21,14 @@ The **Agent Registry Service** (`services/agent-registry/app.py`) is a Kubernete
 
 ---
 
+## 📜 Swagger & OpenAPI Specifications
+
+- **Interactive Swagger UI**: [http://localhost:8001/docs](http://localhost:8001/docs)
+- **ReDoc Documentation**: [http://localhost:8001/redoc](http://localhost:8001/redoc)
+- **OpenAPI Schema JSON**: [http://localhost:8001/openapi.json](http://localhost:8001/openapi.json)
+
+---
+
 ## 🔌 API Endpoints Summary
 
 - **`POST /agents/register`**: Registers a new agent entity or version.
@@ -33,7 +41,7 @@ The **Agent Registry Service** (`services/agent-registry/app.py`) is a Kubernete
 
 ---
 
-## 🚀 Running locally
+## 🚀 Running Locally
 
 ```bash
 cd services/agent-registry

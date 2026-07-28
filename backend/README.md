@@ -1,37 +1,49 @@
 # agent.london — Backend BFF Service & Civilization Engine
 
-The **Backend for Frontend (BFF)** is a high-performance Python FastAPI service (`backend/main.py` and `backend/civilization.py`) that powers the **agent.london 1B Agent Civilization Engine**.
+The **Backend for Frontend (BFF)** is a FastAPI service (`backend/main.py`) powering the **agent.london 1B Agent Civilization Engine** with a **Dual-Engine Strategy Architecture** (Google ADK & Native Python).
 
 ---
 
-## 🏗️ Core Modules
+## 🏗️ Core Architecture & Engine Modules
 
-1. **`backend/civilization.py`**:
-   - **`AgentCivilizationEngine`**: Main engine orchestrating multi-tenant users, projects, 28 Prime Caste permanent agents, progeny workers, token economics, and audit scores.
-   - **`process_user_prompt_with_llm()`**: Autonomous LLM Intent Router categorizing queries into `SIMPLE_CHAT`, `RAG_QUERY`, `MULTI_AGENT_ORCHESTRATION`, `REACT_TOOL_LOOP`, or `MULTI_TURN_CONVERSATION`.
-   - **PostGraph Database Persistence**: Persists all entities into PostgreSQL graph tables (`users`, `projects`, `agents`, `agents_data`, `custom_model_configs`, `executions_data`).
-   - **Dynamic Project API Keys**: Generates and persists unique 16-character keys (`XXXX-XXXX-XXXX-XXXX`) per `{project_id}` realm.
+1. **`backend/civilization_interface.py`**:
+   - **`AbstractCivilizationEngine`**: Abstract base class defining unified engine methods (`process_user_prompt_with_llm`, `run_conductor_orchestration`, `run_react_loop`, `provision_civilization_for_project`).
 
-2. **`backend/redis_bus.py`**:
+2. **`backend/civilization_adk.py`**:
+   - **`GoogleADKCivilizationEngine`**: Google Agent Development Kit (ADK) implementation with 28 Prime Node specs (`ADKAgentNode`), multi-agent delegation, and RAG memory search.
+
+3. **`backend/civilization_factory.py`**:
+   - **`get_civilization_engine()`**: Factory router inspecting `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` default vs `"NATIVE"`).
+
+4. **`backend/civilization.py`**:
+   - **`AgentCivilizationEngine`**: High-performance Native Python engine with zero framework dependencies.
+
+5. **`backend/redis_bus.py`**:
    - **`RedisBus`**: Work queue and pub/sub engine scoped strictly per `{project_id}` realm.
-   - **Task Queues**: `agent:queue:{project_id}:{agent_id}`.
-   - **Event Channels**: `agent:events:{org_id}:{project_id}`.
-   - **Fallback**: In-memory queue fallback if Redis is unreachable locally.
-
-3. **`backend/main.py`**:
-   - **REST & WebSocket Gateway**: Exposes API endpoints for Playground chat, Conductor multi-agent DAG execution, ReAct loops, MCP tool calls, BYOM model configs, and real-time execution telemetry.
 
 ---
 
-## 🔌 API Endpoints Summary
+## 🧠 Tri-Tier Context Fusion
 
-- **`POST /api/agent/interact`**: Unified entrypoint using LLM Intent Router.
-- **`GET /api/projects/{project_id}/key`**: Retrieves dynamic project API key from `post-graph`.
-- **`POST /api/projects/{project_id}/key/regenerate`**: Regenerates a brand-new project API key.
-- **`POST /api/tasks/enqueue`**: Enqueues an async task into project Redis work queue.
-- **`POST /api/tasks/dequeue/{agent_id}`**: Dequeues next pending task for an agent.
-- **`GET /api/metrics/telemetry`**: Retrieves execution telemetry (bytes in/out, tokens in/out).
-- **`GET /api/models`**: Lists available models from LiteLLM router or custom BYOM endpoints.
+All LLM queries automatically assemble a 3-tier context header before calling Google ADK Prime Agents:
+- **Tier 1 (Short-Term Session Memory)**: Reads recent turns from PostgreSQL `sessions` table.
+- **Tier 2 (Long-Term Chat RAG Memory)**: Retrieves past conversation turns from `post-graph-rag` realm `{org_id}_{project_id}_chat_memory`.
+- **Tier 3 (Document Registry RAG Knowledge)**: Retrieves matching chunks from uploaded PDFs, DOCX, Markdown files from space realm `{project_id}`.
+
+---
+
+## 🎯 Model Target Resolution Order
+
+1. **Primary Target**: In-cluster LiteLLM service (`http://litellm-service.default.svc.cluster.local:80/v1` via ConfigMap `00-litellm-configmap.yaml`).
+2. **User Custom Model Exception**: Checks `custom_model_configs` table in `post-graph`. If active for `{project_id}`, routes to user custom model & API key.
+
+---
+
+## 📜 Swagger & OpenAPI Specifications
+
+- **Interactive Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc Documentation**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- **OpenAPI Schema JSON**: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 
 ---
 
@@ -39,7 +51,13 @@ The **Backend for Frontend (BFF)** is a high-performance Python FastAPI service 
 
 ```bash
 cd backend
-python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+
+# Option A: Run with Google ADK Engine (Default)
+export CIVILIZATION_ENGINE_TYPE="GOOGLE_ADK"
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# Option B: Run with Native Engine
+export CIVILIZATION_ENGINE_TYPE="NATIVE"
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```

@@ -328,7 +328,7 @@ def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_ci
                     ],
                     "max_tokens": 4096
                 },
-                timeout=15.0
+                timeout=3.0
             )
             if res.status_code == 200:
                 doc = res.json()["choices"][0]["message"]["content"].strip()
@@ -569,11 +569,12 @@ class AgentCivilizationEngine:
         project_id: str,
         user_id: str,
         agent_name: str,
-        system_prompt: str,
         telos: str = "Execute specialized sub-task objectives",
+        system_prompt: str = "Default worker agent prompt",
         parent_agent_id: Optional[str] = None,
         tools: Optional[List[str]] = None,
-        custom_guardrails: Optional[List[str]] = None
+        custom_guardrails: Optional[List[str]] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """Materialize a new worker agent (progeny) with cryptographic keypair and signed provenance."""
         parent_id = parent_agent_id or f"creator-{project_id}"
@@ -986,12 +987,14 @@ class AgentCivilizationEngine:
         project_id: str,
         user_id: str,
         agent_name: str,
-        system_prompt: str,
+        telos: str = "Execute specialized sub-task objectives",
+        system_prompt: str = "Default worker agent prompt",
         parent_agent_id: Optional[str] = None,
         tools: Optional[List[str]] = None,
         custom_guardrails: Optional[List[Dict[str, Any]]] = None,
         caste: Optional[str] = "progeny",
-        model_name: Optional[str] = "DeepSeek-V3.2"
+        model_name: Optional[str] = "DeepSeek-V3.2",
+        **kwargs
     ) -> Dict[str, Any]:
         """Materializes a new agent in post-graph database (either spawned from parent or completely new)."""
         clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', agent_name.strip())
@@ -1090,6 +1093,10 @@ class AgentCivilizationEngine:
             "revocation_status": "ACTIVE_VERIFIED",
             "digital_passport_status": "VALIDATED_BY_FEDERATED_ROOT_CA"
         }
+
+        pub_key = f"ed25519:pub_{agent_id}"
+        hash_digest = hashlib.sha256(f"{agent_id}:{telos}:{system_prompt}:{parent_agent_id}".encode()).hexdigest()
+        signature = f"ed25519:sig_{parent_agent_id}_{agent_id}"
 
         payload = {
             "agent_id": agent_id,
