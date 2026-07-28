@@ -50,3 +50,46 @@ class AbstractCivilizationEngine(ABC):
     ) -> Dict[str, Any]:
         """Provisions full 28 Prime Node agents hierarchy for project."""
         pass
+
+    @abstractmethod
+    async def create_user(self, org_id: str, username: str, email: str) -> Dict[str, Any]:
+        """Creates user entity in civilization system."""
+        pass
+
+    @abstractmethod
+    async def create_project(
+        self,
+        org_id: str,
+        user_id: str,
+        project_name: str,
+        constitution_rules: Optional[list] = None
+    ) -> Dict[str, Any]:
+        """Creates project universe and auto-registers Prime Caste scaffolding."""
+        pass
+
+    @abstractmethod
+    async def materialize_worker_agent(
+        self,
+        org_id: str,
+        project_id: str,
+        user_id: str,
+        agent_name: str,
+        telos: str = "Execute specialized sub-task objectives",
+        system_prompt: str = "Default worker agent prompt",
+        parent_agent_id: Optional[str] = None,
+        tools: Optional[list] = None,
+        custom_guardrails: Optional[list] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Materializes an agent and registers it with the Agent Registry microservice & post-graph."""
+        pass
+
+    @abstractmethod
+    async def get_all_project_agents(self, org_id: str, project_id: str) -> list:
+        """Retrieves all registered agents for a project from the Agent Registry microservice & post-graph."""
+        pass
+
+    @abstractmethod
+    async def index_agent_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
+        """Indexes agent registry specifications into post-graph-rag."""
+        pass
