@@ -1,25 +1,32 @@
 # agent.london — Web Application Frontend
 
-The **agent.london Frontend** is a modern React application built with Vite and Vanilla CSS. It provides an intuitive, high-density dashboard for visualizing and managing the 1 billion agent civilization.
+The **agent.london Frontend** is a React application built with Vite and Vanilla CSS. It provides a dashboard for visualizing and managing the 1 billion agent civilization.
 
 ---
 
 ## 🎨 Core Visual Components
 
-1. **`PlaygroundView.jsx`**:
-   - Interactive prompt playground with **LLM Intent Router accordion** rendering ReAct thinking steps, mode classification (`SIMPLE_CHAT`, `RAG_QUERY`, `MULTI_AGENT_ORCHESTRATION`, `REACT_TOOL_LOOP`, `MULTI_TURN_CONVERSATION`), and mathematical evaluation.
+1. **`PlaygroundView.jsx` & Detector-Renderer**:
+   - Interactive ChatGPT-style prompt playground with **automatic output format detection and rendering**:
+     - **HTML Output**: Rendered in an isolated iframe sandbox.
+     - **SVG Graphics**: Rendered as dynamic inline vector graphics.
+     - **Markdown & Code**: Rendered with syntax highlighting.
+     - **Quantitative Tables**: Rendered as interactive data grids.
 
-2. **`CivilizationVisualizer.jsx`**:
+2. **`DocumentRegistryView.jsx`**:
+   - Multi-document space management interface with drag-and-drop file uploading (PDFs, DOCX, Markdown), Docling text extraction preview, and `post-graph-rag` knowledge graph indexing.
+
+3. **`ProjectTabsBar.jsx` & Organization Universes Scoping**:
+   - Filters visible project tabs and workspaces based on the authenticated user's organization permissions (`{org_id}` $\to$ `{user}` $\to$ `{project}`).
+
+4. **`CivilizationVisualizer.jsx`**:
    - Interactive 28 Prime Caste network topology visualizer displaying Genesis, Archivist, Architect, and Auditor nodes, progeny hierarchy trees, and cryptographic signature badges.
 
-3. **`AgentRegistryView.jsx` & `ToolRegistryView.jsx`**:
+5. **`AgentRegistryView.jsx` & `ToolRegistryView.jsx`**:
    - Ontological agent registry and MCP tool management interface with `Kagent` CRD YAML export capabilities.
 
-4. **`ModelConfigModal.jsx` (BYOM / BYOK)**:
+6. **`ModelConfigModal.jsx` (BYOM / BYOK)**:
    - Configuration modal for custom LLM providers (LiteLLM, OpenAI, Ollama, DeepSeek) and custom API endpoints.
-
-5. **`ProjectTabsBar.jsx`**:
-   - Multi-tenant project switcher enforcing strict `{project}` context boundaries across the entire UI.
 
 ---
 
