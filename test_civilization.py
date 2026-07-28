@@ -107,10 +107,14 @@ async def main():
     rag_res = await civilization_engine.index_agent_registry_for_rag(org_id, project_id)
     print(f"    RAG Indexing Status: {rag_res.get('status', 'success')}, Indexed={rag_res.get('indexed_agents', 28)}")
 
+    print("\n[+] 7B. Performing RAG Vector Search over Agent Registry...")
+    search_res = await civilization_engine.search_agent_registry_rag(org_id, project_id, "DataSynthesizerWorker raw payload streams", top_k=2)
+    print(f"    Agent Registry RAG Candidates Found: Count={len(search_res)}")
+
     print("\n[+] 8. Executing Conductor Multi-Agent Composition & ReAct Loop...")
-    conductor_res = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Discover dataset processing agents")
+    conductor_res = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
     sub_tasks = conductor_res.get('sub_tasks_orchestrated', [])
-    print(f"    Conductor ID: {conductor_res.get('conductor_id', 'N/A')}, Sub-tasks={len(sub_tasks)}")
+    print(f"    Conductor ID: {conductor_res.get('conductor_id', 'N/A')}, Execution Source={conductor_res.get('execution_source')}, Sub-tasks={len(sub_tasks)}")
 
     react_res = await civilization_engine.run_react_loop(org_id, project_id, "Query knowledge vectors for Q3 analytics")
     steps = react_res.get('steps', [])

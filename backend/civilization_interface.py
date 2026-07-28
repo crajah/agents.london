@@ -93,3 +93,8 @@ class AbstractCivilizationEngine(ABC):
     async def index_agent_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
         """Indexes agent registry specifications into post-graph-rag."""
         pass
+
+    @abstractmethod
+    async def search_agent_registry_rag(self, org_id: str, project_id: str, query_prompt: str, top_k: int = 3) -> list:
+        """Searches post-graph-rag for matching candidate agents/workflows in the agent registry."""
+        pass
