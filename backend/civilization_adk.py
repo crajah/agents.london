@@ -5,6 +5,7 @@ Provides parallel multi-agent orchestration, ADK agent definitions, tool binding
 """
 import asyncio
 import os
+import re
 import logging
 import httpx
 import json
@@ -70,11 +71,34 @@ async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str,
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
         await pg_client.create_vertex_table("agent_registry", realm=project_id)
-        await pg_client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
-        try:
-            await pg_client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=payload["agent_id"], payload=payload)
-        except Exception:
-            pass
+        # If payload is a multi-agent execution pipeline graph, persist explicit post-graph graph edges!
+        if payload.get("caste") == "pipeline" or payload.get("role") == "multi_agent_execution_pipeline":
+            try:
+                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+
+                assigned = payload.get("assigned_agents", [])
+                for target_agent_id in assigned:
+                    try:
+                        await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=payload["agent_id"], to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": payload["agent_id"]})
+                    except Exception:
+                        pass
+
+                graph_data = payload.get("graph", {})
+                edges = graph_data.get("edges", [])
+                nodes = {n.get("id"): n for n in graph_data.get("nodes", []) if n.get("id")}
+                for edge in edges:
+                    src_node_id = edge.get("from")
+                    dst_node_id = edge.get("to")
+                    src_agent = nodes.get(src_node_id, {}).get("agent_id", src_node_id)
+                    dst_agent = nodes.get(dst_node_id, {}).get("agent_id", dst_node_id)
+                    if src_agent and dst_agent:
+                        try:
+                            await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": payload["agent_id"], "from_step": src_node_id, "to_step": dst_node_id})
+                        except Exception:
+                            pass
+            except Exception as edge_err:
+                logger.debug(f"Post-graph edge table creation note for ADK pipeline: {edge_err}")
         await pg_client.close()
     except Exception as e:
         logger.debug(f"Post-graph agent registry fallback write note: {e}")
