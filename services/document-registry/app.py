@@ -174,6 +174,29 @@ async def create_document_space(req: CreateSpaceRequest):
 
     return space_obj
 
+async def persist_document_catalog_entry(project_id: str, space_name: str, doc_entry: Dict[str, Any]):
+    """Persists document entry to PostgreSQL post-graph vertex table documents_catalog."""
+    if project_id not in DOCUMENTS_CATALOG:
+        DOCUMENTS_CATALOG[project_id] = []
+    DOCUMENTS_CATALOG[project_id].append(doc_entry)
+
+    client = await get_pg_client()
+    if client:
+        try:
+            doc_name = doc_entry.get("document_name") or doc_entry.get("filename") or "doc"
+            vertex_id = f"doc_{project_id}_{space_name}_{doc_name}".replace("/", "_").replace(" ", "_")
+            await client.upsert_vertex(
+                "documents_catalog",
+                realm=project_id,
+                space=space_name,
+                vertex_id=vertex_id,
+                payload=doc_entry
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist doc_entry to post-graph: {e}")
+        finally:
+            await client.close()
+
 @app.get("/projects/{project_id}/spaces")
 async def list_document_spaces(project_id: str):
     """Lists all document spaces belonging to a project."""
@@ -182,8 +205,18 @@ async def list_document_spaces(project_id: str):
     if client:
         try:
             vertices = await client.get_vertices("document_spaces", realm=project_id)
+            doc_vertices = await client.get_vertices("documents_catalog", realm=project_id)
+            doc_counts = {}
+            for dv in doc_vertices:
+                payload = dv.payload if isinstance(dv.payload, dict) else {}
+                sp = payload.get("space_name", "default")
+                doc_counts[sp] = doc_counts.get(sp, 0) + 1
+
             for v in vertices:
-                spaces.append(v.payload)
+                sp_data = v.payload if isinstance(v.payload, dict) else {}
+                sp_name = sp_data.get("space_name", "default")
+                sp_data["document_count"] = doc_counts.get(sp_name, sp_data.get("document_count", 0))
+                spaces.append(sp_data)
         except Exception as e:
             logger.warning(f"Error fetching spaces from post-graph: {e}")
         finally:
@@ -206,6 +239,29 @@ async def list_document_spaces(project_id: str):
         spaces = [default_space]
 
     return {"project_id": project_id, "spaces": spaces}
+
+@app.get("/projects/{project_id}/documents")
+async def list_project_documents(project_id: str, space_name: Optional[str] = None):
+    """Lists all uploaded documents stored persistently in post-graph documents_catalog."""
+    client = await get_pg_client()
+    docs = []
+    if client:
+        try:
+            vertices = await client.get_vertices("documents_catalog", realm=project_id)
+            for v in vertices:
+                payload = v.payload if isinstance(v.payload, dict) else {}
+                if not space_name or payload.get("space_name") == space_name:
+                    docs.append(payload)
+        except Exception as e:
+            logger.warning(f"Error fetching documents from post-graph: {e}")
+        finally:
+            await client.close()
+
+    if not docs:
+        cat_docs = DOCUMENTS_CATALOG.get(project_id, [])
+        docs = [d for d in cat_docs if not space_name or d.get("space_name") == space_name]
+
+    return {"project_id": project_id, "space_name": space_name, "documents": docs, "count": len(docs)}
 
 @app.post("/spaces/{space_name}/documents/upload-text")
 async def upload_document_text(req: UploadDocumentTextRequest):
@@ -240,9 +296,7 @@ async def upload_document_text(req: UploadDocumentTextRequest):
         "rag_result": rag_result
     }
 
-    if req.project_id not in DOCUMENTS_CATALOG:
-        DOCUMENTS_CATALOG[req.project_id] = []
-    DOCUMENTS_CATALOG[req.project_id].append(doc_record)
+    await persist_document_catalog_entry(req.project_id, req.space_name, doc_record)
 
     return {
         "status": "success",
@@ -394,9 +448,7 @@ async def upload_document_file(
         "rag_result": rag_result
     }
 
-    if project_id not in DOCUMENTS_CATALOG:
-        DOCUMENTS_CATALOG[project_id] = []
-    DOCUMENTS_CATALOG[project_id].append(doc_entry)
+    await persist_document_catalog_entry(project_id, space_name, doc_entry)
 
     return {
         "status": "success",
@@ -448,9 +500,7 @@ async def upload_multiple_document_files(
             "content_length": len(extracted_text),
             "rag_result": rag_result
         }
-        if project_id not in DOCUMENTS_CATALOG:
-            DOCUMENTS_CATALOG[project_id] = []
-        DOCUMENTS_CATALOG[project_id].append(doc_entry)
+        await persist_document_catalog_entry(project_id, space_name, doc_entry)
         results.append(doc_entry)
 
     if rag:

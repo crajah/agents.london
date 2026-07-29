@@ -50,9 +50,12 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
   const [querying, setQuerying] = useState(false);
   const [queryResults, setQueryResults] = useState(null);
 
+  const [documents, setDocuments] = useState([]);
+
   useEffect(() => {
     fetchSpaces();
-  }, [projectId]);
+    fetchDocuments();
+  }, [projectId, selectedSpace]);
 
   const fetchSpaces = async () => {
     setLoading(true);
@@ -69,6 +72,19 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
     }
   };
 
+  const fetchDocuments = async () => {
+    try {
+      const spaceParam = selectedSpace === 'all' ? '' : `?space_name=${encodeURIComponent(selectedSpace)}`;
+      const res = await fetch(`/api/projects/${projectId}/documents${spaceParam}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents || []);
+      }
+    } catch (e) {
+      console.error("Error fetching documents:", e);
+    }
+  };
+
   const handleCreateSpace = async () => {
     if (!newSpaceName.trim()) return;
     const name = newSpaceName.trim().toLowerCase().replace(/\s+/g, '_');
@@ -81,6 +97,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
         setNewSpaceName('');
         setNewSpaceDesc('');
         fetchSpaces();
+        fetchDocuments();
       }
     } catch (e) {
       console.error("Error creating space:", e);
@@ -102,6 +119,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
         setUploadText('');
         setDocumentTitle('');
         fetchSpaces();
+        fetchDocuments();
       } else {
         setUploadStatus({ success: false, message: 'Upload failed' });
       }
@@ -153,6 +171,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
           setUploadStatus({ success: true, message: data.message });
           setSelectedFiles([]);
           fetchSpaces();
+          fetchDocuments();
         } else {
           setUploadStatus({ success: false, message: 'File upload failed' });
         }
@@ -173,6 +192,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
           setUploadStatus({ success: true, message: data.message });
           setSelectedFiles([]);
           fetchSpaces();
+          fetchDocuments();
         } else {
           setUploadStatus({ success: false, message: 'Batch file upload failed' });
         }
@@ -353,6 +373,34 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                   />
                 )}
               </Stack>
+            </Paper>
+
+            {/* PERSISTENT DOCUMENTS CATALOG */}
+            <Paper sx={{ p: 2.5, backgroundColor: 'rgba(15, 23, 42, 0.5)', borderRadius: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DescriptionIcon /> Persistent Document Catalog ({documents.length})
+              </Typography>
+              {documents.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  No documents persisted in space '{selectedSpace}' yet. Upload files or text above.
+                </Typography>
+              ) : (
+                <Stack spacing={1} sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {documents.map((doc, idx) => (
+                    <Paper key={idx} elevation={0} sx={{ p: 1.2, bgcolor: 'rgba(9, 13, 22, 0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.82rem' }} noWrap>
+                          {doc.document_name || doc.filename || 'Uploaded Document'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          Space: <strong style={{ color: '#38bdf8' }}>{doc.space_name}</strong> • Method: {doc.extraction_method || 'api'} • Length: {doc.content_length || 0} chars
+                        </Typography>
+                      </Box>
+                      <Chip label="Persisted (post-graph)" size="small" color="primary" sx={{ height: 18, fontSize: '0.6rem' }} />
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
             </Paper>
           </Stack>
         </Grid>
