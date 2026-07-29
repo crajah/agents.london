@@ -113,3 +113,19 @@ class AbstractCivilizationEngine(ABC):
         """Registers a multi-agent execution pipeline graph in Agent Registry microservice, post-graph, and post-graph-rag."""
         pass
 
+    @abstractmethod
+    async def get_all_registered_tools(self, org_id: str, project_id: str) -> list:
+        """Retrieves all registered MCP tools from the Tool Registry microservice & post-graph."""
+        pass
+
+    @abstractmethod
+    async def index_tool_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
+        """Indexes tool registry specifications into post-graph-rag under tool_registry_rag."""
+        pass
+
+    @abstractmethod
+    async def search_tool_registry_rag(self, org_id: str, project_id: str, query_prompt: str, top_k: int = 3) -> list:
+        """Searches post-graph-rag for matching candidate MCP tools in the tool registry."""
+        pass
+
+

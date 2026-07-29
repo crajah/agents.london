@@ -130,17 +130,26 @@ async def main():
     search_res = await civilization_engine.search_agent_registry_rag(org_id, project_id, "CustomAnalyticsPipeline raw payload streams", top_k=2)
     print(f"    Agent & Pipeline RAG Candidates Found: Count={len(search_res)}")
 
+    print("\n[+] 7D. Indexing MCP Tool Specifications into post-graph-rag...")
+    tool_rag_res = await civilization_engine.index_tool_registry_for_rag(org_id, project_id)
+    print(f"    Tool RAG Indexing Status: {tool_rag_res.get('status', 'success')}, Indexed Tools={tool_rag_res.get('indexed_tools', 5)}")
+
+    print("\n[+] 7E. Performing RAG Vector Search over Tool Registry...")
+    tool_search_res = await civilization_engine.search_tool_registry_rag(org_id, project_id, "search Google for web documentation", top_k=2)
+    print(f"    Tool RAG Candidates Found: Count={len(tool_search_res)}, Tools={[t.get('tool_id') for t in tool_search_res]}")
+
     print("\n[+] 8. Executing Conductor Multi-Agent Composition & Pipeline Graph Reuse Loop...")
     conductor_res_1 = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
     sub_tasks_1 = conductor_res_1.get('sub_tasks_orchestrated', [])
-    print(f"    Run 1 Conductor ID: {conductor_res_1.get('conductor_id', 'N/A')}, Execution Source={conductor_res_1.get('execution_source')}, Sub-tasks={len(sub_tasks_1)}")
+    print(f"    Run 1 Conductor ID: {conductor_res_1.get('conductor_id', 'N/A')}, Execution Source={conductor_res_1.get('execution_source')}, Sub-tasks={len(sub_tasks_1)}, RAG Tools={conductor_res_1.get('matched_tools')}")
 
     conductor_res_2 = await civilization_engine.run_conductor_orchestration(org_id, project_id, "Process raw payload streams into structured JSON schemas")
-    print(f"    Run 2 Conductor ID: {conductor_res_2.get('conductor_id', 'N/A')}, Execution Source={conductor_res_2.get('execution_source')} (Reused Pipeline/Agent={conductor_res_2.get('reused_pipeline_id') or conductor_res_2.get('reused_agent_id')})")
+    print(f"    Run 2 Conductor ID: {conductor_res_2.get('conductor_id', 'N/A')}, Execution Source={conductor_res_2.get('execution_source')}, RAG Tools={conductor_res_2.get('matched_tools')} (Reused Pipeline/Agent={conductor_res_2.get('reused_pipeline_id') or conductor_res_2.get('reused_agent_id')})")
 
-    react_res = await civilization_engine.run_react_loop(org_id, project_id, "Query knowledge vectors for Q3 analytics")
+    react_res = await civilization_engine.run_react_loop(org_id, project_id, "search Google for Q3 analytics documentation")
     steps = react_res.get('steps', [])
-    print(f"    ReAct Agent ID: {react_res.get('react_agent_id', 'N/A')}, Steps={len(steps)}")
+    matched_tools = react_res.get('matched_tools', [])
+    print(f"    ReAct Agent ID: {react_res.get('react_agent_id', 'N/A')}, RAG Tools={matched_tools}, Steps={len(steps)}")
     print(f"    Final Answer:\n{react_res.get('final_answer', react_res.get('answer', 'OK'))}")
 
     print("\n[+] 1B Synthetic Civilization Engine Test Completed Successfully!")
