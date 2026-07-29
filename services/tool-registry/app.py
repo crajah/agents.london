@@ -94,32 +94,101 @@ async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
         except Exception:
             pass
 
-async def register_default_google_search_tool():
-    """Pre-registers mcp-google-search tool in tool registry cache."""
-    google_tool = {
-        "tool_id": "mcp-google-search",
-        "name": "Google Search (GCP API)",
-        "description": "Performs web and Google searches from within Kubernetes cluster via GCP Custom Search API.",
-        "scope_type": "org",
-        "org_id": "org_london_meta",
-        "endpoint_url": "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
-        "min_reputation_score": 0.0,
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query prompt"},
-                "num_results": {"type": "integer", "default": 5}
-            },
-            "required": ["query"]
+async def register_default_tools():
+    """Pre-registers standard MCP tools in tool registry cache."""
+    default_tools = [
+        {
+            "tool_id": "mcp-google-search",
+            "name": "Google Search (GCP API)",
+            "description": "Performs web and Google searches from within Kubernetes cluster via GCP Custom Search API.",
+            "scope_type": "org",
+            "org_id": "org_london_meta",
+            "endpoint_url": "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
+            "min_reputation_score": 0.0,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query prompt"},
+                    "num_results": {"type": "integer", "default": 5}
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "tool_id": "mcp-pgvector-search",
+            "name": "PostGraph Vector Memory Search",
+            "description": "Queries post-graph-rag shared vector memory for semantic document chunks and knowledge graphs.",
+            "scope_type": "org",
+            "org_id": "org_london_meta",
+            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
+            "min_reputation_score": 0.0,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Vector similarity query text"},
+                    "top_k": {"type": "integer", "default": 3}
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "tool_id": "mcp-redis-queue",
+            "name": "Redis Cluster Event Bus & Task Queue",
+            "description": "Publishes event streams or queues background sub-tasks on Redis pub-sub channels.",
+            "scope_type": "org",
+            "org_id": "org_london_meta",
+            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
+            "min_reputation_score": 0.0,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "channel": {"type": "string", "description": "Target Redis channel or queue name"},
+                    "payload": {"type": "object", "description": "Event message JSON payload"}
+                },
+                "required": ["channel", "payload"]
+            }
+        },
+        {
+            "tool_id": "mcp-sql-query",
+            "name": "PostgreSQL Relational DB Executor",
+            "description": "Executes parameterized SQL queries against post-graph database tables.",
+            "scope_type": "org",
+            "org_id": "org_london_meta",
+            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
+            "min_reputation_score": 0.0,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "sql_query": {"type": "string", "description": "SQL statement to execute"}
+                },
+                "required": ["sql_query"]
+            }
+        },
+        {
+            "tool_id": "kagent-operator",
+            "name": "Kubernetes Agent Cluster Operator",
+            "description": "Interacts with Kubernetes API server to inspect pods, deployments, and cluster rollouts.",
+            "scope_type": "org",
+            "org_id": "org_london_meta",
+            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
+            "min_reputation_score": 0.0,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Cluster operator command (e.g. get pods, status)"}
+                },
+                "required": ["command"]
+            }
         }
-    }
-    TOOL_REGISTRY["mcp-google-search"] = google_tool
-    await persist_tool_to_pg("mcp-google-search", google_tool)
+    ]
+    for tool in default_tools:
+        TOOL_REGISTRY[tool["tool_id"]] = tool
+        await persist_tool_to_pg(tool["tool_id"], tool)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await sync_tools_from_post_graph()
-    await register_default_google_search_tool()
+    await register_default_tools()
     yield
 
 tags_metadata = [
@@ -188,6 +257,37 @@ def list_tools(
     if scope_type:
         results = [t for t in results if t["scope_type"] == scope_type]
     return {"tools": results, "count": len(results)}
+
+@app.get("/tools/rag-documents")
+def get_tool_rag_documents(project_id: Optional[str] = Query(None), org_id: Optional[str] = Query(None)):
+    """Export human-readable text documents of registered MCP tools for post-graph-rag indexing."""
+    import json
+    tools = list(TOOL_REGISTRY.values())
+    if org_id:
+        tools = [t for t in tools if t.get("org_id") == org_id]
+    if project_id:
+        tools = [t for t in tools if t.get("scope_type") == "org" or t.get("project_id") == project_id]
+
+    documents = []
+    for t in tools:
+        doc_text = (
+            f"Tool Name: {t['name']}\n"
+            f"Tool ID: {t['tool_id']}\n"
+            f"Scope Type: {t.get('scope_type')}\n"
+            f"Endpoint URL: {t.get('endpoint_url')}\n"
+            f"Description & Capabilities: {t.get('description')}\n"
+            f"Input Schema Parameters: {json.dumps(t.get('input_schema', {}))}\n"
+            f"Metadata: {json.dumps(t.get('metadata', {}))}"
+        )
+        documents.append({
+            "id": t["tool_id"],
+            "tool_id": t["tool_id"],
+            "name": t["name"],
+            "description": t.get("description"),
+            "content": doc_text,
+            "title": f"Tool_{t['tool_id']}"
+        })
+    return {"documents": documents, "count": len(documents)}
 
 @app.get("/tools/{tool_id}")
 def get_tool(tool_id: str):
