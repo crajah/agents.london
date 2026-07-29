@@ -1243,6 +1243,22 @@ async def list_document_spaces(project_id: str):
         ]
     }
 
+@app.get("/api/projects/{project_id}/documents")
+async def list_project_documents(project_id: str, space_name: Optional[str] = None):
+    """Lists all uploaded documents stored persistently in post-graph documents_catalog."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            url = f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/documents"
+            if space_name:
+                url += f"?space_name={space_name}"
+            res = await client.get(url)
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Error calling document-registry documents list: {e}")
+
+    return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
+
 @app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
 async def upload_document_text(project_id: str, space_name: str, document_name: str = Query(...), content: str = Query(...)):
     """Indexes text content into post-graph-rag under the specified space."""
