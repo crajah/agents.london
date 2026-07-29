@@ -313,7 +313,6 @@ export default function PlaygroundView({ state }) {
     }));
 
     setLoading(false);
-    setActiveTab('output'); // Automatically highlight final output view
   };
 
   return (

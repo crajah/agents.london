@@ -8,13 +8,12 @@ import CheckIcon from '@mui/icons-material/Check';
 import CodeIcon from '@mui/icons-material/Code';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import DataObjectIcon from '@mui/icons-material/DataObject';
-import DescriptionIcon from '@mui/icons-material/Description';
 import WebIcon from '@mui/icons-material/Web';
 import LaunchIcon from '@mui/icons-material/Launch';
 
 /**
  * HtmlPreviewCard Component
- * Renders HTML output inside an isolated sandboxed iframe with a toggle for live preview vs raw code.
+ * Renders standalone HTML documents inside an isolated sandboxed iframe with a toggle for live preview vs raw code.
  */
 function HtmlPreviewCard({ htmlContent, handleCopy, copied }) {
   const [viewMode, setViewMode] = useState('preview');
@@ -31,7 +30,7 @@ function HtmlPreviewCard({ htmlContent, handleCopy, copied }) {
     <Paper elevation={0} sx={{ bgcolor: 'rgba(9, 13, 22, 0.95)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 2, p: 2, my: 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Chip label="DETECTED FORMAT: LIVE HTML & WEB UI" size="small" icon={<WebIcon />} color="success" sx={{ height: 22, fontSize: '0.65rem', fontWeight: 700 }} />
+          <Chip label="DETECTED FORMAT: STANDALONE HTML PAGE" size="small" icon={<WebIcon />} color="success" sx={{ height: 22, fontSize: '0.65rem', fontWeight: 700 }} />
           <ToggleButtonGroup
             value={viewMode}
             exclusive
@@ -79,9 +78,57 @@ function HtmlPreviewCard({ htmlContent, handleCopy, copied }) {
 }
 
 /**
+ * Helper to render inline markdown elements (bold, italic, code)
+ */
+function renderInlineMarkdown(text) {
+  if (!text) return null;
+
+  // Split by inline code blocks `code`
+  const codeParts = text.split(/(`[^`]+`)/g);
+
+  return codeParts.map((part, idx) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <Box
+          key={idx}
+          component="code"
+          sx={{
+            fontFamily: '"JetBrains Mono", monospace',
+            bgcolor: 'rgba(56, 189, 248, 0.15)',
+            color: '#38bdf8',
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            fontSize: '0.85em'
+          }}
+        >
+          {part.slice(1, -1)}
+        </Box>
+      );
+    }
+
+    // Process bold **text**
+    const boldParts = part.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+    return boldParts.map((bPart, bIdx) => {
+      if ((bPart.startsWith('**') && bPart.endsWith('**')) || (bPart.startsWith('__') && bPart.endsWith('__'))) {
+        return <strong key={`${idx}-${bIdx}`} style={{ color: '#f8fafc', fontWeight: 700 }}>{bPart.slice(2, -2)}</strong>;
+      }
+
+      // Process italic *text*
+      const italicParts = bPart.split(/(\*[^*]+\*|_[^_]+_)/g);
+      return italicParts.map((iPart, iIdx) => {
+        if ((iPart.startsWith('*') && iPart.endsWith('*')) || (iPart.startsWith('_') && iPart.endsWith('_'))) {
+          return <em key={`${idx}-${bIdx}-${iIdx}`} style={{ color: '#cbd5e1' }}>{iPart.slice(1, -1)}</em>;
+        }
+        return iPart;
+      });
+    });
+  });
+}
+
+/**
  * Intelligent AutoFormatDetectorRenderer Component
- * Detects LLM output formats (HTML, JSON, Tables, Code Blocks, Markdown, Text)
- * and automatically renders them in optimal visual representations.
+ * Detects and renders full Markdown documents, Code blocks, JSON, Pipe Tables, and Standalone HTML.
  */
 export default function AutoFormatDetectorRenderer({ content }) {
   const [copied, setCopied] = useState(false);
@@ -92,7 +139,6 @@ export default function AutoFormatDetectorRenderer({ content }) {
 
   const trimmed = content.trim();
 
-  // Helper for copy to clipboard
   const handleCopy = (textToCopy) => {
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
@@ -100,29 +146,24 @@ export default function AutoFormatDetectorRenderer({ content }) {
   };
 
   // -------------------------------------------------------------------------
-  // 1. HTML DETECTION & RENDERING (iframe sandbox)
+  // 1. STANDALONE FULL HTML PAGE DETECTION
   // -------------------------------------------------------------------------
   const htmlCodeMatch = trimmed.match(/^```(?:html)?\s*([\s\S]*?)\s*```$/i);
   const potentialHtml = htmlCodeMatch ? htmlCodeMatch[1].trim() : trimmed;
+  const isFullHtmlPage =
+    potentialHtml.match(/^<!DOCTYPE html/i) ||
+    potentialHtml.match(/^<html[\s>]/i) ||
+    (potentialHtml.includes('<head>') && potentialHtml.includes('<body>'));
 
-  const isHtml =
-    potentialHtml.match(/<!DOCTYPE html/i) ||
-    potentialHtml.match(/<html[\s>]/i) ||
-    potentialHtml.match(/<body[\s>]/i) ||
-    (potentialHtml.includes('<div') && potentialHtml.includes('</div>')) ||
-    (potentialHtml.includes('<svg') && potentialHtml.includes('</svg>')) ||
-    (potentialHtml.includes('<style') && potentialHtml.includes('</style>'));
-
-  if (isHtml) {
+  if (isFullHtmlPage) {
     return <HtmlPreviewCard htmlContent={potentialHtml} handleCopy={handleCopy} copied={copied} />;
   }
 
   // -------------------------------------------------------------------------
-  // 2. JSON DETECTION & RENDERING
+  // 2. STANDALONE JSON OBJECT DETECTION
   // -------------------------------------------------------------------------
   let jsonObject = null;
   let jsonString = '';
-
   const jsonCodeMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const potentialJson = jsonCodeMatch ? jsonCodeMatch[1].trim() : trimmed;
 
@@ -135,7 +176,7 @@ export default function AutoFormatDetectorRenderer({ content }) {
     }
   }
 
-  if (jsonObject !== null) {
+  if (jsonObject !== null && !trimmed.includes('\n\n#')) {
     return (
       <Paper elevation={0} sx={{ bgcolor: 'rgba(9, 13, 22, 0.95)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: 2, p: 2, my: 1 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
@@ -156,98 +197,160 @@ export default function AutoFormatDetectorRenderer({ content }) {
   }
 
   // -------------------------------------------------------------------------
-  // 3. MARKDOWN / PIPE TABLE DETECTION & RENDERING
+  // 3. FULL MARKDOWN & SEQUENTIAL BLOCK PARSER
+  // Parses markdown headers, bullet points, code blocks, tables, and text sequentially
   // -------------------------------------------------------------------------
+  const blocks = [];
   const lines = trimmed.split('\n');
-  const tableLines = lines.filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
-  
-  if (tableLines.length >= 2) {
-    const rawHeaders = tableLines[0].split('|').map(s => s.trim()).filter(Boolean);
-    const dataRows = tableLines.slice(2).map(rowStr => rowStr.split('|').map(s => s.trim()).filter(Boolean));
+  let currentTextBlock = [];
+  let inCodeBlock = false;
+  let codeBlockLang = '';
+  let currentCodeLines = [];
 
-    if (rawHeaders.length > 0 && dataRows.length > 0) {
-      return (
-        <Paper elevation={0} sx={{ bgcolor: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(129, 140, 248, 0.2)', borderRadius: 2, p: 2, my: 1 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-            <Chip label={`DETECTED FORMAT: DATA TABLE (${dataRows.length} ROWS)`} size="small" icon={<TableChartIcon />} color="secondary" sx={{ height: 22, fontSize: '0.65rem', fontWeight: 700 }} />
-            <Tooltip title={copied ? "Copied!" : "Copy Table Markdown"}>
-              <IconButton size="small" onClick={() => handleCopy(tableLines.join('\n'))} sx={{ color: '#818cf8' }}>
-                {copied ? <CheckIcon fontSize="small" sx={{ color: '#10b981' }} /> : <ContentCopyIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-          </Stack>
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fenceMatch = line.match(/^```(\w+)?/);
 
-          <TableContainer sx={{ borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.08)' }}>
-            <Table size="small">
-              <TableHead sx={{ bgcolor: 'rgba(30, 41, 59, 0.9)' }}>
-                <TableRow>
-                  {rawHeaders.map((h, i) => (
-                    <TableCell key={i} sx={{ color: '#818cf8', fontWeight: 700, fontSize: '0.75rem', py: 1 }}>
-                      {h}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {dataRows.map((row, rIdx) => (
-                  <TableRow key={rIdx} sx={{ '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                    {row.map((cell, cIdx) => (
-                      <TableCell key={cIdx} sx={{ color: '#f8fafc', fontSize: '0.78rem', py: 0.8 }}>
-                        {cell}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      );
+    if (fenceMatch) {
+      if (inCodeBlock) {
+        // End of code block
+        blocks.push({
+          type: 'code',
+          lang: codeBlockLang || 'code',
+          content: currentCodeLines.join('\n')
+        });
+        currentCodeLines = [];
+        inCodeBlock = false;
+      } else {
+        // Start of code block - flush text block first
+        if (currentTextBlock.length > 0) {
+          blocks.push({ type: 'text', content: currentTextBlock.join('\n') });
+          currentTextBlock = [];
+        }
+        inCodeBlock = true;
+        codeBlockLang = fenceMatch[1] || '';
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      currentCodeLines.push(line);
+    } else {
+      currentTextBlock.push(line);
     }
   }
 
-  // -------------------------------------------------------------------------
-  // 4. CODE BLOCK DETECTION & RENDERING (python, js, bash, sql, etc.)
-  // -------------------------------------------------------------------------
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-  const matches = [...trimmed.matchAll(codeBlockRegex)];
+  if (inCodeBlock && currentCodeLines.length > 0) {
+    blocks.push({ type: 'code', lang: codeBlockLang || 'code', content: currentCodeLines.join('\n') });
+  } else if (currentTextBlock.length > 0) {
+    blocks.push({ type: 'text', content: currentTextBlock.join('\n') });
+  }
 
-  if (matches.length > 0) {
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, my: 1 }}>
-        {matches.map((m, idx) => {
-          const lang = (m[1] || 'code').toUpperCase();
-          const codeSnippet = m[2];
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {blocks.map((block, bIdx) => {
+        if (block.type === 'code') {
           return (
-            <Paper key={idx} elevation={0} sx={{ bgcolor: 'rgba(9, 13, 22, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, p: 2 }}>
+            <Paper key={bIdx} elevation={0} sx={{ bgcolor: 'rgba(9, 13, 22, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, p: 2, my: 0.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Chip label={`DETECTED FORMAT: ${lang} CODE`} size="small" icon={<CodeIcon />} sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, bgcolor: 'rgba(255,255,255,0.08)', color: '#a78bfa' }} />
+                <Chip label={`${(block.lang || 'code').toUpperCase()} CODE`} size="small" icon={<CodeIcon />} sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, bgcolor: 'rgba(255,255,255,0.08)', color: '#a78bfa' }} />
                 <Tooltip title={copied ? "Copied!" : "Copy Code"}>
-                  <IconButton size="small" onClick={() => handleCopy(codeSnippet)} sx={{ color: '#a78bfa' }}>
+                  <IconButton size="small" onClick={() => handleCopy(block.content)} sx={{ color: '#a78bfa' }}>
                     {copied ? <CheckIcon fontSize="small" sx={{ color: '#10b981' }} /> : <ContentCopyIcon fontSize="small" />}
                   </IconButton>
                 </Tooltip>
               </Stack>
               <Box sx={{ overflowX: 'auto', maxHeight: 350 }}>
                 <Typography component="pre" variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace', color: '#f1f5f9', fontSize: '0.82rem', whiteSpace: 'pre-wrap', m: 0 }}>
-                  {codeSnippet}
+                  {block.content}
                 </Typography>
               </Box>
             </Paper>
           );
-        })}
-      </Box>
-    );
-  }
+        }
 
-  // -------------------------------------------------------------------------
-  // 5. STRUCTURED MARKDOWN / TEXT DEFAULT RENDERING
-  // -------------------------------------------------------------------------
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography variant="body2" sx={{ fontSize: '0.9rem', lineHeight: 1.6, color: '#f8fafc', whiteSpace: 'pre-wrap' }}>
-        {trimmed}
-      </Typography>
+        // Render Text / Markdown Lines
+        const textLines = block.content.split('\n');
+        return (
+          <Box key={bIdx} sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+            {textLines.map((line, lIdx) => {
+              const trimmedLine = line.trim();
+
+              // Headers #, ##, ###, ####
+              if (trimmedLine.startsWith('# ')) {
+                return (
+                  <Typography key={lIdx} variant="h6" sx={{ fontWeight: 800, color: '#38bdf8', mt: 1.5, mb: 0.5, fontSize: '1.15rem' }}>
+                    {renderInlineMarkdown(trimmedLine.slice(2))}
+                  </Typography>
+                );
+              }
+              if (trimmedLine.startsWith('## ')) {
+                return (
+                  <Typography key={lIdx} variant="subtitle1" sx={{ fontWeight: 700, color: '#818cf8', mt: 1.2, mb: 0.4, fontSize: '1.02rem' }}>
+                    {renderInlineMarkdown(trimmedLine.slice(3))}
+                  </Typography>
+                );
+              }
+              if (trimmedLine.startsWith('### ')) {
+                return (
+                  <Typography key={lIdx} variant="subtitle2" sx={{ fontWeight: 700, color: '#f8fafc', mt: 1, mb: 0.3, fontSize: '0.92rem' }}>
+                    {renderInlineMarkdown(trimmedLine.slice(4))}
+                  </Typography>
+                );
+              }
+              if (trimmedLine.startsWith('#### ')) {
+                return (
+                  <Typography key={lIdx} variant="caption" sx={{ fontWeight: 700, color: '#cbd5e1', mt: 0.8, mb: 0.2, fontSize: '0.85rem' }}>
+                    {renderInlineMarkdown(trimmedLine.slice(5))}
+                  </Typography>
+                );
+              }
+
+              // Horizontal Divider
+              if (trimmedLine === '---' || trimmedLine === '***') {
+                return <Divider key={lIdx} sx={{ my: 1, borderColor: 'rgba(255,255,255,0.08)' }} />;
+              }
+
+              // Bullet list items
+              if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+                return (
+                  <Box key={lIdx} sx={{ display: 'flex', gap: 1, pl: 1.5, py: 0.1 }}>
+                    <Typography variant="body2" sx={{ color: '#38bdf8', fontWeight: 700 }}>•</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.88rem', color: '#f8fafc', lineHeight: 1.5 }}>
+                      {renderInlineMarkdown(trimmedLine.slice(2))}
+                    </Typography>
+                  </Box>
+                );
+              }
+
+              // Numbered list items
+              const numMatch = trimmedLine.match(/^(\d+)\.\s+(.*)/);
+              if (numMatch) {
+                return (
+                  <Box key={lIdx} sx={{ display: 'flex', gap: 1, pl: 1.5, py: 0.1 }}>
+                    <Typography variant="body2" sx={{ color: '#818cf8', fontWeight: 700 }}>{numMatch[1]}.</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.88rem', color: '#f8fafc', lineHeight: 1.5 }}>
+                      {renderInlineMarkdown(numMatch[2])}
+                    </Typography>
+                  </Box>
+                );
+              }
+
+              // Empty lines
+              if (!trimmedLine) {
+                return <Box key={lIdx} sx={{ height: 4 }} />;
+              }
+
+              // Normal text line
+              return (
+                <Typography key={lIdx} variant="body2" sx={{ fontSize: '0.88rem', color: '#e2e8f0', lineHeight: 1.6 }}>
+                  {renderInlineMarkdown(line)}
+                </Typography>
+              );
+            })}
+          </Box>
+        );
+      })}
     </Box>
   );
 }
