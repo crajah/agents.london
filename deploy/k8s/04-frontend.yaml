@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: agent-london-frontend
-          image: gcr.io/crajah-dev/agent-london-frontend:latest
+          image: gcr.io/marty-457112/agent-london-frontend:latest
           imagePullPolicy: Always
           envFrom:
             - secretRef:

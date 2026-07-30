@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: tool-registry
-          image: gcr.io/crajah-dev/tool-registry:latest
+          image: gcr.io/marty-457112/tool-registry:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8002

@@ -353,18 +353,29 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         # 2. Fetch long-term past chat memory via post-graph-rag vector search
         long_term_chat_rag = []
         try:
-            rag_realm = f"{org_id}_{project_id}_chat_memory"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
-            rag = GraphRAG(config)
-            await rag.initialize()
-            query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=2))
-            long_term_chat_rag = [c["content"] for c in query_res.get("data", {}).get("chunks", [])]
-            await rag.close()
-        except Exception:
-            pass
+            async def _get_chat_rag():
+                rag_realm = f"{org_id}_{project_id}_chat_memory"
+                config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+                rag = GraphRAG(config)
+                await rag.initialize()
+                query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=2))
+                res_chunks = [c["content"] for c in query_res.get("data", {}).get("chunks", []) if c.get("content")]
+                await rag.close()
+                return res_chunks
+
+            long_term_chat_rag = await asyncio.wait_for(_get_chat_rag(), timeout=2.5)
+        except Exception as e:
+            logger.debug(f"Chat memory RAG timeout/note: {e}")
 
         # 3. Fetch Document Registry Knowledge RAG context (uploaded PDFs, DOCX, Markdown)
-        doc_registry_rag = await self.fetch_document_registry_rag_context(project_id, user_prompt, top_k=3)
+        doc_registry_rag = []
+        try:
+            doc_registry_rag = await asyncio.wait_for(
+                self.fetch_document_registry_rag_context(project_id, user_prompt, top_k=3),
+                timeout=2.5
+            )
+        except Exception as e:
+            logger.debug(f"Doc registry RAG timeout/note: {e}")
 
         # Build Tri-Tier Combined Context Prompt
         context_prefix = ""

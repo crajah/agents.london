@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: document-registry
-          image: gcr.io/crajah-dev/document-registry-service:latest
+          image: gcr.io/marty-457112/document-registry-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8003
@@ -32,13 +32,13 @@ spec:
             httpGet:
               path: /health
               port: 8003
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8003
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 15
           envFrom:
             - configMapRef:
@@ -63,7 +63,7 @@ spec:
             - name: POSTGRES_DB
               value: "postgres"
             - name: OPENAI_API_BASE
-              value: "http://litellm-service.default.svc.cluster.local:4000/v1"
+              value: "http://litellm-service.default.svc.cluster.local:80/v1"
             - name: OPENAI_API_KEY
               value: "BEVZ-6L81-OZ8Y"
           volumeMounts:
