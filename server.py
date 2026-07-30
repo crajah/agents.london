@@ -38,13 +38,13 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path == "/api/agents":
+        if path in ["/api/agents", "/api/agent/list"]:
             self._set_cors_headers(200)
             agents = registry.list_agents()
             self.wfile.write(json.dumps({"success": True, "agents": agents}).encode('utf-8'))
             return
 
-        elif path == "/api/summary":
+        elif path in ["/api/summary", "/api/civilization/status"]:
             self._set_cors_headers(200)
             summary = registry.get_civilization_summary()
             self.wfile.write(json.dumps({"success": True, "summary": summary}).encode('utf-8'))
@@ -61,7 +61,7 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(manifest_output.encode('utf-8'))
             return
 
-        elif path in ["/ws/civilization", "/api/playground/execute"]:
+        elif path in ["/ws/civilization", "/api/playground/execute", "/api/telemetry"]:
             self._set_cors_headers(200)
             self.wfile.write(json.dumps({"status": "connected", "protocol": "civilization-telemetry-v1"}).encode('utf-8'))
             return
@@ -81,7 +81,7 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             payload = {}
 
-        if path == "/api/procreate":
+        if path in ["/api/procreate", "/api/agent/procreate", "/api/agent/spawn"]:
             self._set_cors_headers(200)
             name = payload.get("name", "Operative Citizen")
             tier_str = payload.get("tier", "Operative")
@@ -127,7 +127,7 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
             return
 
-        elif path == "/api/audit":
+        elif path in ["/api/audit", "/api/agent/audit"]:
             self._set_cors_headers(200)
             audit_results = []
             for agent_dict in registry.list_agents():
@@ -143,10 +143,10 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": True, "audit_results": audit_results}).encode('utf-8'))
             return
 
-        elif path in ["/api/playground/chat", "/api/playground/execute"]:
+        elif path in ["/api/agent/interact", "/api/playground/chat", "/api/playground/execute", "/api/agent/chat", "/api/agent/execute"]:
             self._set_cors_headers(200)
-            message = payload.get("message", payload.get("prompt", "Status check"))
-            agent_id = payload.get("agentId", "agent-senate-prime")
+            message = payload.get("message", payload.get("prompt", payload.get("input", "Status check")))
+            agent_id = payload.get("agent_id", payload.get("agentId", "agent-senate-prime"))
             agent = registry.get_agent(agent_id)
             
             agent_name = agent.name if agent else "Civilization Sovereign"
@@ -155,14 +155,16 @@ class CivilizationRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({
                 "success": True,
                 "response": response_text,
-                "agentId": agent_id,
-                "tokenUsage": 42,
+                "output": response_text,
+                "agent_id": agent_id,
+                "status": "COMPLETED",
+                "token_usage": 42,
                 "sentinelApproved": True
             }).encode('utf-8'))
             return
 
         self._set_cors_headers(404)
-        self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
+        self.wfile.write(json.dumps({"error": f"Endpoint '{path}' not found"}).encode('utf-8'))
 
 def run_server(port=8000):
     server_address = ('', port)
