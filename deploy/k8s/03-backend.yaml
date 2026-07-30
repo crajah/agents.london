@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: agent-london-backend
-          image: gcr.io/crajah-dev/agent-london-backend:latest
+          image: gcr.io/marty-457112/agent-london-backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -32,13 +32,13 @@ spec:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 15
           envFrom:
             - configMapRef:
@@ -89,7 +89,7 @@ spec:
             - name: TOOL_REGISTRY_URL
               value: "http://tool-registry-service.default.svc.cluster.local:8002"
             - name: OPENAI_API_BASE
-              value: "http://litellm-service.default.svc.cluster.local:4000/v1"
+              value: "http://litellm-service.default.svc.cluster.local:80/v1"
             - name: OPENAI_API_KEY
               value: "BEVZ-6L81-OZ8Y"
             - name: GOOGLE_SEARCH_API_KEY

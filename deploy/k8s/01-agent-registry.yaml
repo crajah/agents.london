@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: agent-registry
-          image: gcr.io/crajah-dev/agent-registry:latest
+          image: gcr.io/marty-457112/agent-registry:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8001

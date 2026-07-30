@@ -8,7 +8,7 @@ echo "============================================================"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG_FILE="${PROJECT_ROOT}/.docker_tag"
 
-GCP_PROJECT="${GCP_PROJECT:-crajah-dev}"
+GCP_PROJECT="${GCP_PROJECT:-marty-457112}"
 GCR_REGISTRY="${GCR_REGISTRY:-gcr.io/${GCP_PROJECT}}"
 
 if [ -n "${DOCKER_TAG:-}" ]; then
