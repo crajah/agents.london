@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link, Chip, Tooltip, Drawer
 } from '@mui/material';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import HubIcon from '@mui/icons-material/Hub';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -57,14 +58,15 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
   }, [state?.projectId]);
 
   const menuItems = [
-    { id: 'playground', label: 'Civilization Playground', icon: <SportsEsportsIcon /> },
-    { id: 'discovery', label: 'Discovery & Composability', icon: <AutoAwesomeIcon /> },
-    { id: 'civilization', label: 'Civilization Graph', icon: <HubIcon /> },
-    { id: 'agents', label: 'Agent Registry & Kagent', icon: <SmartToyIcon /> },
-    { id: 'tools', label: 'MCP Tool Registry', icon: <BuildIcon /> },
-    { id: 'documents', label: 'Document Spaces (RAG)', icon: <StorageIcon /> },
-    { id: 'sessions', label: 'Shared Memory (post-graph-rag)', icon: <PsychologyIcon /> },
-    { id: 'guardrails', label: 'Constitutional Guardrails', icon: <ShieldIcon /> },
+    { id: 'chatbot', label: 'Chatbot', icon: <ChatBubbleOutlineIcon /> },
+    { id: 'playground', label: 'Playground', icon: <SportsEsportsIcon /> },
+    { id: 'discovery', label: 'Discovery', icon: <AutoAwesomeIcon /> },
+    { id: 'civilization', label: 'Agent Graph', icon: <HubIcon /> },
+    { id: 'agents', label: 'Agent Registry', icon: <SmartToyIcon /> },
+    { id: 'tools', label: 'Tools', icon: <BuildIcon /> },
+    { id: 'documents', label: 'Documents', icon: <StorageIcon /> },
+    { id: 'sessions', label: 'Sessions', icon: <PsychologyIcon /> },
+    { id: 'guardrails', label: 'Guardrails', icon: <ShieldIcon /> },
   ];
 
   const handleTabSelect = (tabId) => {
