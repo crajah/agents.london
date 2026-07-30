@@ -3,6 +3,7 @@ import { ThemeProvider, CssBaseline, Box } from '@mui/material';
 import theme from './theme';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import ChatbotView from './components/ChatbotView';
 import PlaygroundView from './components/PlaygroundView';
 import CivilizationGraphView from './components/CivilizationGraphView';
 import AgentRegistryView from './components/AgentRegistryView';
@@ -20,7 +21,7 @@ import DocumentRegistryView from './components/DocumentRegistryView';
 export default function App() {
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
 
-  const [currentTab, setCurrentTab] = useState('playground');
+  const [currentTab, setCurrentTab] = useState('chatbot');
   const [ssoModalOpen, setSsoModalOpen] = useState(false);
   const [materializeModalOpen, setMaterializeModalOpen] = useState(false);
   const [byomModalOpen, setByomModalOpen] = useState(false);
@@ -148,6 +149,7 @@ export default function App() {
 
             {/* Active View Panel */}
             <Box component="main" sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 } }}>
+              {currentTab === 'chatbot' && <ChatbotView state={state} />}
               {currentTab === 'playground' && <PlaygroundView state={state} />}
               {currentTab === 'discovery' && <AgentDiscoveryView state={state} />}
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}

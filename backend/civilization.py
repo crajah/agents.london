@@ -342,6 +342,25 @@ def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_ci
 
     is_gtm = any(k in clean_lower for k in ["gtm", "go to market", "strategy", "market", "launch", "positioning", "sales"])
     is_code = any(k in clean_lower for k in ["code", "script", "function", "program", "python", "javascript", "sql", "html", "react"])
+    is_ai_def = any(k in clean_lower for k in ["artificial intelligence", "machine learning", "what is", "meaning of", "explain"])
+
+    if "artificial intelligence" in clean_lower or ("meaning of" in clean_lower and "artificial" in clean_lower) or "what is ai" in clean_lower:
+        return (
+            f"# 🤖 Artificial Intelligence (AI): Definition & Core Meaning\n\n"
+            f"**Artificial Intelligence (AI)** is computer technology and software engineered to let machines learn from data, solve complex problems, reason logically, and make decisions in ways that mirror or surpass human capabilities.\n\n"
+            f"---\n\n"
+            f"## Key Applications & Real-World Examples\n\n"
+            f"- **Smart Chatbots & Language Models:** Conversational agents (ChatGPT, Virtual Assistants) that understand and generate human language.\n"
+            f"- **Autonomous Vehicles:** Self-driving cars and intelligent navigation systems using real-time perception.\n"
+            f"- **Predictive Healthcare:** Diagnostic AI models analyzing medical imaging and genomic data.\n"
+            f"- **Automation & Decision Engines:** Financial fraud detection, smart recommendation systems, and automated logistics.\n\n"
+            f"---\n\n"
+            f"## Core Pillars of AI\n\n"
+            f"1. **Machine Learning (ML):** Statistical algorithms that allow systems to automatically learn and improve from experience without explicit programming.\n"
+            f"2. **Deep Learning & Neural Networks:** Multi-layered artificial neural networks capable of learning complex representations from large unstructured datasets.\n"
+            f"3. **Generative AI:** Foundation models capable of creating original text, high-resolution media, computer code, and synthetic data.\n"
+        )
+
 
     if is_gtm:
         return (

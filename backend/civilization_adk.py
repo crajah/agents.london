@@ -210,7 +210,8 @@ class ADKAgentNode:
         except Exception:
             pass
 
-        return f"[{self.name} ADK Agent] Executed directive for '{input_prompt[:50]}...' with status OK."
+        from backend.civilization import generate_dynamic_task_document
+        return generate_dynamic_task_document(input_prompt, project_id, org_id)
 
 
 class GoogleADKCivilizationEngine(AbstractCivilizationEngine):

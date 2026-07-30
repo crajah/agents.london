@@ -244,9 +244,13 @@ export default function PlaygroundView({ state }) {
         if (data.mode) detectedMode = data.mode;
         if (data.execution_summary) routerReasoning = data.execution_summary;
         serverAnswer = data.final_answer || data.answer;
+      } else {
+        console.warn(`Backend returned ${res.status}:`, await res.text());
+        serverAnswer = `⚠️ **System Error:** Backend API request failed (HTTP ${res.status}). Ensure the FastAPI backend is running on port 8000.`;
       }
     } catch (err) {
       console.warn("Backend execution API call fallback:", err);
+      serverAnswer = `⚠️ **System Error:** Failed to connect to the backend API. Please ensure the backend server is running.`;
     }
 
     const finalAnswer = serverAnswer || calculatedAnswer || `Executed multi-agent pipeline for directive '${userPrompt}' in project realm '${projectId}'.`;
