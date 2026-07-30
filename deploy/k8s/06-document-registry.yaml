@@ -66,6 +66,25 @@ spec:
               value: "http://litellm-service.default.svc.cluster.local:4000/v1"
             - name: OPENAI_API_KEY
               value: "BEVZ-6L81-OZ8Y"
+          volumeMounts:
+            - name: document-registry-data
+              mountPath: /app/data
+      volumes:
+        - name: document-registry-data
+          persistentVolumeClaim:
+            claimName: document-registry-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: document-registry-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: Service
