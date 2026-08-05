@@ -18,6 +18,7 @@ export default function ChatbotView({ state }) {
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isolationMode, setIsolationMode] = useState('isolated');
 
   const chatEndRef = useRef(null);
 
@@ -133,7 +134,8 @@ export default function ChatbotView({ state }) {
           org_id: orgId,
           project_id: projectId,
           prompt: userPrompt,
-          session_id: activeSessionId
+          session_id: activeSessionId,
+          isolation_mode: isolationMode
         })
       });
       
@@ -295,6 +297,25 @@ export default function ChatbotView({ state }) {
 
         {/* Input Bar */}
         <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(15, 23, 42, 0.9)' }}>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary">Scope:</Typography>
+            <Button
+              size="small"
+              variant={isolationMode === 'isolated' ? 'contained' : 'outlined'}
+              onClick={() => setIsolationMode('isolated')}
+              sx={{ fontSize: '0.65rem', py: 0.2, px: 1, minWidth: 0, textTransform: 'none' }}
+            >
+              This Project
+            </Button>
+            <Button
+              size="small"
+              variant={isolationMode === 'shared' ? 'contained' : 'outlined'}
+              onClick={() => setIsolationMode('shared')}
+              sx={{ fontSize: '0.65rem', py: 0.2, px: 1, minWidth: 0, textTransform: 'none' }}
+            >
+              All Projects
+            </Button>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
             <TextField
               fullWidth

@@ -1323,10 +1323,35 @@ class AgentCivilizationEngine:
             "final_answer": final_answer
         }
 
-    async def _llm_call(self, messages: list, max_tokens: int = 4096, response_format: Optional[dict] = None) -> Optional[str]:
+    # ─── Multi-Tenant Isolation (realm = org, space = project) ────────────
+
+    def _rag_realm(self, org_id: str, suffix: str) -> str:
+        """Realm scopes to the organization. All projects in an org share a realm."""
+        return f"{org_id}_{suffix}"
+
+    def _rag_space(self, project_id: str, isolation_mode: str = "isolated") -> Optional[str]:
+        """Space scopes to the project within an org.
+        - 'isolated': queries only this project's data
+        - 'shared': queries across all projects in the org (space=None)"""
+        if isolation_mode == "shared":
+            return None
+        return project_id
+
+    def _build_rag_config(self, org_id: str, suffix: str, space: Optional[str] = None) -> "RAGConfig":
+        """Builds a RAGConfig with org-level realm and optional project-level space."""
+        return RAGConfig(
+            api_base=LITELLM_URL,
+            api_key=API_KEY,
+            model="DeepSeek-V3.2",
+            db_uri=self.db_uri,
+            realm=self._rag_realm(org_id, suffix),
+            space=space or "default"
+        )
+
+    async def _llm_call(self, messages: list, max_tokens: int = 4096, response_format: Optional[dict] = None, model: Optional[str] = None) -> Optional[str]:
         """Shared async LLM call to LiteLLM proxy. Returns content string or None."""
         payload = {
-            "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
+            "model": model or os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
             "messages": messages,
             "max_tokens": max_tokens
         }
@@ -1346,14 +1371,22 @@ class AgentCivilizationEngine:
                 continue
         return None
 
-    async def _fetch_rag_context(self, org_id: str, project_id: str, query: str, realm_suffix: str = "agents_rag") -> List[str]:
-        """Fetches relevant RAG chunks for context enrichment."""
+    async def _fetch_rag_context(
+        self, org_id: str, project_id: str, query: str,
+        realm_suffix: str = "agent_registry_rag",
+        isolation_mode: str = "isolated"
+    ) -> List[str]:
+        """Fetches relevant RAG chunks for context enrichment.
+        realm = org_id (org boundary), space = project_id or None (project isolation control)."""
         try:
-            rag_realm = f"{org_id}_{project_id}_{realm_suffix}"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            space = self._rag_space(project_id, isolation_mode)
+            config = self._build_rag_config(org_id, realm_suffix, space)
             rag = GraphRAG(config)
             await rag.initialize()
-            result = await rag.query_data(query, param=QueryParam(mode="mix", top_k=3))
+            param = QueryParam(mode="mix", top_k=3)
+            if space:
+                param.space = space
+            result = await rag.query_data(query, param=param)
             await rag.close()
             return [c["content"] for c in result.get("data", {}).get("chunks", []) if c.get("content")]
         except Exception:
@@ -1535,7 +1568,8 @@ class AgentCivilizationEngine:
         org_id: str,
         project_id: str,
         user_prompt: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        isolation_mode: str = "isolated"
     ) -> Dict[str, Any]:
         """LLM-driven prompt router that automatically selects the best execution strategy:
 
@@ -1546,10 +1580,14 @@ class AgentCivilizationEngine:
         3. MATERIALIZE — No existing agent fits. Design a new agent (system prompt + tools) via LLM,
            materialize it, then execute via DIRECT_AGENT or PIPELINE.
         4. SIMPLE_CHAT — Simple question or conversation. Answer directly with LLM + RAG context.
+
+        isolation_mode controls multi-tenant project scoping:
+        - 'isolated': RAG queries scoped to this project only (realm=org, space=project)
+        - 'shared': RAG queries span all projects in the org (realm=org, space=None)
         """
 
         # ── Step 1: Fetch RAG context to enrich the router's decision ───────
-        rag_context = await self._fetch_rag_context(org_id, project_id, user_prompt)
+        rag_context = await self._fetch_rag_context(org_id, project_id, user_prompt, isolation_mode=isolation_mode)
         context_snippet = "\n".join(f"- {c[:200]}" for c in rag_context[:3]) if rag_context else "No RAG context available."
 
         # ── Step 2: LLM Intent Router ───────────────────────────────────────

@@ -820,6 +820,7 @@ class AgentInteractRequest(BaseModel):
     project_id: str = Field(default="proj_alpha_civilization")
     prompt: str
     session_id: Optional[str] = None
+    isolation_mode: str = Field(default="isolated", description="'isolated' scopes to this project, 'shared' spans all projects in the org")
 
 @app.post("/api/agent/interact")
 async def agent_interact(req: AgentInteractRequest):
@@ -830,8 +831,10 @@ async def agent_interact(req: AgentInteractRequest):
         org_id=req.org_id,
         project_id=req.project_id,
         user_prompt=req.prompt,
-        session_id=req.session_id
+        session_id=req.session_id,
+        isolation_mode=req.isolation_mode
     )
+    res["isolation_mode"] = req.isolation_mode
     return res
 
 @app.post("/api/agent/interact-multimodal")
@@ -840,7 +843,8 @@ async def agent_interact_multimodal(
     org_id: str = Query("org_london_meta"),
     project_id: str = Query("proj_alpha_civilization"),
     prompt: str = Query(""),
-    session_id: Optional[str] = Query(None)
+    session_id: Optional[str] = Query(None),
+    isolation_mode: str = Query("isolated", description="'isolated' or 'shared'")
 ):
     """Accepts an image or video file, uses gemma-4-31B-it vision model to infer content,
     then feeds the inference into the automated pipeline orchestration flow."""
@@ -856,7 +860,8 @@ async def agent_interact_multimodal(
         org_id=org_id,
         project_id=project_id,
         user_prompt=combined_prompt,
-        session_id=session_id
+        session_id=session_id,
+        isolation_mode=isolation_mode
     )
     res["vision_inference"] = vision_description
     res["source_file"] = filename
