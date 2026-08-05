@@ -7,17 +7,32 @@ export default function SharedMemoryView({ state }) {
   const [query, setQuery] = useState('');
   const activeProject = state?.projectId || 'proj_alpha_civilization';
 
-  const [results, setResults] = useState([
-    { doc: `spec_${activeProject}.pdf`, page: 1, text: `All agents operating in session memory share context vector embeddings and post-graph edge relations under realm '${activeProject}'.` }
-  ]);
+  const [results, setResults] = useState([]);
+  const [querying, setQuerying] = useState(false);
 
-  const handleQuery = () => {
+  const handleQuery = async () => {
     if (!query.trim()) return;
-    setResults(prev => [
-      { doc: `agent_constitution_${activeProject}.pdf`, page: 3, text: `Vector search matched query '${query}' with 0.94 similarity in post-graph-rag session memory for project '${activeProject}'.` },
-      ...prev
-    ]);
-    setQuery('');
+    setQuerying(true);
+    try {
+      const res = await fetch(`/api/projects/${activeProject}/rag/query?query=${encodeURIComponent(query)}`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const chunks = data?.data?.chunks || [];
+        const newResults = chunks.map((c, i) => ({
+          doc: c.metadata?.document || `chunk_${i}`,
+          page: c.metadata?.page || null,
+          text: c.content || ''
+        }));
+        setResults(newResults.length > 0 ? newResults : [{ doc: 'No results', text: `No RAG results found for '${query}' in project '${activeProject}'.` }]);
+      }
+    } catch (e) {
+      console.error('RAG query error:', e);
+    } finally {
+      setQuerying(false);
+      setQuery('');
+    }
   };
 
   return (
