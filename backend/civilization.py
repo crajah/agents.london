@@ -688,7 +688,7 @@ class AgentCivilizationEngine:
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -725,7 +725,7 @@ class AgentCivilizationEngine:
         """Searches post-graph-rag for candidate agents, workflows, or pipelines matching the query prompt."""
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
@@ -845,7 +845,7 @@ class AgentCivilizationEngine:
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -884,7 +884,7 @@ class AgentCivilizationEngine:
 
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
@@ -1062,7 +1062,7 @@ class AgentCivilizationEngine:
         )
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             meta = DocumentMetadata(document=f"Pipeline_{pipeline_id}", category="pipeline_specification")
@@ -1559,7 +1559,7 @@ class AgentCivilizationEngine:
 
         elif mode == "RAG_QUERY":
             rag_realm = f"{org_id}_{project_id}_agents_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             rag_docs = []
@@ -1616,8 +1616,7 @@ class AgentCivilizationEngine:
             api_key=API_KEY,
             model="DeepSeek-V3.2",
             db_uri=self.db_uri,
-            realm=session_realm,
-            embedding_dim=4
+            realm=session_realm
         )
 
         rag = GraphRAG(config)
