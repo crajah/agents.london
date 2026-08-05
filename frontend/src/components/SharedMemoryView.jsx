@@ -32,7 +32,27 @@ export default function SharedMemoryView({ state }) {
           </Typography>
         </Box>
 
-        <Button variant="contained" color="primary">
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={async () => {
+            try {
+              const sessionName = `collab_${Date.now()}`;
+              await fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  org_id: state?.orgId || 'org_london_meta',
+                  project_id: activeProject,
+                  user_id: state?.userId || 'user_chandan',
+                  session_name: sessionName
+                })
+              });
+            } catch (e) {
+              console.error('Session initiation error:', e);
+            }
+          }}
+        >
           + Initiate New Session in {activeProject}
         </Button>
       </Box>
