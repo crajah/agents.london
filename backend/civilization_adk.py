@@ -343,7 +343,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         org_id: str,
         project_id: str,
         user_prompt: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        isolation_mode: str = "isolated"
     ) -> Dict[str, Any]:
         """ADK Intent Router & Dispatcher incorporating chat history & Document Registry RAG context."""
         clean = user_prompt.strip().lower()
