@@ -1675,7 +1675,7 @@ class AgentCivilizationEngine:
         agents = []
         seen_ids = set()
 
-        client = await self._get_pg_client(project_id)
+        client = await self._get_pg_client(org_id)
         for tbl in ["agent_registry", "agents"]:
             try:
                 vertices = await client.get_vertices(table_name=tbl, realm=project_id)
