@@ -172,7 +172,7 @@ class ADKAgentNode:
 
         # 1. Primary: Execute via in-cluster LiteLLM service (or user custom model endpoint)
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
                     f"{target_api_base.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {target_api_key}"},
@@ -192,7 +192,7 @@ class ADKAgentNode:
 
         # 2. Local development fallback
         try:
-            async with httpx.AsyncClient(timeout=1.5) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
                     "http://localhost:4000/v1/chat/completions",
                     headers={"Authorization": f"Bearer {target_api_key}"},
