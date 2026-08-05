@@ -210,7 +210,10 @@ class ADKAgentNode:
         except Exception:
             pass
 
-        from backend.civilization import generate_dynamic_task_document
+        try:
+            from backend.civilization import generate_dynamic_task_document
+        except ImportError:
+            from civilization import generate_dynamic_task_document
         return generate_dynamic_task_document(input_prompt, project_id, org_id)
 
 
