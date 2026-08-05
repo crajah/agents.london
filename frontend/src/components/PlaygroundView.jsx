@@ -198,10 +198,12 @@ export default function PlaygroundView({ state }) {
     const mathMatch = cleanPrompt.match(/(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$/i);
     if (mathMatch && mathMatch[1]) {
       const expr = mathMatch[1].trim();
-      if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(expr)) {
+      if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(expr) && expr.length <= 50) {
         try {
-          const evaluated = Function(`'use strict'; return (${expr})`)();
-          if (typeof evaluated === 'number' && !isNaN(evaluated)) {
+          // Indirect eval — safe here because the regex strictly limits input
+          // to digits, spaces, and arithmetic operators only
+          const evaluated = (0, eval)(expr);
+          if (typeof evaluated === 'number' && isFinite(evaluated)) {
             calculatedAnswer = `Calculated Result: **${evaluated}**`;
           }
         } catch (e) { }
