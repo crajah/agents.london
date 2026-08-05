@@ -12,7 +12,7 @@ import json
 import logging
 import httpx
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from post_graph import AsyncPostGraph
 from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
@@ -1628,11 +1628,12 @@ class AgentCivilizationEngine:
             if parent_agent_id:
                 try:
                     await client.add_edge(
-                        table_name="spawns",
+                        "spawns",
                         realm=org_id,
-                        from_vertex_id=parent_agent_id,
-                        to_vertex_id=agent_id,
-                        payload={"timestamp": datetime.utcnow().isoformat(), "relationship": "progeny"}
+                        from_id=parent_agent_id,
+                        to_id=agent_id,
+                        relation_type="SPAWNED",
+                        payload={"timestamp": datetime.now(timezone.utc).isoformat(), "relationship": "progeny"}
                     )
                 except Exception:
                     pass
