@@ -161,7 +161,7 @@ async def create_document_space(req: CreateSpaceRequest):
     client = await get_pg_client()
     if client:
         try:
-            await client.upsert_vertex(
+            await client.add_vertex(
                 "document_spaces",
                 realm=req.project_id,
                 space=req.space_name,
@@ -185,7 +185,7 @@ async def persist_document_catalog_entry(project_id: str, space_name: str, doc_e
         try:
             doc_name = doc_entry.get("document_name") or doc_entry.get("filename") or "doc"
             vertex_id = f"doc_{project_id}_{space_name}_{doc_name}".replace("/", "_").replace(" ", "_")
-            await client.upsert_vertex(
+            await client.add_vertex(
                 "documents_catalog",
                 realm=project_id,
                 space=space_name,
