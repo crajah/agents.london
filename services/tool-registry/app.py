@@ -251,11 +251,11 @@ def list_tools(
 ):
     results = list(TOOL_REGISTRY.values())
     if org_id:
-        results = [t for t in results if t["org_id"] == org_id]
+        results = [t for t in results if t.get("org_id") == org_id]
     if project_id:
-        results = [t for t in results if t["scope_type"] == "org" or t.get("project_id") == project_id]
+        results = [t for t in results if t.get("scope_type") == "org" or t.get("project_id") == project_id]
     if scope_type:
-        results = [t for t in results if t["scope_type"] == scope_type]
+        results = [t for t in results if t.get("scope_type") == scope_type]
     return {"tools": results, "count": len(results)}
 
 @app.get("/tools/rag-documents")
