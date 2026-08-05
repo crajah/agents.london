@@ -56,12 +56,8 @@ export default function Header({
               onChange={(e) => setState(prev => ({ ...prev, orgId: e.target.value }))}
               sx={{ fontSize: '0.85rem' }}
             >
-              <MenuItem value="org_london_meta">org_london_meta</MenuItem>
-              <MenuItem value="org_deepmind_ai">org_deepmind_ai</MenuItem>
-              <MenuItem value="org_global_corp">org_global_corp</MenuItem>
-              {state.orgId.startsWith('org_user_') && (
-                <MenuItem value={state.orgId}>{state.orgId} (Synthetic Org)</MenuItem>
-              )}
+              <MenuItem value={state.orgId}>{state.orgId}</MenuItem>
+              {state.orgId !== 'org_london_meta' && <MenuItem value="org_london_meta">org_london_meta</MenuItem>}
             </Select>
           </FormControl>
 
