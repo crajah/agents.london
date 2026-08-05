@@ -302,9 +302,9 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
             rag = GraphRAG(config)
             await rag.initialize()
-            meta = DocumentMetadata(title=f"ChatTurn_{datetime.utcnow().isoformat()}", doc_type="chat_history")
+            meta = DocumentMetadata(document=f"ChatTurn_{datetime.utcnow().isoformat()}", category="chat_history")
             chunk_content = f"User: {user_prompt}\nAssistant: {agent_answer}"
-            await rag.insert_document(chunk_content, metadata=meta)
+            await rag.index_document(chunk_content, metadata=meta)
             await rag.close()
         except Exception as e:
             logger.debug(f"Note indexing chat turn to post-graph-rag: {e}")
@@ -487,8 +487,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
             rag = GraphRAG(config)
             await rag.initialize()
-            meta = DocumentMetadata(title=f"Pipeline_{pipeline_id}", doc_type="pipeline_specification")
-            await rag.insert_document(doc_text, metadata=meta)
+            meta = DocumentMetadata(document=f"Pipeline_{pipeline_id}", category="pipeline_specification")
+            await rag.index_document(doc_text, metadata=meta)
             await rag.close()
         except Exception as e:
             logger.debug(f"GraphRAG pipeline indexing note for ADK: {e}")
@@ -1127,10 +1127,10 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             await rag.initialize()
 
             for doc in agent_docs:
-                meta = DocumentMetadata(title=doc.get("title", "AgentSpec"), doc_type="agent_specification")
+                meta = DocumentMetadata(document=doc.get("title", "AgentSpec"), category="agent_specification")
                 content = doc.get("content", "")
                 if content:
-                    await rag.insert_document(content, metadata=meta)
+                    await rag.index_document(content, metadata=meta)
                     indexed_count += 1
             await rag.close()
         except Exception as e:
@@ -1284,10 +1284,10 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             await rag.initialize()
 
             for doc in tool_docs:
-                meta = DocumentMetadata(title=doc.get("title", "ToolSpec"), doc_type="tool_specification")
+                meta = DocumentMetadata(document=doc.get("title", "ToolSpec"), category="tool_specification")
                 content = doc.get("content") or doc.get("text", "")
                 if content:
-                    await rag.insert_document(content, metadata=meta)
+                    await rag.index_document(content, metadata=meta)
                     indexed_count += 1
             await rag.close()
         except Exception as e:

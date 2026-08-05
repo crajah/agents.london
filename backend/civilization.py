@@ -693,10 +693,10 @@ class AgentCivilizationEngine:
             await rag.initialize()
 
             for doc in agent_docs:
-                meta = DocumentMetadata(title=doc.get("title", "AgentSpec"), doc_type="agent_specification")
+                meta = DocumentMetadata(document=doc.get("title", "AgentSpec"), category="agent_specification")
                 content = doc.get("content") or doc.get("text", "")
                 if content:
-                    await rag.insert_document(content, metadata=meta)
+                    await rag.index_document(content, metadata=meta)
                     indexed_count += 1
             await rag.close()
         except Exception as e:
@@ -850,10 +850,10 @@ class AgentCivilizationEngine:
             await rag.initialize()
 
             for doc in tool_docs:
-                meta = DocumentMetadata(title=doc.get("title", "ToolSpec"), doc_type="tool_specification")
+                meta = DocumentMetadata(document=doc.get("title", "ToolSpec"), category="tool_specification")
                 content = doc.get("content") or doc.get("text", "")
                 if content:
-                    await rag.insert_document(content, metadata=meta)
+                    await rag.index_document(content, metadata=meta)
                     indexed_count += 1
             await rag.close()
         except Exception as e:
@@ -1065,8 +1065,8 @@ class AgentCivilizationEngine:
             config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
             rag = GraphRAG(config)
             await rag.initialize()
-            meta = DocumentMetadata(title=f"Pipeline_{pipeline_id}", doc_type="pipeline_specification")
-            await rag.insert_document(doc_text, metadata=meta)
+            meta = DocumentMetadata(document=f"Pipeline_{pipeline_id}", category="pipeline_specification")
+            await rag.index_document(doc_text, metadata=meta)
             await rag.close()
         except Exception as e:
             logger.debug(f"GraphRAG pipeline indexing note for Native engine: {e}")
