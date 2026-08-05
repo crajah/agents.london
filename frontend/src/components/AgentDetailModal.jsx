@@ -20,10 +20,8 @@ const AVAILABLE_MODELS = [
 ];
 
 export default function AgentDetailModal({ open, onClose, agent, onSaveModel, state }) {
-  if (!agent) return null;
-
-  const [selectedModel, setSelectedModel] = useState(agent.assignedModel || 'MiniMax-M2.7');
-  const [description, setDescription] = useState(agent.llmDescription || agent.telos);
+  const [selectedModel, setSelectedModel] = useState(agent?.assignedModel || 'MiniMax-M2.7');
+  const [description, setDescription] = useState(agent?.llmDescription || agent?.telos || '');
   const [synthesizing, setSynthesizing] = useState(false);
   const [agentMetrics, setAgentMetrics] = useState({
     executions: 12,
@@ -33,6 +31,13 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
     tokens_in: 1205,
     tokens_out: 4600
   });
+
+  useEffect(() => {
+    if (agent) {
+      setSelectedModel(agent.assignedModel || 'MiniMax-M2.7');
+      setDescription(agent.llmDescription || agent.telos || '');
+    }
+  }, [agent]);
 
   useEffect(() => {
     async function fetchAgentMetrics() {
@@ -45,11 +50,13 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
           }
         }
       } catch (e) {
-        console.log('Error fetching agent metrics:', e);
+        console.error('Error fetching agent metrics:', e);
       }
     }
-    if (open) fetchAgentMetrics();
+    if (open && agent) fetchAgentMetrics();
   }, [open, agent]);
+
+  if (!agent) return null;
 
   const handleSynthesizeDescription = async () => {
     setSynthesizing(true);
