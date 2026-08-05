@@ -22,23 +22,29 @@ export default function MaterializeAgentModal({ open, onClose, state, onSubmit }
   const [selectedTools, setSelectedTools] = useState(['mcp-pgvector-search', 'mcp-redis-queue']);
   const [generating, setGenerating] = useState(false);
 
-  const handleGenerateSystemPrompt = () => {
+  const handleGenerateSystemPrompt = async () => {
     if (!userGoal.trim()) return;
     setGenerating(true);
-
-    setTimeout(() => {
-      const generated = (
-        `You are specialized worker agent '${name || 'CustomWorker'}' operating in realm '${state.orgId}'.\n` +
-        `Your core directive is to execute the following goal with high precision:\n\n` +
-        `GOAL: ${userGoal}\n\n` +
-        `INVIOLABLE RULES:\n` +
-        `1. Validate all input payloads before calling attached MCP tools (${selectedTools.join(', ')}).\n` +
-        `2. Never execute unverified destructive mutations on database records.\n` +
-        `3. Sign all output payloads with assigned ED25519 cryptographic key.`
-      );
-      setSystemPrompt(generated);
+    try {
+      const res = await fetch('/api/generate-system-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_prompt: userGoal,
+          target_role: name || 'Specialized Worker Agent'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSystemPrompt(data.system_prompt || '');
+      } else {
+        setSystemPrompt(`You are '${name || 'CustomWorker'}' in realm '${state.orgId}'. Goal: ${userGoal}`);
+      }
+    } catch (e) {
+      setSystemPrompt(`You are '${name || 'CustomWorker'}' in realm '${state.orgId}'. Goal: ${userGoal}`);
+    } finally {
       setGenerating(false);
-    }, 600);
+    }
   };
 
   const handleSubmit = () => {
