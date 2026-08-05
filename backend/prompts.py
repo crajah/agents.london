@@ -498,9 +498,9 @@ Role & Caste: {caste_role} | System Realm: Active Project Universe
      `[ED25519 VERIFIED: sig_{agent_name.lower().replace(' ', '_')}]`"""
 
 def get_prime_system_prompt(agent_key: str, default_telos: str = "") -> str:
-    """Returns the comprehensive, production-grade system prompt for any 28 Prime Agent key or custom agent."""
+    """Returns the comprehensive, production-grade system prompt for any Prime Agent key or custom agent."""
     clean_key = agent_key.lower().replace("_", "-").split("-")[0]
-    # Check exact key or prefix match against 28 Primes
+    # Check exact key or prefix match against Primes
     for k in PRIME_AGENT_SYSTEM_PROMPTS:
         if k in agent_key.lower():
             return PRIME_AGENT_SYSTEM_PROMPTS[k]

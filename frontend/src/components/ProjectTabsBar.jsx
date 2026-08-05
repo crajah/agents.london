@@ -20,7 +20,7 @@ export default function ProjectTabsBar({ state, setState }) {
   const userId = state.userId || 'user_chandan';
 
   const projects = state.projects || [
-    { id: 'proj_alpha_civilization', name: 'Alpha Civilization Universe', agentsCount: 28, status: 'ACTIVE' },
+    { id: 'proj_alpha_civilization', name: 'Alpha Civilization Universe', status: 'ACTIVE' },
     { id: 'proj_quantum_agents', name: 'Quantum Swarm Universe', agentsCount: 16, status: 'ACTIVE' },
     { id: 'proj_neural_synth', name: 'Neural Synthesis Universe', agentsCount: 12, status: 'ACTIVE' }
   ];
@@ -277,7 +277,7 @@ export default function ProjectTabsBar({ state, setState }) {
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            Instantiates a dedicated project realm in <strong>post-graph</strong> with auto-provisioned 28 Prime Caste agents.
+            Instantiates a dedicated project realm in <strong>post-graph</strong> with auto-provisioned Prime Caste agents.
           </Typography>
 
           <TextField

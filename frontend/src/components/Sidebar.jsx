@@ -26,8 +26,8 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
   });
 
   const [projectMetrics, setProjectMetrics] = useState({
-    active_agents: 28,
-    total_agent_executions: 84,
+    active_agents: 0,
+    total_agent_executions: 0,
     unique_user_engagements: 2,
     bytes_in: 78200,
     bytes_out: 298400,

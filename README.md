@@ -9,7 +9,7 @@
 ```
 +-----------------------------------------------------------------------------------+
 |                                  REACT FRONTEND UI                                |
-|  (Playground Detector-Renderer, Universes Scoping, 28 Prime Visualizer, BYOM)      |
+|  (Playground Detector-Renderer, Universes Scoping, Prime Visualizer, BYOM)      |
 +------------------------------------------+----------------------------------------+
                                            | WebSocket / REST
                                            v
@@ -87,7 +87,7 @@ agents.london/
 ├── backend/                      # Backend for Frontend (BFF) FastAPI Service
 │   ├── main.py                   # FastAPI app, OpenAPI tags, WebSocket broadcast, LLM Router
 │   ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
-│   ├── civilization_adk.py       # Google ADK Engine Implementation & 28 Prime Nodes
+│   ├── civilization_adk.py       # Google ADK Engine Implementation & Prime Nodes
 │   ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
 │   ├── civilization.py           # Native Python Engine & PostGraph persistence
 │   ├── prompts.py                # 6-Section Production System Prompts
@@ -155,4 +155,4 @@ Run the full end-to-end test suite:
 python test_civilization.py
 ```
 
-Validates user creation, project provisioning, Google ADK 28 Prime Node scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Document Registry RAG, Google Search MCP tool execution, and Playground chat workflows.
+Validates user creation, project provisioning, Google ADK Prime Node scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Document Registry RAG, Google Search MCP tool execution, and Playground chat workflows.

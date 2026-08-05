@@ -20,7 +20,7 @@ The **agent.london Frontend** is a React application built with Vite and Vanilla
    - Filters visible project tabs and workspaces based on the authenticated user's organization permissions (`{org_id}` $\to$ `{user}` $\to$ `{project}`).
 
 4. **`CivilizationVisualizer.jsx`**:
-   - Interactive 28 Prime Caste network topology visualizer displaying Genesis, Archivist, Architect, and Auditor nodes, progeny hierarchy trees, and cryptographic signature badges.
+   - Interactive Prime Caste network topology visualizer displaying Genesis, Archivist, Architect, and Auditor nodes, progeny hierarchy trees, and cryptographic signature badges.
 
 5. **`AgentRegistryView.jsx` & `ToolRegistryView.jsx`**:
    - Ontological agent registry and MCP tool management interface with `Kagent` CRD YAML export capabilities.

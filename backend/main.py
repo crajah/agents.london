@@ -39,7 +39,7 @@ tags_metadata = [
     {"name": "Civilization Engine", "description": "Core multi-agent Conductor orchestration, ReAct loops, and dynamic task synthesis."},
     {"name": "Playground", "description": "Interactive prompt testing, detector-renderers, and live LLM streaming."},
     {"name": "Document Registry", "description": "Multi-document space uploading, Docling parsing, and GraphRAG indexing."},
-    {"name": "Agent Management", "description": "Materialize progeny worker nodes and inspect 28 Prime Node hierarchies."},
+    {"name": "Agent Management", "description": "Materialize progeny worker nodes and inspect Prime Node hierarchies."},
     {"name": "System & Telemetry", "description": "Health checks, live cluster metrics, and Redis bus events."}
 ]
 
@@ -610,13 +610,13 @@ async def materialize_agent(req: MaterializeAgentRequest):
 
 @app.get("/api/projects/{project_id}/agents")
 async def get_project_agents(project_id: str, org_id: str = Query("org_london_meta")):
-    """Returns all 28 Prime Agents + all persisted custom/progeny agents recovered for a given project."""
+    """Returns all Prime Agents + all persisted custom/progeny agents recovered for a given project."""
     persisted_custom = await civilization_engine.get_all_project_agents(org_id, project_id)
     
     all_agents = []
     seen_ids = set()
     
-    for agent in ALL_28_PRIME_AGENTS:
+    for agent in PRIME_AGENTS:
         aid = f"{agent['id_prefix']}-{project_id}"
         seen_ids.add(aid)
         all_agents.append({
@@ -892,7 +892,7 @@ class DiscoveryRequest(BaseModel):
     project_id: str = Field(default="proj_alpha_civilization")
     query: str
 
-ALL_28_PRIME_AGENTS = [
+PRIME_AGENTS = [
     # Genesis Nodes (6)
     {"id_prefix": "prime-orchestrator", "name": "The Prime Orchestrator", "caste": "genesis", "cog_func": "Governance", "topo": "Orchestrate", "telos": "Manages the overarching flow of the civilization goals.", "pubkey": "ed25519:prime_orch_99a", "tokens": 5000, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["orchestration", "goal", "flow", "governance", "manage", "master", "pipeline"]},
     {"id_prefix": "high-arbiter", "name": "The High Arbiter", "caste": "genesis", "cog_func": "Governance", "topo": "Hierarchy", "telos": "The ultimate authority in dispute resolution and constitutional interpretation.", "pubkey": "ed25519:high_arb_88b", "tokens": 4500, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["dispute", "constitutional", "authority", "resolution", "law", "rule", "policy"]},
@@ -936,7 +936,7 @@ async def discover_rag_agents(req: DiscoveryRequest):
     project_id = req.project_id
 
     # Try RAG vector search first
-    rag_results = await _rag_discover_agents(req.org_id, project_id, req.query, ALL_28_PRIME_AGENTS)
+    rag_results = await _rag_discover_agents(req.org_id, project_id, req.query, PRIME_AGENTS)
     if rag_results:
         return {
             "project_id": project_id,
@@ -946,7 +946,7 @@ async def discover_rag_agents(req: DiscoveryRequest):
         }
 
     # Fallback to keyword matching
-    keyword_results = _keyword_discover_agents(req.query, project_id, ALL_28_PRIME_AGENTS)
+    keyword_results = _keyword_discover_agents(req.query, project_id, PRIME_AGENTS)
     return {
         "project_id": project_id,
         "query": req.query,
@@ -964,10 +964,10 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
     disc_res = await discover_rag_agents(req)
     top_agents = disc_res["discovered_agents"]
 
-    a1 = top_agents[0] if len(top_agents) > 0 else ALL_28_PRIME_AGENTS[10]
-    a2 = top_agents[1] if len(top_agents) > 1 else ALL_28_PRIME_AGENTS[12]
-    a3 = top_agents[2] if len(top_agents) > 2 else ALL_28_PRIME_AGENTS[14]
-    a4 = top_agents[3] if len(top_agents) > 3 else ALL_28_PRIME_AGENTS[18]
+    a1 = top_agents[0] if len(top_agents) > 0 else PRIME_AGENTS[10]
+    a2 = top_agents[1] if len(top_agents) > 1 else PRIME_AGENTS[12]
+    a3 = top_agents[2] if len(top_agents) > 2 else PRIME_AGENTS[14]
+    a4 = top_agents[3] if len(top_agents) > 3 else PRIME_AGENTS[18]
 
     dag_nodes = [
       {
@@ -1136,7 +1136,7 @@ async def get_global_real_metrics():
     telemetry = get_real_telemetry()
     return {
         "global": True,
-        "total_agent_instances": len(ALL_28_PRIME_AGENTS),
+        "total_agent_instances": len(PRIME_AGENTS),
         "total_agent_executions": telemetry["total_executions"],
         "unique_user_engagements": telemetry["unique_user_engagements"],
         "bytes_in": telemetry["bytes_in"],
@@ -1151,7 +1151,7 @@ async def get_project_real_metrics(project_id: str):
     telemetry = get_real_telemetry(project_id=project_id)
     return {
         "project_id": project_id,
-        "active_agents": len(ALL_28_PRIME_AGENTS),
+        "active_agents": len(PRIME_AGENTS),
         "total_agent_executions": telemetry["executions"],
         "unique_user_engagements": telemetry["unique_user_engagements"],
         "bytes_in": telemetry["bytes_in"],
@@ -1212,7 +1212,7 @@ class MCPCallRequest(BaseModel):
 
 @app.get("/api/mcp/v1/tools")
 async def list_mcp_agent_tools(project_id: str = Query("proj_alpha_civilization"), api_key: Optional[str] = Header(None, alias="X-Project-API-Key")):
-    """Exposes all registered 28 Prime Agents, Progeny, and GCP Custom Search API as MCP tools over HTTP."""
+    """Exposes all registered Prime Agents, Progeny, and GCP Custom Search API as MCP tools over HTTP."""
     tools = [
         {
             "name": "agent_prime_orchestrator",
@@ -1361,7 +1361,7 @@ async def list_user_org_projects(org_id: str, user_id: str):
             "name": f"{org_id.replace('org_', '').replace('_', ' ').title()} Primary Universe",
             "org_id": org_id,
             "owner_user_id": user_id,
-            "agentsCount": 28,
+            "agentsCount": len(PRIME_AGENTS),
             "status": "ACTIVE"
         }
         user_projects = [default_proj]
@@ -1389,7 +1389,7 @@ async def create_user_org_project(org_id: str, user_id: str, name: str = Query(.
             "name": name.strip(),
             "org_id": org_id,
             "owner_user_id": user_id,
-            "agentsCount": result.get("prime_agents_count", 28),
+            "agentsCount": result.get("prime_agents_count", len(PRIME_AGENTS)),
             "status": "ACTIVE"
         }
     except Exception:
