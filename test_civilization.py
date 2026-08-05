@@ -105,7 +105,7 @@ async def main():
 
     print("\n[+] 7. Indexing Agent Metadata into post-graph-rag...")
     rag_res = await civilization_engine.index_agent_registry_for_rag(org_id, project_id)
-    print(f"    RAG Indexing Status: {rag_res.get('status', 'success')}, Indexed={rag_res.get('indexed_agents', 28)}")
+    print(f"    RAG Indexing Status: {rag_res.get('status', 'success')}, Indexed={rag_res.get('indexed_agents', 'N/A')}")
 
     print("\n[+] 7B. Registering Custom Multi-Agent Execution Pipeline Graph...")
     graph_nodes = [

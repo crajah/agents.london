@@ -62,7 +62,7 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            The 28 Permanent Prime Agents Scaffolding Ledger
+            Prime Agents Scaffolding Ledger
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Universal agent ledger tracking existence, caste, cognitive function, execution topology, and public keys.
@@ -80,7 +80,7 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
         onChange={(e, val) => setCasteFilter(val)}
         sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}
       >
-        <Tab value="all" label="All 28 Prime Scaffolding" />
+        <Tab value="all" label="All Prime Agents" />
         <Tab value="genesis" label="Genesis Nodes (6)" />
         <Tab value="archivist" label="Ontological Registry (8)" />
         <Tab value="architect" label="Logic Engines (8)" />

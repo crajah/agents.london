@@ -432,7 +432,7 @@ class AgentCivilizationEngine:
 
         project_id = project_vertex.id
 
-        # Provision All 28 Prime Agents across the 7x6 Architecture Matrix
+        # Provision All Prime Agents across the Architecture Matrix
         prime_agents_def = [
             # 2.1 Genesis Nodes (Creators & Governors)
             {"id": "prime-orchestrator", "name": f"The Prime Orchestrator-{project_name}", "caste": "genesis", "cog_func": "Governance", "topo": "Orchestrate", "telos": "Manages the overarching flow of the civilization's goals."},

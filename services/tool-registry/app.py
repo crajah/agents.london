@@ -340,7 +340,7 @@ async def execute_google_search(req: GoogleSearchRequest):
             },
             {
                 "title": "agent.london MCP Cluster Tool Registry Documentation",
-                "snippet": "Kubernetes cluster integration allowing 28 Prime Agents and Progeny workers to query GCP Custom Search API.",
+                "snippet": "Kubernetes cluster integration allowing Prime Agents and Progeny workers to query GCP Custom Search API.",
                 "link": "https://agents.london/telemetry"
             },
             {

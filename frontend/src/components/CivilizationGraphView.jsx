@@ -7,7 +7,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ViewComfyIcon from '@mui/icons-material/ViewComfy';
 import HubIcon from '@mui/icons-material/Hub';
 
-const PRIME_28_AGENTS = [
+const PRIME_AGENTS = [
   // Genesis Nodes (6)
   { id: 'prime-orchestrator', name: 'The Prime Orchestrator', caste: 'Genesis Nodes', func: 'Governance', topo: 'Orchestrate', color: '#ec4899' },
   { id: 'high-arbiter', name: 'The High Arbiter', caste: 'Genesis Nodes', func: 'Governance', topo: 'Hierarchy', color: '#ec4899' },
@@ -67,9 +67,9 @@ export default function CivilizationGraphView({ state, onOpenMaterialize }) {
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    // Calculate constellation coordinates for 28 Prime Agents
-    const nodes = PRIME_28_AGENTS.map((agent, i) => {
-      const angle = (i / PRIME_28_AGENTS.length) * Math.PI * 2;
+    // Calculate constellation coordinates for Prime Agents
+    const nodes = PRIME_AGENTS.map((agent, i) => {
+      const angle = (i / PRIME_AGENTS.length) * Math.PI * 2;
       const radius = 180 + (i % 3) * 55;
       return {
         ...agent,
@@ -152,7 +152,7 @@ export default function CivilizationGraphView({ state, onOpenMaterialize }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            1B Scale Civilization Architecture (28 Permanent Prime Agents)
+            Civilization Architecture (Prime Agents)
           </Typography>
           <Typography variant="body2" color="text.secondary">
             7 Cognitive Functions × 6 Execution Topologies Matrix Topology Visualizer.
@@ -221,11 +221,11 @@ export default function CivilizationGraphView({ state, onOpenMaterialize }) {
         ) : (
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#a78bfa' }}>
-              The 28 Permanent Prime Agents Scaffolding Matrix
+              Prime Agents Scaffolding Matrix
             </Typography>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 2 }}>
-              {PRIME_28_AGENTS.map((agent) => (
+              {PRIME_AGENTS.map((agent) => (
                 <Paper
                   key={agent.id}
                   elevation={0}

@@ -10,7 +10,7 @@ The **Backend for Frontend (BFF)** is a FastAPI service (`backend/main.py`) powe
    - **`AbstractCivilizationEngine`**: Abstract base class defining unified engine methods (`process_user_prompt_with_llm`, `run_conductor_orchestration`, `run_react_loop`, `provision_civilization_for_project`).
 
 2. **`backend/civilization_adk.py`**:
-   - **`GoogleADKCivilizationEngine`**: Google Agent Development Kit (ADK) implementation with 28 Prime Node specs (`ADKAgentNode`), multi-agent delegation, and RAG memory search.
+   - **`GoogleADKCivilizationEngine`**: Google Agent Development Kit (ADK) implementation with Prime Node specs (`ADKAgentNode`), multi-agent delegation, and RAG memory search.
 
 3. **`backend/civilization_factory.py`**:
    - **`get_civilization_engine()`**: Factory router inspecting `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` default vs `"NATIVE"`).

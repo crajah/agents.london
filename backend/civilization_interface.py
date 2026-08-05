@@ -48,7 +48,7 @@ class AbstractCivilizationEngine(ABC):
         user_id: str,
         project_id: str
     ) -> Dict[str, Any]:
-        """Provisions full 28 Prime Node agents hierarchy for project."""
+        """Provisions full Prime Node agents hierarchy for project."""
         pass
 
     @abstractmethod
