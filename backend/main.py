@@ -153,8 +153,10 @@ class VerifyGoogleTokenRequest(BaseModel):
 
 @app.post("/api/auth/google/verify")
 async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "976346242948-poehj19t44affqbhrd2istr83vs5v0h5.apps.googleusercontent.com")
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "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")
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=500, detail="Google OAuth credentials not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.")
 
     async with httpx.AsyncClient() as client:
         if req.code:
@@ -205,8 +207,10 @@ class VerifyMicrosoftTokenRequest(BaseModel):
 
 @app.post("/api/auth/ms/verify")
 async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
-    client_id = os.getenv("MS_CLIENT_ID", "fd44c70b-8bce-416c-97cb-277649052aa3")
-    client_secret = os.getenv("MS_CLIENT_SECRET", "dCk8Q~cIrBadt.RbOMA8tRr4BdduHbVxTDK4GaIU")
+    client_id = os.getenv("MS_CLIENT_ID", "")
+    client_secret = os.getenv("MS_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=500, detail="Microsoft OAuth credentials not configured. Set MS_CLIENT_ID and MS_CLIENT_SECRET env vars.")
 
     async with httpx.AsyncClient() as client:
         if req.code:
