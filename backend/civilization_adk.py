@@ -299,7 +299,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         """Indexes user turn into post-graph-rag vector memory for long-term semantic retrieval."""
         try:
             rag_realm = f"{org_id}_{project_id}_chat_memory"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             meta = DocumentMetadata(document=f"ChatTurn_{datetime.utcnow().isoformat()}", category="chat_history")
@@ -355,7 +355,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         try:
             async def _get_chat_rag():
                 rag_realm = f"{org_id}_{project_id}_chat_memory"
-                config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+                config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
                 rag = GraphRAG(config)
                 await rag.initialize()
                 query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=2))
@@ -394,7 +394,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         # Check for explicit RAG memory query intent
         if any(k in clean for k in ["search", "find document", "rag", "knowledge", "lookup"]):
             rag_realm = f"{org_id}_{project_id}_agents_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             rag_docs = []
@@ -484,7 +484,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         )
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             meta = DocumentMetadata(document=f"Pipeline_{pipeline_id}", category="pipeline_specification")
@@ -1122,7 +1122,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -1159,7 +1159,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         """Searches post-graph-rag for candidate agents, workflows, or pipelines matching the query prompt."""
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
@@ -1279,7 +1279,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -1318,7 +1318,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
 
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm, embedding_dim=4)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
