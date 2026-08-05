@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Paper, Typography, TextField, Button, Chip, Stack, Card, CardContent, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
 } from '@mui/material';
@@ -117,8 +117,13 @@ export default function AgentDiscoveryView({ state }) {
     }
   };
 
+  const debounceRef = useRef(null);
   useEffect(() => {
-    handleDiscoverAndCompose(goalQuery);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      handleDiscoverAndCompose(goalQuery);
+    }, 600);
+    return () => clearTimeout(debounceRef.current);
   }, [state.projectId, goalQuery]);
 
   const handleExecutePipeline = () => {
