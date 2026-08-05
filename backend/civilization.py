@@ -1565,7 +1565,8 @@ class AgentCivilizationEngine:
             metadata=init_meta
         )
 
-        session_id = f"sess-{doc_res['document_id']}"
+        doc_id = doc_res.get("document_id", "unknown") if isinstance(doc_res, dict) else "unknown"
+        session_id = f"sess-{doc_id}"
         await rag.close()
 
         redis_bus.publish_event(org_id, project_id, {
