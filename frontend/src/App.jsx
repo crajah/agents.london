@@ -30,7 +30,7 @@ export default function App() {
     orgId: 'org_london_meta',
     userId: 'user_chandan',
     projectId: 'proj_alpha_civilization',
-    wsConnected: true,
+    wsConnected: false,
     availableModels: [
       { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', provider: 'MiniMax AI', context_window: 128000, status: 'active' },
       { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', provider: 'OpenAI / OSS', context_window: 128000, status: 'active' },
@@ -58,10 +58,42 @@ export default function App() {
           }
         }
       } catch (e) {
-        console.log('Could not fetch models from backend:', e);
+        console.error('Could not fetch models from backend:', e);
       }
     }
     fetchModels();
+  }, []);
+
+  // WebSocket connection for real-time civilization events
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/civilization`;
+    let ws;
+    let reconnectTimer;
+
+    function connect() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => setState(prev => ({ ...prev, wsConnected: true }));
+      ws.onclose = () => {
+        setState(prev => ({ ...prev, wsConnected: false }));
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+      ws.onerror = () => ws.close();
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'agent_materialized' || msg.type === 'project_created') {
+            console.log('WS event:', msg.type, msg.data);
+          }
+        } catch (e) { /* ignore non-JSON */ }
+      };
+    }
+    connect();
+
+    return () => {
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    };
   }, []);
 
   const handleAuthenticate = (session) => {
