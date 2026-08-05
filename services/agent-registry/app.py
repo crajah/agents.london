@@ -300,7 +300,8 @@ def verify_agent(req: VerifySignatureRequest):
     
     agent = AGENT_REGISTRY[req.agent_id]
     computed_digest = hashlib.sha256(req.payload_text.encode()).hexdigest()
-    is_valid = (agent.get("public_key") == req.public_key) or (len(req.signature) > 10)
+    expected_sig = f"ed25519:{computed_digest}"
+    is_valid = (agent.get("public_key") == req.public_key) and (req.signature == expected_sig or req.signature == agent.get("signature"))
     return {
         "agent_id": req.agent_id,
         "verified": is_valid,
