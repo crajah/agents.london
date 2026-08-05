@@ -758,7 +758,7 @@ async def audit_agent(agent_id: str, payload: Dict[str, Any]):
         except Exception as e:
             logger.debug(f"Audit proxy call to {base} note: {e}")
 
-    return {"status": "audited", "agent_id": agent_id, "new_reputation_score": 105.0}
+    return {"status": "unavailable", "agent_id": agent_id, "note": "Agent registry service offline"}
 
 @app.post("/api/agents/{agent_id}/allocate-tokens")
 async def allocate_agent_tokens(agent_id: str, payload: Dict[str, Any]):
@@ -774,7 +774,7 @@ async def allocate_agent_tokens(agent_id: str, payload: Dict[str, Any]):
         except Exception as e:
             logger.debug(f"Token allocation proxy call to {base} note: {e}")
 
-    return {"status": "updated", "agent_id": agent_id, "new_token_balance": 10000250.0}
+    return {"status": "unavailable", "agent_id": agent_id, "note": "Agent registry service offline"}
 
 class EnhancedPlaygroundChatRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")
@@ -1103,7 +1103,7 @@ async def get_global_real_metrics():
     telemetry = get_real_telemetry()
     return {
         "global": True,
-        "total_agent_instances": 84,
+        "total_agent_instances": len(ALL_28_PRIME_AGENTS),
         "total_agent_executions": telemetry["total_executions"],
         "unique_user_engagements": telemetry["unique_user_engagements"],
         "bytes_in": telemetry["bytes_in"],
@@ -1118,7 +1118,7 @@ async def get_project_real_metrics(project_id: str):
     telemetry = get_real_telemetry(project_id=project_id)
     return {
         "project_id": project_id,
-        "active_agents": 28,
+        "active_agents": len(ALL_28_PRIME_AGENTS),
         "total_agent_executions": telemetry["executions"],
         "unique_user_engagements": telemetry["unique_user_engagements"],
         "bytes_in": telemetry["bytes_in"],
@@ -1396,7 +1396,7 @@ async def create_document_space(project_id: str, space_name: str = Query(...), d
         "project_id": project_id,
         "space_name": space_name,
         "description": description or "Document space",
-        "created_at": "2026-07-27",
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "document_count": 0
     }
 
@@ -1419,7 +1419,7 @@ async def list_document_spaces(project_id: str):
                 "project_id": project_id,
                 "space_name": "default",
                 "description": "Default workspace document repository",
-                "created_at": "2026-07-27",
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "document_count": 0
             }
         ]
