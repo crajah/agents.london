@@ -13,7 +13,8 @@ class AbstractCivilizationEngine(ABC):
         org_id: str,
         project_id: str,
         user_prompt: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        isolation_mode: str = "isolated"
     ) -> Dict[str, Any]:
         """Evaluates user prompt with LLM intent router and executes selected mode."""
         pass
