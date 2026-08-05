@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Paper, Typography, TextField, Button, Chip, Stack, Card, CardContent, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
 } from '@mui/material';
@@ -111,7 +111,7 @@ export default function AgentDiscoveryView({ state }) {
         }
       }
     } catch (e) {
-      console.log('Error performing dynamic RAG discovery & DAG composition:', e);
+      console.error('Error performing dynamic RAG discovery & DAG composition:', e);
     } finally {
       setSearching(false);
     }
@@ -119,7 +119,7 @@ export default function AgentDiscoveryView({ state }) {
 
   useEffect(() => {
     handleDiscoverAndCompose(goalQuery);
-  }, [state.projectId]);
+  }, [state.projectId, goalQuery]);
 
   const handleExecutePipeline = () => {
     setExecuting(true);
