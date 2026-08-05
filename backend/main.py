@@ -830,14 +830,24 @@ async def agent_interact(req: AgentInteractRequest):
     )
     return res
 
+class ConductorRequest(BaseModel):
+    org_id: str = Field(default="org_london_meta")
+    project_id: str = Field(default="proj_alpha_civilization")
+    prompt: str
+
+class ReactRequest(BaseModel):
+    org_id: str = Field(default="org_london_meta")
+    project_id: str = Field(default="proj_alpha_civilization")
+    prompt: str
+
 @app.post("/api/conductor/orchestrate")
-async def conductor_orchestrate(org_id: str, project_id: str, prompt: str):
-    res = await civilization_engine.run_conductor_orchestration(org_id, project_id, prompt)
+async def conductor_orchestrate(req: ConductorRequest):
+    res = await civilization_engine.run_conductor_orchestration(req.org_id, req.project_id, req.prompt)
     return res
 
 @app.post("/api/react/execute")
-async def react_execute(org_id: str, project_id: str, prompt: str):
-    res = await civilization_engine.run_react_loop(org_id, project_id, prompt)
+async def react_execute(req: ReactRequest):
+    res = await civilization_engine.run_react_loop(req.org_id, req.project_id, req.prompt)
     return res
 
 class DiscoveryRequest(BaseModel):
