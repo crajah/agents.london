@@ -1290,7 +1290,7 @@ class AgentCivilizationEngine:
                 if llm_response and llm_response.get("content"):
                     final_answer = llm_response["content"]
                 else:
-                    final_answer = evaluate_user_prompt(user_prompt)
+                    final_answer = await evaluate_user_prompt(user_prompt)
 
                 ans_msg = f"Final Answer: {final_answer}"
                 redis_bus.publish_event(org_id, project_id, {
@@ -1303,7 +1303,7 @@ class AgentCivilizationEngine:
                 break
 
         if not final_answer:
-            final_answer = evaluate_user_prompt(user_prompt)
+            final_answer = await evaluate_user_prompt(user_prompt)
             history.append({"type": "FINAL_ANSWER", "content": final_answer})
 
         record_execution_telemetry(
@@ -1323,6 +1323,42 @@ class AgentCivilizationEngine:
             "final_answer": final_answer
         }
 
+    async def _llm_call(self, messages: list, max_tokens: int = 4096, response_format: Optional[dict] = None) -> Optional[str]:
+        """Shared async LLM call to LiteLLM proxy. Returns content string or None."""
+        payload = {
+            "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
+            "messages": messages,
+            "max_tokens": max_tokens
+        }
+        if response_format:
+            payload["response_format"] = response_format
+        for api_url in [LITELLM_URL, "http://localhost:4000/v1"]:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    res = await client.post(
+                        f"{api_url.rstrip('/')}/chat/completions",
+                        headers={"Authorization": f"Bearer {API_KEY}"},
+                        json=payload
+                    )
+                    if res.status_code == 200:
+                        return res.json()["choices"][0]["message"]["content"].strip()
+            except Exception:
+                continue
+        return None
+
+    async def _fetch_rag_context(self, org_id: str, project_id: str, query: str, realm_suffix: str = "agents_rag") -> List[str]:
+        """Fetches relevant RAG chunks for context enrichment."""
+        try:
+            rag_realm = f"{org_id}_{project_id}_{realm_suffix}"
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            rag = GraphRAG(config)
+            await rag.initialize()
+            result = await rag.query_data(query, param=QueryParam(mode="mix", top_k=3))
+            await rag.close()
+            return [c["content"] for c in result.get("data", {}).get("chunks", []) if c.get("content")]
+        except Exception:
+            return []
+
     async def process_user_prompt_with_llm(
         self,
         org_id: str,
@@ -1330,53 +1366,68 @@ class AgentCivilizationEngine:
         user_prompt: str,
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Evaluates user prompt with an LLM router to dynamically decide execution path:
-        - SIMPLE_CHAT: Direct answer (simple questions, arithmetic, definitions)
-        - RAG_QUERY: Search post-graph-rag knowledge base & session memory
-        - MULTI_AGENT_ORCHESTRATION: Decompose complex goals across Prime Agents & materialize workers
-        - REACT_TOOL_LOOP: Multi-step reasoning loop with MCP tools
-        - MULTI_TURN_CONVERSATION: Multi-turn chat maintaining session state in post-graph
+        """LLM-driven prompt router that automatically selects the best execution strategy:
+
+        1. DIRECT_AGENT — Find an existing agent via RAG whose capabilities match the prompt,
+           execute through that agent with its tools and system prompt.
+        2. PIPELINE — Compose a multi-agent pipeline from existing agents to achieve a complex goal,
+           execute each stage in sequence.
+        3. MATERIALIZE — No existing agent fits. Design a new agent (system prompt + tools) via LLM,
+           materialize it, then execute via DIRECT_AGENT or PIPELINE.
+        4. SIMPLE_CHAT — Simple question or conversation. Answer directly with LLM + RAG context.
         """
-        router_system_prompt = (
-            "You are the Intelligent Router for the agent.london Civilization Engine.\n"
-            "Analyze the user's prompt and categorize how to process it into exactly one of these modes:\n"
-            "1. SIMPLE_CHAT: For simple questions, arithmetic calculations (e.g. 'what is 2 + 2'), greetings, or direct factual queries.\n"
-            "2. RAG_QUERY: For questions asking to search documents, retrieve stored knowledge, or query post-graph vector index.\n"
-            "3. MULTI_AGENT_ORCHESTRATION: For complex goals, multi-stage tasks, building projects, or workflows requiring multiple agents.\n"
-            "4. REACT_TOOL_LOOP: For multi-step reasoning requiring external tools (SQL, search, Redis, APIs).\n"
-            "5. MULTI_TURN_CONVERSATION: For continuing an ongoing multi-turn chat conversation.\n\n"
-            "Return JSON format strictly:\n"
-            '{"mode": "SIMPLE_CHAT"|"RAG_QUERY"|"MULTI_AGENT_ORCHESTRATION"|"REACT_TOOL_LOOP"|"MULTI_TURN_CONVERSATION", "reasoning": "...", "direct_answer": "..."}'
+
+        # ── Step 1: Fetch RAG context to enrich the router's decision ───────
+        rag_context = await self._fetch_rag_context(org_id, project_id, user_prompt)
+        context_snippet = "\n".join(f"- {c[:200]}" for c in rag_context[:3]) if rag_context else "No RAG context available."
+
+        # ── Step 2: LLM Intent Router ───────────────────────────────────────
+        router_prompt = (
+            "You are the Intelligent Router for the agent.london multi-agent civilization platform.\n"
+            "You have access to a registry of specialized AI agents, each with unique capabilities, tools, and system prompts.\n\n"
+            "Analyze the user's prompt and decide the BEST execution strategy:\n\n"
+            "1. **DIRECT_AGENT** — An existing agent in the registry can handle this directly.\n"
+            "   Use when: the task matches a known agent's specialization (e.g., strategy, search, code review, anomaly detection).\n"
+            "   Return: the agent name or role that should handle it.\n\n"
+            "2. **PIPELINE** — Multiple agents need to collaborate in sequence to achieve the goal.\n"
+            "   Use when: the task is complex and requires decomposition into stages (e.g., research → analyze → synthesize → audit).\n"
+            "   Return: a brief description of the pipeline stages.\n\n"
+            "3. **MATERIALIZE** — No existing agent has the right specialization. A new agent needs to be created.\n"
+            "   Use when: the task requires a novel combination of skills, tools, or domain expertise not covered by existing agents.\n"
+            "   Return: the new agent's name, a system prompt, and which tools it needs.\n\n"
+            "4. **SIMPLE_CHAT** — A straightforward question, greeting, arithmetic, or factual query.\n"
+            "   Use when: no agent orchestration is needed — just answer directly.\n"
+            "   Return: the direct answer.\n\n"
+            "Available RAG context from the knowledge base:\n"
+            f"{context_snippet}\n\n"
+            "Return ONLY valid JSON in this exact format:\n"
+            "{\n"
+            '  "mode": "DIRECT_AGENT" | "PIPELINE" | "MATERIALIZE" | "SIMPLE_CHAT",\n'
+            '  "reasoning": "Why this mode was chosen",\n'
+            '  "agent_hint": "Name or role of the best existing agent (for DIRECT_AGENT)",\n'
+            '  "pipeline_stages": ["stage1 description", "stage2 description"] (for PIPELINE),\n'
+            '  "new_agent": {"name": "...", "system_prompt": "...", "tools": ["tool1", "tool2"]} (for MATERIALIZE),\n'
+            '  "direct_answer": "..." (for SIMPLE_CHAT)\n'
+            "}"
         )
 
         decision = None
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                res = await client.post(
-                    f"{LITELLM_URL}/chat/completions",
-                    headers={"Authorization": f"Bearer {API_KEY}"},
-                    json={
-                        "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
-                        "messages": [
-                            {"role": "system", "content": router_system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": 300
-                    }
-                )
-                if res.status_code == 200:
-                    raw_content = res.json()["choices"][0]["message"]["content"]
-                    decision = json.loads(raw_content)
-        except Exception as e:
-            logger.debug(f"LLM intent router call fallback: {e}")
+        raw_response = await self._llm_call(
+            [{"role": "system", "content": router_prompt}, {"role": "user", "content": user_prompt}],
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+        if raw_response:
+            try:
+                decision = json.loads(raw_response)
+            except json.JSONDecodeError:
+                pass
 
-        # Fallback: default to SIMPLE_CHAT if LLM router is unavailable
         if not decision or "mode" not in decision:
             decision = {"mode": "SIMPLE_CHAT", "reasoning": "LLM router unavailable, defaulting to direct chat."}
 
         mode = decision.get("mode", "SIMPLE_CHAT")
-        reasoning = decision.get("reasoning", "LLM intent classification completed.")
+        reasoning = decision.get("reasoning", "")
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "llm_router_classified",
@@ -1385,59 +1436,123 @@ class AgentCivilizationEngine:
             "reasoning": reasoning
         })
 
-        if mode == "SIMPLE_CHAT":
-            answer = decision.get("direct_answer") or await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "system", f"llm-simple-chat-{project_id}", user_prompt, answer)
-            return {
-                "mode": "SIMPLE_CHAT",
-                "reasoning": reasoning,
-                "answer": answer,
-                "final_answer": answer,
-                "execution_summary": f"LLM evaluated simple chat/arithmetic intent. Output: {answer}"
-            }
+        # ── Step 3: Execute the chosen strategy ─────────────────────────────
 
-        elif mode == "RAG_QUERY":
-            rag_realm = f"{org_id}_{project_id}_agents_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
-            rag = GraphRAG(config)
-            await rag.initialize()
-            rag_docs = []
-            try:
-                query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=3))
-                rag_docs = [c["content"] for c in query_res.get("data", {}).get("chunks", [])]
-            except Exception:
-                pass
-            await rag.close()
+        if mode == "DIRECT_AGENT":
+            # Find the best agent via RAG and execute through it
+            agent_hint = decision.get("agent_hint", "")
+            rag_candidates = await self.search_agent_registry_rag(org_id, project_id, f"{user_prompt} {agent_hint}", top_k=1)
 
-            answer = f"RAG Search Results ({len(rag_docs)} chunks found):\n" + "\n".join(f"- {d[:150]}" for d in rag_docs) if rag_docs else await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "system", f"rag-search-{project_id}", user_prompt, answer)
+            # Build an agent-specific system prompt from the matched agent
+            agent_context = rag_candidates[0] if rag_candidates else ""
+            agent_system = (
+                f"You are a specialized agent in the agent.london civilization.\n"
+                f"Agent Context: {agent_context}\n\n"
+                f"RAG Knowledge:\n{context_snippet}\n\n"
+                f"Answer the user's request thoroughly in well-structured Markdown."
+            )
+            answer = await self._llm_call([
+                {"role": "system", "content": agent_system},
+                {"role": "user", "content": user_prompt}
+            ])
+            if not answer:
+                answer = f"Agent execution unavailable. LLM service could not be reached for: {user_prompt[:100]}"
+
+            record_execution_telemetry(org_id, project_id, "system", f"direct-agent-{project_id}", user_prompt, answer)
             return {
-                "mode": "RAG_QUERY",
+                "mode": "DIRECT_AGENT",
                 "reasoning": reasoning,
-                "retrieved_chunks": rag_docs,
+                "agent_hint": agent_hint,
+                "rag_context_used": len(rag_context),
                 "answer": answer,
                 "final_answer": answer
             }
 
-        elif mode == "MULTI_AGENT_ORCHESTRATION":
+        elif mode == "PIPELINE":
+            # Delegate to the conductor orchestration engine which handles
+            # agent discovery, pipeline construction, materialization, and execution
             res = await self.run_conductor_orchestration(org_id, project_id, user_prompt)
-            res["mode"] = "MULTI_AGENT_ORCHESTRATION"
+            res["mode"] = "PIPELINE"
             res["reasoning"] = reasoning
+            res["pipeline_stages"] = decision.get("pipeline_stages", [])
             return res
 
-        elif mode == "REACT_TOOL_LOOP":
-            res = await self.run_react_loop(org_id, project_id, user_prompt)
-            res["mode"] = "REACT_TOOL_LOOP"
-            res["reasoning"] = reasoning
-            return res
+        elif mode == "MATERIALIZE":
+            # LLM has designed a new agent spec — materialize it, then execute
+            new_agent_spec = decision.get("new_agent", {})
+            agent_name = new_agent_spec.get("name", f"CustomAgent_{hashlib.md5(user_prompt.encode()).hexdigest()[:6]}")
+            system_prompt = new_agent_spec.get("system_prompt", f"Specialized agent for: {user_prompt}")
+            tools = new_agent_spec.get("tools", ["mcp-google-search", "mcp-pgvector-search"])
 
-        else: # MULTI_TURN_CONVERSATION
-            answer = await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "system", f"multi-turn-{project_id}", user_prompt, answer)
+            # Materialize the agent in the registry
+            new_agent = await self.materialize_worker_agent(
+                org_id=org_id,
+                project_id=project_id,
+                user_id="system",
+                agent_name=agent_name,
+                system_prompt=system_prompt,
+                tools=tools
+            )
+            materialized_id = new_agent.get("agent_id", agent_name)
+
+            redis_bus.publish_event(org_id, project_id, {
+                "event": "agent_auto_materialized",
+                "agent_id": materialized_id,
+                "agent_name": agent_name,
+                "prompt": user_prompt
+            })
+
+            # Execute through the newly materialized agent
+            agent_system = (
+                f"{system_prompt}\n\n"
+                f"RAG Knowledge:\n{context_snippet}\n\n"
+                f"You have access to these tools: {', '.join(tools)}.\n"
+                f"Answer the user's request thoroughly in well-structured Markdown."
+            )
+            answer = await self._llm_call([
+                {"role": "system", "content": agent_system},
+                {"role": "user", "content": user_prompt}
+            ])
+            if not answer:
+                answer = f"Materialized agent '{agent_name}' but LLM execution unavailable."
+
+            record_execution_telemetry(org_id, project_id, "system", materialized_id, user_prompt, answer)
             return {
-                "mode": "MULTI_TURN_CONVERSATION",
-                "session_id": session_id or f"sess-{project_id}",
+                "mode": "MATERIALIZE",
                 "reasoning": reasoning,
+                "materialized_agent_id": materialized_id,
+                "materialized_agent_name": agent_name,
+                "materialized_system_prompt": system_prompt,
+                "materialized_tools": tools,
+                "rag_context_used": len(rag_context),
+                "answer": answer,
+                "final_answer": answer
+            }
+
+        else:  # SIMPLE_CHAT
+            # Direct answer with RAG context enrichment
+            direct_answer = decision.get("direct_answer")
+            if direct_answer and len(direct_answer) > 20:
+                answer = direct_answer
+            else:
+                chat_system = (
+                    "You are an expert AI assistant in the agent.london civilization platform.\n"
+                    "Answer the user's question directly in clean, well-structured Markdown.\n"
+                )
+                if rag_context:
+                    chat_system += f"\nRelevant knowledge from RAG:\n{context_snippet}\n"
+                answer = await self._llm_call([
+                    {"role": "system", "content": chat_system},
+                    {"role": "user", "content": user_prompt}
+                ])
+                if not answer:
+                    answer = f"**LLM service unavailable.** Could not process: *\"{user_prompt[:100]}\"*"
+
+            record_execution_telemetry(org_id, project_id, "system", f"simple-chat-{project_id}", user_prompt, answer)
+            return {
+                "mode": "SIMPLE_CHAT",
+                "reasoning": reasoning,
+                "rag_context_used": len(rag_context),
                 "answer": answer,
                 "final_answer": answer
             }
