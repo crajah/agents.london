@@ -84,12 +84,12 @@ jobs:
           echo "[+] Building Docker Image: ${IMAGE_NAME} with tag '${DOCKER_TAG}'..."
 
           docker buildx build \
-            --context "${CONTEXT_DIR}" \
             --tag "${REMOTE_TAGGED}" \
             --tag "${REMOTE_LATEST}" \
             --cache-from "type=gha,scope=${IMAGE_NAME}" \
             --cache-to "type=gha,mode=max,scope=${IMAGE_NAME}" \
-            --push
+            --push \
+            ${CONTEXT_DIR}
 
       # - name: Build & Push Docker Image (${{ matrix.service.name }})
       #   env:
