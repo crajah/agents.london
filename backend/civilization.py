@@ -280,7 +280,7 @@ TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_PROXY_URL", os.getenv("LITELLM_URL", "http://litellm-service.default.svc.cluster.local:80/v1")))
 API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
 
-def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_civilization", org_id: str = "org_london_meta") -> str:
+async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_civilization", org_id: str = "org_london_meta") -> str:
     """Generates an authentic, fully synthesized response or document dynamically derived from the user's prompt."""
     clean_prompt = prompt.strip()
     if not clean_prompt:
@@ -309,31 +309,31 @@ def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_ci
 
     for api_url in candidate_urls:
         try:
-            res = httpx.post(
-                f"{api_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {API_KEY}"},
-                json={
-                    "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are an expert AI assistant and lead strategist in agent.london. "
-                                "Directly answer the user's prompt in clean, well-structured Markdown. "
-                                "Do NOT wrap response in meta descriptions like 'Here is a report'. "
-                                "Provide clear headers, actionable insights, tables, and bullet points."
-                            )
-                        },
-                        {"role": "user", "content": clean_prompt}
-                    ],
-                    "max_tokens": 4096
-                },
-                timeout=3.0
-            )
-            if res.status_code == 200:
-                doc = res.json()["choices"][0]["message"]["content"].strip()
-                if doc and len(doc) > 20:
-                    return doc
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(
+                    f"{api_url.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {API_KEY}"},
+                    json={
+                        "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are an expert AI assistant and lead strategist in agent.london. "
+                                    "Directly answer the user's prompt in clean, well-structured Markdown. "
+                                    "Do NOT wrap response in meta descriptions like 'Here is a report'. "
+                                    "Provide clear headers, actionable insights, tables, and bullet points."
+                                )
+                            },
+                            {"role": "user", "content": clean_prompt}
+                        ],
+                        "max_tokens": 4096
+                    }
+                )
+                if res.status_code == 200:
+                    doc = res.json()["choices"][0]["message"]["content"].strip()
+                    if doc and len(doc) > 20:
+                        return doc
         except Exception as e:
             logger.debug(f"LLM call to {api_url} note: {e}")
 
@@ -421,9 +421,9 @@ def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_ci
         f"3. **Actionable Deliverable:** The task has been processed and synthesized. All intermediate steps (tool execution, RAG lookups, agent delegation) have been verified for consistency and accuracy."
     )
 
-def evaluate_user_prompt(prompt: str) -> str:
+async def evaluate_user_prompt(prompt: str) -> str:
     """Evaluates user prompt via dynamic prompt-driven document synthesizer."""
-    return generate_dynamic_task_document(prompt)
+    return await generate_dynamic_task_document(prompt)
 
 class AgentCivilizationEngine:
     def __init__(self):
@@ -1188,7 +1188,7 @@ class AgentCivilizationEngine:
         })
 
         # Dynamic prompt-driven task document generation
-        final_document = generate_dynamic_task_document(task_prompt, project_id=project_id, org_id=org_id)
+        final_document = await generate_dynamic_task_document(task_prompt, project_id=project_id, org_id=org_id)
 
         # Dynamic Sub-task Decomposition based on prompt
         sub_tasks = [
@@ -1479,7 +1479,7 @@ class AgentCivilizationEngine:
         })
 
         if mode == "SIMPLE_CHAT":
-            answer = decision.get("direct_answer") or evaluate_user_prompt(user_prompt)
+            answer = decision.get("direct_answer") or await evaluate_user_prompt(user_prompt)
             record_execution_telemetry(org_id, project_id, "user_chandan", f"llm-simple-chat-{project_id}", user_prompt, answer)
             return {
                 "mode": "SIMPLE_CHAT",
@@ -1502,7 +1502,7 @@ class AgentCivilizationEngine:
                 pass
             await rag.close()
 
-            answer = f"RAG Search Results ({len(rag_docs)} chunks found):\n" + "\n".join(f"- {d[:150]}" for d in rag_docs) if rag_docs else evaluate_user_prompt(user_prompt)
+            answer = f"RAG Search Results ({len(rag_docs)} chunks found):\n" + "\n".join(f"- {d[:150]}" for d in rag_docs) if rag_docs else await evaluate_user_prompt(user_prompt)
             record_execution_telemetry(org_id, project_id, "user_chandan", f"rag-search-{project_id}", user_prompt, answer)
             return {
                 "mode": "RAG_QUERY",
@@ -1525,7 +1525,7 @@ class AgentCivilizationEngine:
             return res
 
         else: # MULTI_TURN_CONVERSATION
-            answer = evaluate_user_prompt(user_prompt)
+            answer = await evaluate_user_prompt(user_prompt)
             record_execution_telemetry(org_id, project_id, "user_chandan", f"multi-turn-{project_id}", user_prompt, answer)
             return {
                 "mode": "MULTI_TURN_CONVERSATION",

@@ -214,7 +214,7 @@ class ADKAgentNode:
             from backend.civilization import generate_dynamic_task_document
         except ImportError:
             from civilization import generate_dynamic_task_document
-        return generate_dynamic_task_document(input_prompt, project_id, org_id)
+        return await generate_dynamic_task_document(input_prompt, project_id, org_id)
 
 
 class GoogleADKCivilizationEngine(AbstractCivilizationEngine):

@@ -539,7 +539,7 @@ async def synthesize_agent_description(req: SynthesizeDescriptionRequest):
         f"Describe what this agent specializes in, its operational role within the civilization, "
         f"and its key capabilities. Be specific and technical."
     )
-    description = generate_dynamic_task_document(synth_prompt, "proj_alpha_civilization", req.org_id)
+    description = await generate_dynamic_task_document(synth_prompt, "proj_alpha_civilization", req.org_id)
     return {
         "agent_id": req.agent_id,
         "agent_name": req.agent_name,
@@ -796,7 +796,7 @@ async def playground_chat(req: EnhancedPlaygroundChatRequest):
             f"User Prompt: {req.prompt}\n\n"
             f"Execute this request strictly as '{target_agent_id}'. Provide a complete, thorough, authoritative response in Markdown."
         )
-        answer = generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
+        answer = await generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
         res = {
             "mode": "solitary",
             "agent_id": target_agent_id,
