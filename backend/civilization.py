@@ -281,12 +281,16 @@ LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_PROXY_URL", os.get
 API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
 
 async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_civilization", org_id: str = "org_london_meta") -> str:
-    """Generates an authentic, fully synthesized response or document dynamically derived from the user's prompt."""
+    """Generates a response by sending the user's prompt to the LLM.
+
+    Tries the in-cluster LiteLLM service first, then the local dev fallback.
+    Returns a clear error message if no LLM is reachable.
+    """
     clean_prompt = prompt.strip()
     if not clean_prompt:
         return "Please provide a valid query or goal directive."
 
-    # 1. Arithmetic evaluation fast-path
+    # Arithmetic evaluation fast-path
     clean_lower = clean_prompt.lower()
     math_match = re.search(r'(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$', clean_lower)
     if math_match:
@@ -301,10 +305,9 @@ async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_al
             except Exception:
                 pass
 
-    # 2. Try live LLM inference: ConfigMap / K8s Cluster Service first, local dev fallback second
+    # LLM inference via LiteLLM proxy
     k8s_service_url = os.getenv("OPENAI_API_BASE") or os.getenv("LITELLM_URL") or "http://litellm-service.default.svc.cluster.local:80/v1"
     local_fallback_url = "http://localhost:4000/v1"
-
     candidate_urls = list(dict.fromkeys([k8s_service_url, local_fallback_url]))
 
     for api_url in candidate_urls:
@@ -337,89 +340,8 @@ async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_al
         except Exception as e:
             logger.debug(f"LLM call to {api_url} note: {e}")
 
-    # 3. Dynamic Intent-Specific Synthesizer (Topic-focused, meaningful answer generation)
-    topic_title = clean_prompt.rstrip("?").title()
+    return f"**LLM service unavailable.** Could not reach any model router to process: *\"{clean_prompt[:100]}\"*. Please ensure LiteLLM is running."
 
-    is_gtm = any(k in clean_lower for k in ["gtm", "go to market", "strategy", "market", "launch", "positioning", "sales"])
-    is_code = any(k in clean_lower for k in ["code", "script", "function", "program", "python", "javascript", "sql", "html", "react"])
-    is_ai_def = any(k in clean_lower for k in ["artificial intelligence", "machine learning", "what is", "meaning of", "explain"])
-
-    if "artificial intelligence" in clean_lower or ("meaning of" in clean_lower and "artificial" in clean_lower) or "what is ai" in clean_lower:
-        return (
-            f"# 🤖 Artificial Intelligence (AI): Definition & Core Meaning\n\n"
-            f"**Artificial Intelligence (AI)** is computer technology and software engineered to let machines learn from data, solve complex problems, reason logically, and make decisions in ways that mirror or surpass human capabilities.\n\n"
-            f"---\n\n"
-            f"## Key Applications & Real-World Examples\n\n"
-            f"- **Smart Chatbots & Language Models:** Conversational agents (ChatGPT, Virtual Assistants) that understand and generate human language.\n"
-            f"- **Autonomous Vehicles:** Self-driving cars and intelligent navigation systems using real-time perception.\n"
-            f"- **Predictive Healthcare:** Diagnostic AI models analyzing medical imaging and genomic data.\n"
-            f"- **Automation & Decision Engines:** Financial fraud detection, smart recommendation systems, and automated logistics.\n\n"
-            f"---\n\n"
-            f"## Core Pillars of AI\n\n"
-            f"1. **Machine Learning (ML):** Statistical algorithms that allow systems to automatically learn and improve from experience without explicit programming.\n"
-            f"2. **Deep Learning & Neural Networks:** Multi-layered artificial neural networks capable of learning complex representations from large unstructured datasets.\n"
-            f"3. **Generative AI:** Foundation models capable of creating original text, high-resolution media, computer code, and synthetic data.\n"
-        )
-
-
-    if is_gtm:
-        return (
-            f"# 🚀 GO-TO-MARKET (GTM) STRATEGY: {topic_title.upper()}\n\n"
-            f"**Objective:** Executive Go-To-Market & Commercialization Roadmap for **{clean_prompt}**\n\n"
-            f"---\n\n"
-            f"## 1. Value Proposition & Target Audience Segmentation\n\n"
-            f"- **Core Value Proposition:** Position **{topic_title}** as the enterprise-grade platform offering high performance, zero-friction integration, and automated scalability.\n"
-            f"- **Primary Ideal Customer Profile (ICP):** Enterprise DevOps Leads, AI System Architects, and Technical Product Managers.\n"
-            f"- **Key Pain Points Solved:** Legacy deployment latency, data fragmentation across silos, and lack of real-time multi-agent consensus.\n\n"
-            f"---\n\n"
-            f"## 2. Phased GTM Rollout & Milestone Timeline\n\n"
-            f"| Phase | Milestone Objective | Target Channel | Key Metrics |\n"
-            f"|---|---|---|---|\n"
-            f"| Phase 1: Private Alpha | 50 Technical Design Partners | Direct Outreach & Developer Relations | 90% Weekly Active Engagement |\n"
-            f"| Phase 2: Public Beta | Open Community Release | Product Hunt, GitHub, Tech Blogs | 10k Developer Signups |\n"
-            f"| Phase 3: General Availability | Enterprise SLA & Cloud Hosting | Dedicated Sales Force & Cloud Marketplaces | $1M+ ARR Realization |\n\n"
-            f"---\n\n"
-            f"## 3. Distribution & Growth Engine\n\n"
-            f"1. **Developer-First Land & Expand:** Offer open-source core SDKs paired with managed cloud enterprise features.\n"
-            f"2. **Content & Thought Leadership:** Publish technical benchmarks, architecture blueprints, and case studies.\n"
-            f"3. **Strategic Ecosystem Partnerships:** Integrate directly into existing cloud infrastructure pipelines."
-        )
-
-    if is_code:
-        return (
-            f"# 💻 TECHNICAL IMPLEMENTATION: {topic_title.upper()}\n\n"
-            f"**Directive Request:** `{clean_prompt}`\n\n"
-            f"```python\n"
-            f"# Complete production implementation for: {clean_prompt}\n"
-            f"import os\n"
-            f"import asyncio\n"
-            f"from typing import Dict, Any, List\n\n"
-            f"class {topic_title.replace(' ', '')}Service:\n"
-            f"    \"\"\"Automated service handler for {clean_prompt}\"\"\"\n"
-            f"    def __init__(self):\n"
-            f"        self.status = 'INITIALIZED'\n\n"
-            f"    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:\n"
-            f"        # Execute processing logic\n"
-            f"        return {{\n"
-            f"            'status': 'SUCCESS',\n"
-            f"            'directive': '{clean_prompt}',\n"
-            f"            'output': input_data\n"
-            f"        }}\n"
-            f"```\n"
-        )
-
-    return (
-        f"# 🎯 DIRECTIVE ANALYSIS & SOLUTION: {topic_title.upper()}\n\n"
-        f"**Requested Directive:** *\"{clean_prompt}\"*\n\n"
-        f"---\n\n"
-        f"## Core Solution & Key Takeaways\n\n"
-        f"1. **Primary Solution Strategy:** To accomplish **{clean_prompt}**, the system orchestrates specialized agent workflows to analyze context, ingest required inputs, and produce a verified deliverable.\n"
-        f"2. **Execution Process:** \n"
-        f"   - **Context Ingestion:** Extracting core parameters and querying shared RAG memory.\n"
-        f"   - **Multi-Agent Synthesis:** Orchestrating reasoning nodes and executing tool interactions recursively.\n"
-        f"   - **Quality Audit:** Verifying result compliance against system directives before final presentation.\n"
-        f"3. **Actionable Deliverable:** The task has been processed and synthesized. All intermediate steps (tool execution, RAG lookups, agent delegation) have been verified for consistency and accuracy."
-    )
 
 async def evaluate_user_prompt(prompt: str) -> str:
     """Evaluates user prompt via dynamic prompt-driven document synthesizer."""
@@ -1429,12 +1351,12 @@ class AgentCivilizationEngine:
 
         decision = None
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
                     f"{LITELLM_URL}/chat/completions",
                     headers={"Authorization": f"Bearer {API_KEY}"},
                     json={
-                        "model": "DeepSeek-V3.2",
+                        "model": os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
                         "messages": [
                             {"role": "system", "content": router_system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -1449,24 +1371,9 @@ class AgentCivilizationEngine:
         except Exception as e:
             logger.debug(f"LLM intent router call fallback: {e}")
 
-        # Fallback heuristic router if LLM unavailable or didn't return JSON
+        # Fallback: default to SIMPLE_CHAT if LLM router is unavailable
         if not decision or "mode" not in decision:
-            clean = user_prompt.strip().lower()
-            if re.search(r'(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$', clean):
-                evaluated = evaluate_user_prompt(user_prompt)
-                decision = {
-                    "mode": "SIMPLE_CHAT",
-                    "reasoning": "Arithmetic query evaluated directly.",
-                    "direct_answer": evaluated
-                }
-            elif any(k in clean for k in ["build", "orchestrate", "create project", "workflow", "deploy"]):
-                decision = {"mode": "MULTI_AGENT_ORCHESTRATION", "reasoning": "Complex workflow orchestration requested."}
-            elif any(k in clean for k in ["search", "find document", "rag", "knowledge", "lookup"]):
-                decision = {"mode": "RAG_QUERY", "reasoning": "Knowledge base search requested."}
-            elif any(k in clean for k in ["tool", "query sql", "inspect", "audit"]):
-                decision = {"mode": "REACT_TOOL_LOOP", "reasoning": "Multi-step tool reasoning requested."}
-            else:
-                decision = {"mode": "SIMPLE_CHAT", "reasoning": "Direct conversational query.", "direct_answer": evaluate_user_prompt(user_prompt)}
+            decision = {"mode": "SIMPLE_CHAT", "reasoning": "LLM router unavailable, defaulting to direct chat."}
 
         mode = decision.get("mode", "SIMPLE_CHAT")
         reasoning = decision.get("reasoning", "LLM intent classification completed.")
