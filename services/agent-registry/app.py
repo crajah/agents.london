@@ -381,9 +381,9 @@ def get_rag_documents(project_id: Optional[str] = Query(None)):
 
     documents = []
     for a in agents:
-        tools_str = ", ".join(a["tools"]) if a["tools"] else "None"
-        guardrails_str = "; ".join([g["rule"] for g in a["guardrails"]]) if a["guardrails"] else "None"
-        parent_str = a["parent_agent_id"] if a["parent_agent_id"] else "Root/None"
+        tools_str = ", ".join(a.get("tools") or []) or "None"
+        guardrails_str = "; ".join([g.get("rule", "") for g in (a.get("guardrails") or [])]) or "None"
+        parent_str = a.get("parent_agent_id") or "Root/None"
 
         doc_text = (
             f"Agent Name: {a['name']}\n"
