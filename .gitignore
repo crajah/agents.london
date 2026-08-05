@@ -1,3 +1,7 @@
+# Hide claude and other agentic tools
+.claude
+
+
 # Hide secrets and keys
 **/*key*
 **/*pem*
