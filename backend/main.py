@@ -1304,41 +1304,35 @@ async def dispatch_a2a_agent_message(req: A2ADispatchRequest, api_key: Optional[
 # DOCUMENT REGISTRY & POST-GRAPH-RAG SPACE ENDPOINTS
 # =========================================================================
 
-# User & Org Scoped Project Registry Store
-PROJECTS_REGISTRY: Dict[str, List[Dict[str, Any]]] = {
-    "org_london_meta:user_chandan": [
-        {"id": "proj_alpha_civilization", "name": "Alpha Civilization Universe", "org_id": "org_london_meta", "owner_user_id": "user_chandan", "agentsCount": 28, "status": "ACTIVE"},
-        {"id": "proj_quantum_agents", "name": "Quantum Swarm Universe", "org_id": "org_london_meta", "owner_user_id": "user_chandan", "agentsCount": 16, "status": "ACTIVE"},
-        {"id": "proj_neural_synth", "name": "Neural Synthesis Universe", "org_id": "org_london_meta", "owner_user_id": "user_chandan", "agentsCount": 12, "status": "ACTIVE"}
-    ],
-    "org_acme_corp:user_alice": [
-        {"id": "proj_acme_logistics", "name": "Acme Autonomous Logistics", "org_id": "org_acme_corp", "owner_user_id": "user_alice", "agentsCount": 8, "status": "ACTIVE"},
-        {"id": "proj_acme_finance", "name": "Acme Automated Finance", "org_id": "org_acme_corp", "owner_user_id": "user_alice", "agentsCount": 5, "status": "ACTIVE"}
-    ]
-}
+# User & Org Scoped Project Registry (in-memory cache, synced with post-graph on create)
+PROJECTS_REGISTRY: Dict[str, List[Dict[str, Any]]] = {}
 
 @app.get("/api/orgs/{org_id}/users/{user_id}/projects")
 async def list_user_org_projects(org_id: str, user_id: str):
-    """Returns ONLY the project universes for the specified org_id for which user_id has authorized access."""
+    """Returns project universes for the specified org_id and user_id, querying post-graph with in-memory fallback."""
+    # Try post-graph via civilization engine
+    try:
+        pg_projects = await civilization_engine.get_user_projects(org_id, user_id)
+        if pg_projects:
+            return {"org_id": org_id, "user_id": user_id, "projects": pg_projects}
+    except Exception:
+        pass
+
+    # In-memory cache fallback
     key = f"{org_id}:{user_id}"
-    user_projects = PROJECTS_REGISTRY.get(key)
-    
-    if not user_projects:
-        user_projects = [
-            p for p_list in PROJECTS_REGISTRY.values() for p in p_list
-            if p.get("org_id") == org_id and (p.get("owner_user_id") == user_id or user_id in p.get("authorized_users", [user_id]))
-        ]
-    
+    user_projects = PROJECTS_REGISTRY.get(key, [])
+
     if not user_projects:
         default_proj = {
             "id": f"proj_{org_id.replace('org_', '')}_default",
-            "name": f"{org_id.replace('org_', '').capitalize()} Primary Universe",
+            "name": f"{org_id.replace('org_', '').replace('_', ' ').title()} Primary Universe",
             "org_id": org_id,
             "owner_user_id": user_id,
-            "agentsCount": 10,
+            "agentsCount": 28,
             "status": "ACTIVE"
         }
         user_projects = [default_proj]
+        PROJECTS_REGISTRY[key] = user_projects
 
     return {
         "org_id": org_id,
@@ -1348,16 +1342,33 @@ async def list_user_org_projects(org_id: str, user_id: str):
 
 @app.post("/api/orgs/{org_id}/users/{user_id}/projects")
 async def create_user_org_project(org_id: str, user_id: str, name: str = Query(...)):
-    """Creates a new project universe authorized specifically for org_id and user_id."""
+    """Creates a new project universe, persisting to post-graph via civilization engine."""
     clean_id = f"proj_{name.lower().replace(' ', '_').replace('-', '_')}"
-    new_proj = {
-        "id": clean_id,
-        "name": name.strip(),
-        "org_id": org_id,
-        "owner_user_id": user_id,
-        "agentsCount": 1,
-        "status": "ACTIVE"
-    }
+    # Persist via civilization engine (writes to post-graph)
+    try:
+        result = await civilization_engine.create_project(
+            org_id=org_id, user_id=user_id,
+            project_name=name.strip(),
+            constitution_rules=["No unauthorized data mutations", "All outputs must be verifiable"]
+        )
+        new_proj = {
+            "id": result.get("project_id", clean_id),
+            "name": name.strip(),
+            "org_id": org_id,
+            "owner_user_id": user_id,
+            "agentsCount": result.get("prime_agents_count", 28),
+            "status": "ACTIVE"
+        }
+    except Exception:
+        new_proj = {
+            "id": clean_id,
+            "name": name.strip(),
+            "org_id": org_id,
+            "owner_user_id": user_id,
+            "agentsCount": 1,
+            "status": "ACTIVE"
+        }
+
     key = f"{org_id}:{user_id}"
     if key not in PROJECTS_REGISTRY:
         PROJECTS_REGISTRY[key] = []
