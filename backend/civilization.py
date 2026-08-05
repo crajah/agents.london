@@ -1135,7 +1135,7 @@ class AgentCivilizationEngine:
             new_agent = await self.materialize_worker_agent(
                 org_id=org_id,
                 project_id=project_id,
-                user_id="user_chandan",
+                user_id="system",
                 agent_name=agent_name,
                 system_prompt=sys_prompt,
                 tools=matched_tool_ids or ["mcp-google-search", "mcp-pgvector-search", "mcp-redis-queue"]
@@ -1211,7 +1211,7 @@ class AgentCivilizationEngine:
         record_execution_telemetry(
             org_id=org_id,
             project_id=project_id,
-            user_id="user_chandan",
+            user_id="system",
             agent_id=conductor_id,
             input_text=task_prompt,
             output_text=final_document
@@ -1387,7 +1387,7 @@ class AgentCivilizationEngine:
         record_execution_telemetry(
             org_id=org_id,
             project_id=project_id,
-            user_id="user_chandan",
+            user_id="system",
             agent_id=react_id,
             input_text=user_prompt,
             output_text=final_answer
@@ -1480,7 +1480,7 @@ class AgentCivilizationEngine:
 
         if mode == "SIMPLE_CHAT":
             answer = decision.get("direct_answer") or await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "user_chandan", f"llm-simple-chat-{project_id}", user_prompt, answer)
+            record_execution_telemetry(org_id, project_id, "system", f"llm-simple-chat-{project_id}", user_prompt, answer)
             return {
                 "mode": "SIMPLE_CHAT",
                 "reasoning": reasoning,
@@ -1503,7 +1503,7 @@ class AgentCivilizationEngine:
             await rag.close()
 
             answer = f"RAG Search Results ({len(rag_docs)} chunks found):\n" + "\n".join(f"- {d[:150]}" for d in rag_docs) if rag_docs else await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "user_chandan", f"rag-search-{project_id}", user_prompt, answer)
+            record_execution_telemetry(org_id, project_id, "system", f"rag-search-{project_id}", user_prompt, answer)
             return {
                 "mode": "RAG_QUERY",
                 "reasoning": reasoning,
@@ -1526,7 +1526,7 @@ class AgentCivilizationEngine:
 
         else: # MULTI_TURN_CONVERSATION
             answer = await evaluate_user_prompt(user_prompt)
-            record_execution_telemetry(org_id, project_id, "user_chandan", f"multi-turn-{project_id}", user_prompt, answer)
+            record_execution_telemetry(org_id, project_id, "system", f"multi-turn-{project_id}", user_prompt, answer)
             return {
                 "mode": "MULTI_TURN_CONVERSATION",
                 "session_id": session_id or f"sess-{project_id}",
