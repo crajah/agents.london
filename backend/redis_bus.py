@@ -43,7 +43,7 @@ class RedisBus:
             # 1. Try with password if provided
             if REDIS_PASSWORD:
                 try:
-                    client = redis.Redis(host=host, port=REDIS_PORT, password=REDIS_PASSWORD, db=0, socket_timeout=2)
+                    client = redis.Redis(host=host, port=REDIS_PORT, password=REDIS_PASSWORD, db=0, socket_timeout=0.5)
                     client.ping()
                     self.redis_client = client
                     logger.info(f"Connected to Redis at {host}:{REDIS_PORT} (Password Authenticated)")
@@ -53,7 +53,7 @@ class RedisBus:
 
             # 2. Try unauthenticated connection (Local Redis dev instance)
             try:
-                client = redis.Redis(host=host, port=REDIS_PORT, db=0, socket_timeout=2)
+                client = redis.Redis(host=host, port=REDIS_PORT, db=0, socket_timeout=0.5)
                 client.ping()
                 self.redis_client = client
                 logger.info(f"Connected to Redis at {host}:{REDIS_PORT} (Local Unauthenticated)")
