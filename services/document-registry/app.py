@@ -77,6 +77,22 @@ def get_rag_engine(realm: str, space: Optional[str] = "default") -> Optional[Any
     )
     return GraphRAG(config)
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    """Initializes document spaces schema in post-graph on startup."""
+    client = await get_pg_client()
+    if client:
+        try:
+            await client.create_vertex_table("document_spaces", realm="global")
+            await client.create_vertex_table("documents_catalog", realm="global")
+        except Exception as e:
+            logger.info(f"Document registry schema setup note: {e}")
+        finally:
+            await client.close()
+    yield
+
 tags_metadata = [
     {"name": "Document Spaces", "description": "Create and manage document spaces scoped per project."},
     {"name": "Document Upload & Ingestion", "description": "Upload PDFs, DOCX, Markdown files with Docling / PyPDF text extraction."},
@@ -99,7 +115,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    openapi_tags=tags_metadata
+    openapi_tags=tags_metadata,
+    lifespan=lifespan
 )
 
 # Models
@@ -121,19 +138,6 @@ class RAGQueryRequest(BaseModel):
     space_name: Optional[str] = Field(None, description="Target document space or None for all spaces")
     top_k: int = 5
     mode: str = "mix"
-
-@app.on_event("startup")
-async def startup_event():
-    """Initializes document spaces schema in post-graph."""
-    client = await get_pg_client()
-    if client:
-        try:
-            await client.create_vertex_table("document_spaces", realm="global")
-            await client.create_vertex_table("documents_catalog", realm="global")
-        except Exception as e:
-            logger.info(f"Document registry schema setup note: {e}")
-        finally:
-            await client.close()
 
 @app.get("/health")
 async def health_check():
