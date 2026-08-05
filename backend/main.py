@@ -997,7 +997,7 @@ class VerifySignaturePayload(BaseModel):
     payload_text: str
 
 @app.post("/api/civilization/verify")
-async def verify_agent_signature(req: VerifySignaturePayload):
+async def verify_civilization_agent(req: VerifySignaturePayload):
     try:
         import httpx
         async with httpx.AsyncClient(timeout=3.0) as client:
