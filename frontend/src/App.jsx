@@ -91,8 +91,25 @@ export default function App() {
     setUserSession(null);
   };
 
-  const handleMaterializeSubmit = (data) => {
-    console.log('Materializing agent:', data);
+  const handleMaterializeSubmit = async (data) => {
+    try {
+      const res = await fetch('/api/agents/materialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          org_id: state.orgId,
+          project_id: state.projectId,
+          user_id: state.userId,
+          agent_name: data.name,
+          system_prompt: data.systemPrompt,
+          parent_agent_id: data.parentId || null,
+          tools: data.tools || [],
+        })
+      });
+      if (!res.ok) console.error('Materialize failed:', await res.text());
+    } catch (e) {
+      console.error('Materialize error:', e);
+    }
   };
 
   const handleAddTool = (newTool) => {
