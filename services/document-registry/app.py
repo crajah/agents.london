@@ -314,11 +314,18 @@ def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> Tuple[str,
     # 1. Use Docling if available
     if DOCLING_AVAILABLE:
         try:
+            import tempfile
             converter = DocumentConverter()
-            result = converter.convert(file_bytes)
-            text = result.document.export_to_markdown()
-            if text and len(text.strip()) > 10:
-                return text, "docling"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext or ".bin") as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            try:
+                result = converter.convert(tmp_path)
+                text = result.document.export_to_markdown()
+                if text and len(text.strip()) > 10:
+                    return text, "docling"
+            finally:
+                os.unlink(tmp_path)
         except Exception as e:
             logger.info(f"Docling conversion note for {filename}: {e}")
 
