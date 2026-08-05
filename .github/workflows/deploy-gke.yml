@@ -67,6 +67,9 @@ jobs:
         run: |
           gcloud auth configure-docker gcr.io --quiet
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build & Push Docker Image (${{ matrix.service.name }})
         env:
           DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
@@ -79,13 +82,34 @@ jobs:
           REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
 
           echo "[+] Building Docker Image: ${IMAGE_NAME} with tag '${DOCKER_TAG}'..."
-          docker build -t "${REMOTE_TAGGED}" -t "${REMOTE_LATEST}" "${CONTEXT_DIR}"
 
-          echo "[+] Pushing ${REMOTE_TAGGED} to GCR..."
-          docker push "${REMOTE_TAGGED}"
+          docker buildx build \
+            --context "${CONTEXT_DIR}" \
+            --tag "${REMOTE_TAGGED}" \
+            --tag "${REMOTE_LATEST}" \
+            --cache-from "type=gha,scope=${IMAGE_NAME}" \
+            --cache-to "type=gha,mode=max,scope=${IMAGE_NAME}" \
+            --push
 
-          echo "[+] Pushing ${REMOTE_LATEST} to GCR..."
-          docker push "${REMOTE_LATEST}"
+      # - name: Build & Push Docker Image (${{ matrix.service.name }})
+      #   env:
+      #     DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
+      #     GCR_REGISTRY: gcr.io/${{ env.GCP_PROJECT }}
+      #   run: |
+      #     IMAGE_NAME="${{ matrix.service.name }}"
+      #     CONTEXT_DIR="${{ matrix.service.context }}"
+
+      #     REMOTE_TAGGED="${GCR_REGISTRY}/${IMAGE_NAME}:${DOCKER_TAG}"
+      #     REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
+
+      #     echo "[+] Building Docker Image: ${IMAGE_NAME} with tag '${DOCKER_TAG}'..."
+      #     docker build -t "${REMOTE_TAGGED}" -t "${REMOTE_LATEST}" "${CONTEXT_DIR}"
+
+      #     echo "[+] Pushing ${REMOTE_TAGGED} to GCR..."
+      #     docker push "${REMOTE_TAGGED}"
+
+      #     echo "[+] Pushing ${REMOTE_LATEST} to GCR..."
+      #     docker push "${REMOTE_LATEST}"
 
   # =========================================================================
   # JOB 3: PARALLEL KUBERNETES DEPLOYMENT MATRIX FOR ALL COMPONENTS
