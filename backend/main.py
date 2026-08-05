@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 import httpx
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query, Header, UploadFile, File
@@ -142,6 +143,7 @@ class VerifyGoogleTokenRequest(BaseModel):
     id_token: Optional[str] = None
     code: Optional[str] = None
     redirect_uri: Optional[str] = None
+    code_verifier: Optional[str] = None
 
 @app.post("/api/auth/google/verify")
 async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
@@ -156,8 +158,10 @@ async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
                 "client_secret": client_secret,
                 "code": req.code,
                 "grant_type": "authorization_code",
-                "redirect_uri": req.redirect_uri or "http://localhost:5173"
+                "redirect_uri": req.redirect_uri or "http://localhost:3000"
             }
+            if req.code_verifier:
+                payload["code_verifier"] = req.code_verifier
             resp = await client.post(token_url, data=payload)
             if resp.status_code != 200:
                 raise HTTPException(status_code=400, detail=f"Google OAuth token exchange failed: {resp.text}")
@@ -191,6 +195,7 @@ class VerifyMicrosoftTokenRequest(BaseModel):
     id_token: Optional[str] = None
     code: Optional[str] = None
     redirect_uri: Optional[str] = None
+    code_verifier: Optional[str] = None
 
 @app.post("/api/auth/ms/verify")
 async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
@@ -205,9 +210,11 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
                 "client_secret": client_secret,
                 "code": req.code,
                 "grant_type": "authorization_code",
-                "redirect_uri": req.redirect_uri or "http://localhost:5173",
-                "scope": "openid email profile User.Read"
+                "redirect_uri": req.redirect_uri or "http://localhost:3000",
+                "scope": "openid email profile"
             }
+            if req.code_verifier:
+                payload["code_verifier"] = req.code_verifier
             resp = await client.post(token_url, data=payload)
             if resp.status_code != 200:
                 raise HTTPException(status_code=400, detail=f"Microsoft OAuth token exchange failed: {resp.text}")

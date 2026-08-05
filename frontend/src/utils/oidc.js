@@ -1,15 +1,18 @@
 /**
- * Production-Grade OpenID Connect (OIDC) & GCP Identity Federation Helper
- * Handles real Google Identity, GCP Identity Platform, and Microsoft Entra ID OAuth2 popup flows,
- * JWT ID token parsing, UserInfo API calls, and graceful fallback handlers for OAuth 401 invalid_client errors.
+ * OAuth 2.0 / OIDC Authentication Module
+ *
+ * Google: Google Identity Services (GIS) SDK with server-side token verification.
+ *         Falls back to authorization code popup flow if GIS is unavailable.
+ * Microsoft: OAuth2 Authorization Code + PKCE via popup with server-side code exchange.
+ *
+ * All tokens and codes are verified server-side via /api/auth/{provider}/verify.
  */
 
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 export const MS_CLIENT_ID = import.meta.env.VITE_MS_CLIENT_ID || '';
 
-/**
- * Decodes base64url JWT ID token payload
- */
+// ─── JWT Parsing (display only — auth decisions use server-side verification) ─
+
 export function parseJwtPayload(token) {
   try {
     const base64Url = token.split('.')[1];
@@ -22,167 +25,271 @@ export function parseJwtPayload(token) {
     );
     return JSON.parse(jsonPayload);
   } catch (e) {
-    console.error('Failed to parse OIDC JWT payload:', e);
+    console.error('Failed to parse JWT payload:', e);
     return null;
   }
 }
 
-/**
- * Extracts email from OIDC JWT token payload or UserInfo endpoint response
- */
-export function extractEmailFromOidcData(data) {
-  if (!data) return null;
+// ─── PKCE Helpers ──────────────────────────────────────────────────────────
 
-  if (data.email && typeof data.email === 'string') return data.email.trim();
-  if (data.userPrincipalName && data.userPrincipalName.includes('@')) return data.userPrincipalName.trim();
-  if (data.mail && data.mail.includes('@')) return data.mail.trim();
-  if (data.preferred_username && data.preferred_username.includes('@')) return data.preferred_username.trim();
-  if (data.upn && data.upn.includes('@')) return data.upn.trim();
-
-  return null;
+function generateCodeVerifier() {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+async function generateCodeChallenge(verifier) {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+// ─── Server-side Token/Code Verification ───────────────────────────────────
+
+async function verifyWithBackend(provider, payload) {
+  const endpoint = provider === 'google' ? '/api/auth/google/verify' : '/api/auth/ms/verify';
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `${provider} verification failed`);
+  }
+  return res.json();
+}
+
+// ─── Popup Callback (runs inside the OAuth redirect popup window) ──────────
+
 /**
- * Checks if current window is an OIDC callback popup and posts payload to parent window
+ * Call on app load. If this window is a popup redirected back from an OAuth
+ * provider, extract the authorization code and post it to the opener.
  */
 export function checkAndHandleOidcCallback() {
-  if (window.opener && (window.location.hash || window.location.search)) {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const searchParams = new URLSearchParams(window.location.search);
+  if (!window.opener) return false;
 
-    const idToken = hashParams.get('id_token') || searchParams.get('id_token');
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
 
-    if (idToken) {
-      const payload = parseJwtPayload(idToken);
-      const email = extractEmailFromOidcData(payload);
-      if (email) {
-        window.opener.postMessage({ type: 'OIDC_AUTH_SUCCESS', email, payload }, window.location.origin);
-        window.close();
-        return true;
-      }
-    }
+  if (error) {
+    window.opener.postMessage(
+      { type: 'OIDC_ERROR', error, description: params.get('error_description') || error },
+      window.location.origin
+    );
+    window.close();
+    return true;
   }
+
+  const code = params.get('code');
+  if (code) {
+    window.opener.postMessage(
+      { type: 'OIDC_CODE', code, state: params.get('state') || '' },
+      window.location.origin
+    );
+    window.close();
+    return true;
+  }
+
+  // Handle id_token in hash fragment (legacy / GIS redirect)
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const idToken = hashParams.get('id_token');
+  if (idToken) {
+    window.opener.postMessage(
+      { type: 'OIDC_TOKEN', id_token: idToken },
+      window.location.origin
+    );
+    window.close();
+    return true;
+  }
+
   return false;
 }
 
-/**
- * Executes Google OIDC & GCP Identity Federation flow with clean fallback handling
- */
-export function triggerGoogleOIDC(onSuccess) {
-  let clientId = GOOGLE_CLIENT_ID;
-
-  if (!clientId) {
-    const userEmail = prompt(
-      'GCP Identity Federation / Google OIDC:\n\nEnter your Google Email to authenticate (or enter a registered GCP OAuth Client ID if available):',
-      'chandan.rajah@gmail.com'
-    );
-    if (userEmail && userEmail.includes('@')) {
-      onSuccess(userEmail.trim());
-      return;
-    }
-    if (userEmail && userEmail.includes('.apps.googleusercontent.com')) {
-      clientId = userEmail.trim();
-    } else {
-      return;
-    }
-  }
-
-  // If Google Identity Services SDK script is present
-  if (window.google?.accounts?.id && clientId) {
-    try {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (response) => {
-          const payload = parseJwtPayload(response.credential);
-          const email = extractEmailFromOidcData(payload);
-          if (email) {
-            onSuccess(email);
-          } else {
-            const fallbackEmail = prompt('Google OIDC Authenticated! Confirm your email address:', 'chandan.rajah@gmail.com');
-            if (fallbackEmail) onSuccess(fallbackEmail.trim());
-          }
-        }
-      });
-      window.google.accounts.id.prompt();
-      return;
-    } catch (err) {
-      console.warn('Google Identity SDK error, falling back to prompt:', err);
-    }
-  }
-
-  // Direct OIDC OAuth Popup Flow
-  const redirectUri = encodeURIComponent(window.location.origin);
-  const nonce = Math.random().toString(36).substring(2);
-  const googleOidcUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=id_token%20token&scope=openid%20email%20profile&nonce=${nonce}`;
-
-  const popup = window.open(googleOidcUrl, 'GoogleOIDC', 'width=520,height=620');
-
-  const messageHandler = (event) => {
-    if (event.origin !== window.location.origin) return;
-    if (event.data && event.data.type === 'OIDC_AUTH_SUCCESS' && event.data.email) {
-      window.removeEventListener('message', messageHandler);
-      clearInterval(checkClosedTimer);
-      onSuccess(event.data.email);
-    }
-  };
-
-  window.addEventListener('message', messageHandler);
-
-  const checkClosedTimer = setInterval(() => {
-    if (popup && popup.closed) {
-      clearInterval(checkClosedTimer);
-      window.removeEventListener('message', messageHandler);
-      const fallbackEmail = prompt('Google OIDC Session Complete. Confirm your Google Email:', 'chandan.rajah@gmail.com');
-      if (fallbackEmail && fallbackEmail.includes('@')) {
-        onSuccess(fallbackEmail.trim());
-      }
-    }
-  }, 1000);
-}
+// ─── Google OIDC ───────────────────────────────────────────────────────────
 
 /**
- * Executes Microsoft Entra ID / Azure OIDC flow with clean fallback handling
+ * Triggers Google authentication.
+ *
+ * Primary path: Google Identity Services (GIS) SDK — shows One Tap or
+ * account chooser, returns an id_token verified server-side.
+ *
+ * Fallback: Authorization code popup flow — opens Google consent screen,
+ * captures the code, sends it to backend for exchange.
+ *
+ * @param {(session: {email, orgId, userId, verified, provider}) => void} onSuccess
+ * @param {(error: string) => void} onError
  */
-export function triggerMicrosoftOIDC(onSuccess) {
-  let clientId = MS_CLIENT_ID;
-
+export function triggerGoogleOIDC(onSuccess, onError) {
+  const clientId = GOOGLE_CLIENT_ID;
   if (!clientId) {
-    const userEmail = prompt(
-      'Microsoft Entra ID / Azure OIDC Federation:\n\nEnter your Microsoft Account or Work Email to authenticate:',
-      'chandan.rajah@outlook.com'
-    );
-    if (userEmail && userEmail.includes('@')) {
-      onSuccess(userEmail.trim());
-      return;
-    }
+    onError('Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID in .env');
     return;
   }
 
-  const redirectUri = encodeURIComponent(window.location.origin);
-  const nonce = Math.random().toString(36).substring(2);
-  const msOidcUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&response_type=id_token&redirect_uri=${redirectUri}&scope=openid%20email%20profile%20User.Read&response_mode=fragment&nonce=${nonce}`;
+  // Primary: Google Identity Services SDK
+  if (window.google?.accounts?.id) {
+    try {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          try {
+            const data = await verifyWithBackend('google', { id_token: response.credential });
+            onSuccess({
+              email: data.email,
+              orgId: data.org_id,
+              userId: data.user_id,
+              verified: true,
+              provider: 'google',
+            });
+          } catch (err) {
+            onError(err.message);
+          }
+        },
+      });
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          // One Tap suppressed (cooldown, browser settings, etc.) — use popup
+          _googleAuthCodePopup(clientId, onSuccess, onError);
+        }
+      });
+      return;
+    } catch (err) {
+      console.warn('GIS SDK error, falling back to popup:', err);
+    }
+  }
 
-  const popup = window.open(msOidcUrl, 'MicrosoftOIDC', 'width=520,height=620');
+  // Fallback: authorization code popup
+  _googleAuthCodePopup(clientId, onSuccess, onError);
+}
 
-  const messageHandler = (event) => {
+function _googleAuthCodePopup(clientId, onSuccess, onError) {
+  const redirectUri = window.location.origin;
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', 'google');
+  url.searchParams.set('prompt', 'select_account');
+
+  _openOAuthPopup(url.toString(), 'google', redirectUri, onSuccess, onError);
+}
+
+// ─── Microsoft OIDC ────────────────────────────────────────────────────────
+
+/**
+ * Triggers Microsoft authentication via OAuth2 Authorization Code + PKCE.
+ *
+ * Opens a popup to the Microsoft login page, captures the authorization code,
+ * and sends it along with the PKCE code_verifier to the backend for exchange.
+ *
+ * @param {(session: {email, orgId, userId, verified, provider}) => void} onSuccess
+ * @param {(error: string) => void} onError
+ */
+export async function triggerMicrosoftOIDC(onSuccess, onError) {
+  const clientId = MS_CLIENT_ID;
+  if (!clientId) {
+    onError('Microsoft Client ID not configured. Set VITE_MS_CLIENT_ID in .env');
+    return;
+  }
+
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const redirectUri = window.location.origin;
+
+  const url = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('response_mode', 'query');
+  url.searchParams.set('state', 'microsoft');
+  url.searchParams.set('code_challenge', codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('prompt', 'select_account');
+
+  _openOAuthPopup(url.toString(), 'microsoft', redirectUri, onSuccess, onError, codeVerifier);
+}
+
+// ─── Shared Popup Logic ────────────────────────────────────────────────────
+
+function _openOAuthPopup(authUrl, provider, redirectUri, onSuccess, onError, codeVerifier) {
+  const popup = window.open(authUrl, `${provider}OAuth`, 'width=520,height=620');
+  if (!popup) {
+    onError('Popup blocked by browser. Please allow popups for this site.');
+    return;
+  }
+
+  let resolved = false;
+
+  function cleanup() {
+    resolved = true;
+    clearInterval(checkClosedTimer);
+    window.removeEventListener('message', messageHandler);
+  }
+
+  const messageHandler = async (event) => {
     if (event.origin !== window.location.origin) return;
-    if (event.data && event.data.type === 'OIDC_AUTH_SUCCESS' && event.data.email) {
-      window.removeEventListener('message', messageHandler);
-      clearInterval(checkClosedTimer);
-      onSuccess(event.data.email);
+    if (resolved) return;
+
+    if (event.data?.type === 'OIDC_ERROR') {
+      cleanup();
+      onError(event.data.description || event.data.error);
+      return;
+    }
+
+    if (event.data?.type === 'OIDC_CODE') {
+      cleanup();
+      try {
+        const payload = { code: event.data.code, redirect_uri: redirectUri };
+        if (codeVerifier) payload.code_verifier = codeVerifier;
+        const data = await verifyWithBackend(provider, payload);
+        onSuccess({
+          email: data.email,
+          orgId: data.org_id,
+          userId: data.user_id,
+          verified: true,
+          provider,
+        });
+      } catch (err) {
+        onError(err.message);
+      }
+      return;
+    }
+
+    if (event.data?.type === 'OIDC_TOKEN') {
+      cleanup();
+      try {
+        const data = await verifyWithBackend(provider, { id_token: event.data.id_token });
+        onSuccess({
+          email: data.email,
+          orgId: data.org_id,
+          userId: data.user_id,
+          verified: true,
+          provider,
+        });
+      } catch (err) {
+        onError(err.message);
+      }
     }
   };
 
   window.addEventListener('message', messageHandler);
 
   const checkClosedTimer = setInterval(() => {
-    if (popup && popup.closed) {
+    if (popup.closed) {
       clearInterval(checkClosedTimer);
-      window.removeEventListener('message', messageHandler);
-      const fallbackEmail = prompt('Microsoft OIDC Session Complete. Confirm your Microsoft Email:', 'chandan.rajah@outlook.com');
-      if (fallbackEmail && fallbackEmail.includes('@')) {
-        onSuccess(fallbackEmail.trim());
-      }
+      // Delay to allow any pending postMessage from the popup to arrive
+      setTimeout(() => {
+        if (!resolved) {
+          window.removeEventListener('message', messageHandler);
+          onError('Authentication window was closed');
+        }
+      }, 1000);
     }
-  }, 1000);
+  }, 500);
 }
