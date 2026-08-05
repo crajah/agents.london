@@ -126,12 +126,32 @@ export default function AgentDiscoveryView({ state }) {
     return () => clearTimeout(debounceRef.current);
   }, [state.projectId, goalQuery]);
 
-  const handleExecutePipeline = () => {
+  const handleExecutePipeline = async () => {
     setExecuting(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/conductor/orchestrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          org_id: state.orgId,
+          project_id: state.projectId,
+          prompt: goalQuery
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.final_answer) {
+          setComposedPipeline(prev => prev.map((n, i) =>
+            i === prev.length - 1 ? { ...n, output: data.final_answer, status: 'success' } : n
+          ));
+        }
+      }
+    } catch (e) {
+      console.error('Pipeline execution error:', e);
+    } finally {
       setExecuting(false);
       setDagModalOpen(true);
-    }, 800);
+    }
   };
 
   const getCasteColor = (caste) => {
