@@ -834,6 +834,34 @@ async def agent_interact(req: AgentInteractRequest):
     )
     return res
 
+@app.post("/api/agent/interact-multimodal")
+async def agent_interact_multimodal(
+    file: UploadFile = File(...),
+    org_id: str = Query("org_london_meta"),
+    project_id: str = Query("proj_alpha_civilization"),
+    prompt: str = Query(""),
+    session_id: Optional[str] = Query(None)
+):
+    """Accepts an image or video file, uses gemma-4-31B-it vision model to infer content,
+    then feeds the inference into the automated pipeline orchestration flow."""
+    file_bytes = await file.read()
+    filename = file.filename or "uploaded_media"
+
+    # Step 1: Vision inference via gemma-4-31B-it
+    vision_description = await civilization_engine.infer_multimodal(file_bytes, filename, prompt)
+
+    # Step 2: Combine vision inference with user prompt and route through pipeline
+    combined_prompt = f"{prompt}\n\n[Vision Analysis of {filename}]:\n{vision_description}" if prompt else vision_description
+    res = await civilization_engine.process_user_prompt_with_llm(
+        org_id=org_id,
+        project_id=project_id,
+        user_prompt=combined_prompt,
+        session_id=session_id
+    )
+    res["vision_inference"] = vision_description
+    res["source_file"] = filename
+    return res
+
 class ConductorRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")
     project_id: str = Field(default="proj_alpha_civilization")

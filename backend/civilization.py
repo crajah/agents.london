@@ -1359,6 +1359,177 @@ class AgentCivilizationEngine:
         except Exception:
             return []
 
+    # ─── Agent Versioning & Iteration ─────────────────────────────────────
+
+    async def _resolve_agent_version(self, org_id: str, project_id: str, base_name: str) -> int:
+        """Determines the next version number for an agent by checking existing versions in the registry."""
+        existing = await self.get_all_project_agents(org_id, project_id)
+        clean = re.sub(r'[^a-zA-Z0-9_-]', '_', base_name.strip()).lower()
+        max_ver = 0
+        for a in existing:
+            aid = a.get("agent_id", a.get("id", ""))
+            if f"custom-{clean}-" in aid:
+                # Extract version: custom-name-project-v2 → 2
+                ver_match = re.search(r'-v(\d+)$', aid)
+                if ver_match:
+                    max_ver = max(max_ver, int(ver_match.group(1)))
+                elif max_ver == 0:
+                    max_ver = 1  # Unversioned original counts as v1
+        return max_ver + 1
+
+    async def iterate_agent(
+        self, org_id: str, project_id: str, original_agent_id: str,
+        improved_prompt: str, improved_tools: Optional[List[str]] = None,
+        iteration_reason: str = "Judge panel recommended improvement"
+    ) -> Dict[str, Any]:
+        """Creates a new version of an existing agent with an improved system prompt and tools.
+        Maintains progeny lineage — the new version is a child of the original."""
+        existing = await self.get_all_project_agents(org_id, project_id)
+        original = next((a for a in existing if (a.get("agent_id") or a.get("id")) == original_agent_id), None)
+        base_name = original.get("name", "IteratedAgent") if original else "IteratedAgent"
+        version = await self._resolve_agent_version(org_id, project_id, base_name)
+
+        return await self.materialize_worker_agent(
+            org_id=org_id, project_id=project_id, user_id="system",
+            agent_name=f"{base_name} v{version}",
+            system_prompt=improved_prompt,
+            parent_agent_id=original_agent_id,
+            tools=improved_tools or (original.get("tools", []) if original else []),
+            caste="progeny_iteration",
+            iteration_of=original_agent_id,
+            iteration_version=version,
+            iteration_reason=iteration_reason
+        )
+
+    # ─── LLM Judge Panel ────────────────────────────────────────────────
+
+    JUDGE_MODELS = ["DeepSeek-V3.2", "MiniMax-M2.7", "gpt-oss-120b"]
+
+    async def _evaluate_with_judge_panel(
+        self, agent_id: str, agent_prompt: str, user_query: str, agent_output: str
+    ) -> Dict[str, Any]:
+        """Evaluates an agent's output using a panel of LLM judges.
+        Each judge scores quality (1-10) and suggests improvements.
+        Returns consensus verdict and aggregated suggestions."""
+
+        judge_system = (
+            "You are an expert AI agent evaluator on the agent.london platform.\n"
+            "You are reviewing the output of a specialized AI agent to assess quality.\n\n"
+            "Evaluate the agent's response on these criteria:\n"
+            "1. Relevance — Does the output address the user's query?\n"
+            "2. Completeness — Is the response thorough and actionable?\n"
+            "3. Accuracy — Are the claims and reasoning sound?\n"
+            "4. Structure — Is the output well-organized and clear?\n\n"
+            "Return ONLY valid JSON:\n"
+            "{\n"
+            '  "score": 1-10,\n'
+            '  "verdict": "ADEQUATE" | "NEEDS_IMPROVEMENT",\n'
+            '  "reasoning": "Brief explanation",\n'
+            '  "improved_system_prompt": "A better system prompt for this agent (only if NEEDS_IMPROVEMENT)",\n'
+            '  "suggested_tools": ["tool1", "tool2"] (only if NEEDS_IMPROVEMENT)\n'
+            "}"
+        )
+
+        judge_input = (
+            f"Agent ID: {agent_id}\n"
+            f"Agent System Prompt: {agent_prompt[:500]}\n"
+            f"User Query: {user_query}\n"
+            f"Agent Output:\n{agent_output[:1500]}"
+        )
+
+        verdicts = []
+        for model in self.JUDGE_MODELS:
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": judge_system},
+                        {"role": "user", "content": judge_input}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": 400
+                }
+                for api_url in [LITELLM_URL, "http://localhost:4000/v1"]:
+                    try:
+                        async with httpx.AsyncClient(timeout=20.0) as client:
+                            res = await client.post(
+                                f"{api_url.rstrip('/')}/chat/completions",
+                                headers={"Authorization": f"Bearer {API_KEY}"},
+                                json=payload
+                            )
+                            if res.status_code == 200:
+                                content = res.json()["choices"][0]["message"]["content"].strip()
+                                verdict = json.loads(content)
+                                verdict["judge_model"] = model
+                                verdicts.append(verdict)
+                                break
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f"Judge {model} evaluation note: {e}")
+
+        if not verdicts:
+            return {"consensus": "ADEQUATE", "avg_score": 7.0, "verdicts": [], "should_iterate": False}
+
+        avg_score = sum(v.get("score", 7) for v in verdicts) / len(verdicts)
+        needs_improvement_count = sum(1 for v in verdicts if v.get("verdict") == "NEEDS_IMPROVEMENT")
+        should_iterate = needs_improvement_count > len(verdicts) / 2
+
+        # Aggregate the best improvement suggestion
+        best_prompt = None
+        best_tools = None
+        if should_iterate:
+            for v in sorted(verdicts, key=lambda x: x.get("score", 10)):
+                if v.get("improved_system_prompt"):
+                    best_prompt = v["improved_system_prompt"]
+                    best_tools = v.get("suggested_tools")
+                    break
+
+        return {
+            "consensus": "NEEDS_IMPROVEMENT" if should_iterate else "ADEQUATE",
+            "avg_score": round(avg_score, 1),
+            "verdicts": verdicts,
+            "should_iterate": should_iterate,
+            "improved_system_prompt": best_prompt,
+            "suggested_tools": best_tools
+        }
+
+    # ─── Multimodal Inference ───────────────────────────────────────────
+
+    async def infer_multimodal(self, file_bytes: bytes, filename: str, user_prompt: str = "") -> str:
+        """Uses gemma-4-31B-it vision model to infer content from images/videos.
+        Returns a text description that can be fed into the pipeline flow."""
+        import base64
+        ext = os.path.splitext(filename)[1].lower()
+        mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                    ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime"}
+        mime_type = mime_map.get(ext, "image/png")
+        b64_data = base64.b64encode(file_bytes).decode("utf-8")
+
+        vision_prompt = user_prompt or "Describe this image or video in detail. What do you see? Extract all relevant information."
+
+        messages = [
+            {"role": "user", "content": [
+                {"type": "text", "text": vision_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}}
+            ]}
+        ]
+
+        for api_url in [LITELLM_URL, "http://localhost:4000/v1"]:
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    res = await client.post(
+                        f"{api_url.rstrip('/')}/chat/completions",
+                        headers={"Authorization": f"Bearer {API_KEY}"},
+                        json={"model": "gemma-4-31B-it", "messages": messages, "max_tokens": 2048}
+                    )
+                    if res.status_code == 200:
+                        return res.json()["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                logger.debug(f"Vision model call to {api_url} note: {e}")
+
+        return f"[Vision inference unavailable for {filename}. Please ensure gemma-4-31B-it is accessible via LiteLLM.]"
+
     async def process_user_prompt_with_llm(
         self,
         org_id: str,
@@ -1517,6 +1688,26 @@ class AgentCivilizationEngine:
                 answer = f"Materialized agent '{agent_name}' but LLM execution unavailable."
 
             record_execution_telemetry(org_id, project_id, "system", materialized_id, user_prompt, answer)
+
+            # Run LLM judge panel — auto-iterate agent if quality is insufficient
+            judge_result = await self._evaluate_with_judge_panel(materialized_id, system_prompt, user_prompt, answer)
+            iterated_agent_id = None
+            if judge_result.get("should_iterate") and judge_result.get("improved_system_prompt"):
+                iterated = await self.iterate_agent(
+                    org_id, project_id, materialized_id,
+                    improved_prompt=judge_result["improved_system_prompt"],
+                    improved_tools=judge_result.get("suggested_tools"),
+                    iteration_reason=f"Judge panel avg score: {judge_result['avg_score']}/10"
+                )
+                iterated_agent_id = iterated.get("agent_id")
+                # Re-execute with the improved agent
+                improved_answer = await self._llm_call([
+                    {"role": "system", "content": judge_result["improved_system_prompt"]},
+                    {"role": "user", "content": user_prompt}
+                ])
+                if improved_answer and len(improved_answer) > len(answer) // 2:
+                    answer = improved_answer
+
             return {
                 "mode": "MATERIALIZE",
                 "reasoning": reasoning,
@@ -1525,6 +1716,8 @@ class AgentCivilizationEngine:
                 "materialized_system_prompt": system_prompt,
                 "materialized_tools": tools,
                 "rag_context_used": len(rag_context),
+                "judge_panel": judge_result,
+                "iterated_agent_id": iterated_agent_id,
                 "answer": answer,
                 "final_answer": answer
             }
@@ -1618,22 +1811,34 @@ class AgentCivilizationEngine:
         custom_guardrails: Optional[List[Dict[str, Any]]] = None,
         caste: Optional[str] = "progeny",
         model_name: Optional[str] = "DeepSeek-V3.2",
+        iteration_of: Optional[str] = None,
+        iteration_version: Optional[int] = None,
+        iteration_reason: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Materializes a new agent in post-graph database (either spawned from parent or completely new)."""
+        """Materializes a new agent in post-graph database.
+        Supports progeny lineage (parent_agent_id) and versioned iteration (iteration_of)."""
         clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', agent_name.strip())
-        agent_id = f"custom-{clean_name.lower()}-{project_id}"
+        version_suffix = f"-v{iteration_version}" if iteration_version else ""
+        agent_id = f"custom-{clean_name.lower()}-{project_id}{version_suffix}"
 
-        role = "parent_spawned_progeny" if parent_agent_id else "custom_user_agent"
-        telos = f"Custom agent '{agent_name}' created for project {project_id}."
-        if parent_agent_id:
-            telos += f" Spawned from parent '{parent_agent_id}'."
+        if iteration_of:
+            role = "iterated_agent"
+            telos = f"Iteration v{iteration_version or 'N'} of '{iteration_of}'. {iteration_reason or ''}"
+            parent_agent_id = parent_agent_id or iteration_of
+        elif parent_agent_id:
+            role = "parent_spawned_progeny"
+            telos = f"Custom agent '{agent_name}' spawned from parent '{parent_agent_id}' in project {project_id}."
+        else:
+            role = "custom_user_agent"
+            telos = f"Custom agent '{agent_name}' created for project {project_id}."
 
         reg_data = await self._register_agent_service(
             org_id=org_id, user_id=user_id, project_id=project_id,
             agent_id=agent_id, name=agent_name, caste=caste or "progeny",
             role=role, telos=telos, system_prompt=system_prompt,
-            parent_agent_id=parent_agent_id, tools=tools, guardrails=custom_guardrails
+            parent_agent_id=parent_agent_id, tools=tools, guardrails=custom_guardrails,
+            iteration_of=iteration_of, iteration_version=iteration_version, iteration_reason=iteration_reason
         )
         reg_data["assignedModel"] = model_name or "DeepSeek-V3.2"
 
@@ -1731,11 +1936,14 @@ class AgentCivilizationEngine:
         system_prompt: str,
         parent_agent_id: Optional[str] = None,
         tools: Optional[List[str]] = None,
-        guardrails: Optional[List[Dict[str, Any]]] = None
+        guardrails: Optional[List[Dict[str, Any]]] = None,
+        iteration_of: Optional[str] = None,
+        iteration_version: Optional[int] = None,
+        iteration_reason: Optional[str] = None
     ) -> Dict[str, Any]:
         # Generate Federated Digital Passport, UAID & X.509 Certificate Attestation
         clean_aid = re.sub(r'[^a-zA-Z0-9_-]', '', agent_id)
-        version_str = "v1.0.0"
+        version_str = f"v{iteration_version}.0.0" if iteration_version else "v1.0.0"
         uaid = f"uaid:london:auth:{project_id}:{clean_aid}:{version_str}"
         entra_spn = f"spn:agent365:{clean_aid}@{project_id}.entra.agent.london"
 
@@ -1782,7 +1990,16 @@ class AgentCivilizationEngine:
             "reputation_score": 100.0,
             "tools": tools or [],
             "memory_policy": {"policy_type": "shared_session", "session_segregation": True, "read_access": True, "write_access": True},
-            "guardrails": guardrails or []
+            "guardrails": guardrails or [],
+            "iteration_of": iteration_of,
+            "iteration_version": iteration_version,
+            "iteration_reason": iteration_reason,
+            "lineage": {
+                "parent_agent_id": parent_agent_id,
+                "iteration_of": iteration_of,
+                "version": version_str,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
         }
 
         candidate_urls = [
