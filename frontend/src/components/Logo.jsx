@@ -6,7 +6,7 @@ import React from 'react';
  */
 export default function Logo({ size = 32, showText = true, variant = 'default' }) {
   const markSize = size;
-  const textColor = variant === 'light' ? '#18181b' : '#fafafa';
+  const textColor = variant === 'light' ? '#18181b' : variant === 'auto' ? 'currentColor' : '#fafafa';
   const accentColor = '#6366f1';
   const secondaryColor = '#a78bfa';
 
@@ -53,7 +53,7 @@ export default function Logo({ size = 32, showText = true, variant = 'default' }
           letterSpacing: '-0.03em',
           color: textColor,
         }}>
-          agent
+          agents
           <span style={{ color: accentColor }}>.london</span>
         </span>
       )}

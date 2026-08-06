@@ -88,7 +88,7 @@ export default function AuthLockScreen({ onAuthenticate }) {
         >
           {/* Header Icon & Brand */}
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-            <Logo size={48} />
+            <Logo size={48} variant="auto" />
             <Typography variant="body2" color="text.secondary">
               Multi-Agent Civilization Platform
             </Typography>
