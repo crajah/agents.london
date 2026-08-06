@@ -93,6 +93,7 @@ export default function Header({
           </Button>
 
           {userSession ? (
+            <>
             <Chip
               label={userSession.email}
               color="success"
@@ -100,15 +101,16 @@ export default function Header({
               deleteIcon={<LogoutIcon />}
               sx={{ fontWeight: 600, fontSize: '0.8rem' }}
             />
-            <Tooltip title={"Theme: " + (themePreference || "system")}>
+            <Tooltip title="Toggle theme">
               <IconButton
                 size="small"
-                onClick={() => { if (onThemeChange) onThemeChange(nextTheme[themePreference || "system"]); }}
+                onClick={function() { if (onThemeChange) onThemeChange(nextTheme[themePreference || "system"]); }}
                 sx={{ ml: 0.5 }}
               >
                 {themeIcons[themePreference || "system"]}
               </IconButton>
             </Tooltip>
+            </>
           ) : (
             <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small" sx={{ fontSize: '0.75rem' }}>
               Sign In
