@@ -83,7 +83,13 @@ jobs:
 
           echo "[+] Building Docker Image: ${IMAGE_NAME} with tag '${DOCKER_TAG}'..."
 
+          BUILD_ARGS=""
+          if [ "${IMAGE_NAME}" = "agent-london-frontend" ]; then
+            BUILD_ARGS="--build-arg VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }} --build-arg VITE_MS_CLIENT_ID=${{ secrets.VITE_MS_CLIENT_ID }}"
+          fi
+
           docker buildx build \
+            ${BUILD_ARGS} \
             --tag "${REMOTE_TAGGED}" \
             --tag "${REMOTE_LATEST}" \
             --cache-from "type=gha,scope=${IMAGE_NAME}" \

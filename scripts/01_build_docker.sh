@@ -33,7 +33,12 @@ echo "[+] Building backend BFF image..."
 docker build -t "agent-london-backend:${TAG}" "${PROJECT_ROOT}/backend"
 
 echo "[+] Building frontend web visualizer image..."
-docker build -t "agent-london-frontend:${TAG}" "${PROJECT_ROOT}/frontend"
+# VITE_GOOGLE_CLIENT_ID and VITE_MS_CLIENT_ID must be set as env vars
+# (from GitHub Actions secrets or local .env) before running this script
+docker build \
+    --build-arg VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-}" \
+    --build-arg VITE_MS_CLIENT_ID="${VITE_MS_CLIENT_ID:-}" \
+    -t "agent-london-frontend:${TAG}" "${PROJECT_ROOT}/frontend"
 
 echo "============================================================"
 echo "SUCCESS: All 5 Docker images built locally with tag '${TAG}'"
