@@ -17,7 +17,7 @@ jobs:
   # =========================================================================
   prepare-tag:
     name: Generate Unified Timestamp Tag
-    runs-on: ubuntu-latest
+    runs-on: [arc-runner-set, ubuntu-latest]
     outputs:
       docker_tag: ${{ steps.tag_step.outputs.docker_tag }}
     steps:
@@ -33,7 +33,7 @@ jobs:
   build-and-push-parallel:
     name: Build & Push (${{ matrix.service.name }})
     needs: prepare-tag
-    runs-on: ubuntu-latest
+    runs-on: [arc-runner-set, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix:
@@ -103,7 +103,7 @@ jobs:
   deploy-to-gke:
     name: Deploy (${{ matrix.k8s.name }})
     needs: [prepare-tag, build-and-push-parallel]
-    runs-on: ubuntu-latest
+    runs-on: [arc-runner-set, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix:
@@ -183,7 +183,7 @@ jobs:
   verify-cluster:
     name: Verify Ingress Gateway & Cluster Health
     needs: [deploy-to-gke]
-    runs-on: ubuntu-latest
+    runs-on: [arc-runner-set, ubuntu-latest]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
