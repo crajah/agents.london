@@ -103,7 +103,7 @@ async def record_execution_telemetry_to_pg(
     try:
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
-        await pg_client.create_vertex_table("executions", realm=project_id)
+        await pg_client.create_vertex_table("executions", realm=org_id)
         
         payload = {
             "org_id": org_id,
@@ -116,7 +116,7 @@ async def record_execution_telemetry_to_pg(
             "tokens_out": tok_out,
             "timestamp": datetime.utcnow().isoformat()
         }
-        await pg_client.add_vertex_data("executions", realm=project_id, vertex_id=agent_id, payload=payload)
+        await pg_client.add_vertex_data("executions", realm=org_id, vertex_id=agent_id, payload=payload)
         await pg_client.close()
     except Exception as e:
         logger.debug(f"Post-graph telemetry persistence fallback: {e}")
@@ -237,8 +237,8 @@ async def get_project_api_key_from_pg(project_id: str, org_id: str = "org_london
     try:
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
-        await pg_client.create_vertex_table("projects", realm=project_id)
-        project_vertex = await pg_client.get_vertex("projects", realm=project_id, vertex_id=project_id)
+        await pg_client.create_vertex_table("projects", realm=org_id)
+        project_vertex = await pg_client.get_vertex("projects", realm=org_id, vertex_id=project_id)
         if project_vertex and hasattr(project_vertex, "payload") and isinstance(project_vertex.payload, dict):
             key = project_vertex.payload.get("api_key")
             if key:
@@ -247,7 +247,7 @@ async def get_project_api_key_from_pg(project_id: str, org_id: str = "org_london
 
         new_key = generate_project_api_key()
         payload = {"project_id": project_id, "org_id": org_id, "api_key": new_key, "created_at": datetime.utcnow().isoformat()}
-        await pg_client.add_vertex("projects", realm=project_id, payload=payload)
+        await pg_client.add_vertex("projects", realm=org_id, space=project_id, payload=payload)
         await pg_client.close()
         return new_key
     except Exception as e:
@@ -259,9 +259,9 @@ async def save_project_api_key_to_pg(project_id: str, new_api_key: str, org_id: 
     try:
         pg_client = AsyncPostGraph(dsn=DB_URI)
         await pg_client.connect()
-        await pg_client.create_vertex_table("projects", realm=project_id)
+        await pg_client.create_vertex_table("projects", realm=org_id)
         payload = {"project_id": project_id, "org_id": org_id, "api_key": new_api_key, "updated_at": datetime.utcnow().isoformat()}
-        await pg_client.add_vertex("projects", realm=project_id, payload=payload)
+        await pg_client.add_vertex("projects", realm=org_id, space=project_id, payload=payload)
         await pg_client.close()
     except Exception as e:
         logger.warning(f"Error saving project API key to post-graph: {e}")
@@ -482,9 +482,9 @@ class AgentCivilizationEngine:
                 system_prompt=sys_prompt
             )
             provisioned_agents.append(agent)
-            await client.add_vertex(table_name="agents", realm=project_id, payload=agent)
+            await client.add_vertex(table_name="agents", realm=org_id, space=project_id, payload=agent)
             try:
-                await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=agent["agent_id"], payload=agent)
+                await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=agent["agent_id"], payload=agent)
             except Exception:
                 pass
 
@@ -877,15 +877,15 @@ class AgentCivilizationEngine:
         try:
             pg_client = AsyncPostGraph(dsn=self.db_uri)
             await pg_client.connect()
-            await pg_client.create_vertex_table("agent_registry", realm=project_id)
-            await pg_client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+            await pg_client.create_vertex_table("agent_registry", realm=org_id)
+            await pg_client.add_vertex(table_name="agent_registry", realm=org_id, space=project_id, payload=payload)
             try:
-                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
-                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
+                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
 
                 for target_agent_id in assigned_agent_ids:
                     try:
-                        await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id})
+                        await pg_client.add_edge("composes_pipeline", realm=org_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id})
                     except Exception:
                         pass
 
@@ -895,7 +895,7 @@ class AgentCivilizationEngine:
                     dst_agent = nodes_by_id.get(edge.get("to"), {}).get("agent_id", edge.get("to"))
                     if src_agent and dst_agent:
                         try:
-                            await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id})
+                            await pg_client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id})
                         except Exception:
                             pass
             except Exception as edge_err:
@@ -1883,10 +1883,10 @@ class AgentCivilizationEngine:
         # Persist agent vertex into post-graph database table 'agents'
         try:
             client = await self._get_pg_client(org_id)
-            v_res = await client.add_vertex(table_name="agents", realm=project_id, payload=reg_data)
+            v_res = await client.add_vertex(table_name="agents", realm=org_id, space=project_id, payload=reg_data)
             if v_res and isinstance(v_res, dict) and "id" in v_res:
                 try:
-                    await client.add_vertex_data(table_name="agents", realm=project_id, vertex_id=v_res["id"], payload=reg_data)
+                    await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=v_res["id"], payload=reg_data)
                 except Exception:
                     pass
             
@@ -1943,7 +1943,7 @@ class AgentCivilizationEngine:
         client = await self._get_pg_client(org_id)
         for tbl in ["agent_registry", "agents"]:
             try:
-                vertices = await client.get_vertices(table_name=tbl, realm=project_id)
+                vertices = await client.get_vertices(table_name=tbl, realm=org_id, space=project_id)
                 for v in vertices:
                     payload = v.payload if hasattr(v, "payload") else v
                     if isinstance(payload, dict) and "agent_id" in payload:
@@ -2061,10 +2061,10 @@ class AgentCivilizationEngine:
         # Post-graph direct persistence in table agent_registry using project realm
         try:
             client = await self._get_pg_client(project_id)
-            await client.create_vertex_table("agent_registry", realm=project_id)
-            await client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+            await client.create_vertex_table("agent_registry", realm=org_id)
+            await client.add_vertex(table_name="agent_registry", realm=org_id, space=project_id, payload=payload)
             try:
-                await client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=agent_id, payload=payload)
+                await client.add_vertex_data(table_name="agent_registry", realm=org_id, vertex_id=agent_id, payload=payload)
             except Exception:
                 pass
             await client.close()
@@ -2134,11 +2134,11 @@ class AgentCivilizationEngine:
             logger.warning(f"Failed to fetch custom_model_configs: {e}")
             return []
 
-    async def get_agent_version_history(self, project_id: str, agent_id: str) -> List[Dict[str, Any]]:
+    async def get_agent_version_history(self, project_id: str, agent_id: str, org_id: str = "org_default") -> List[Dict[str, Any]]:
         """Fetch all immutable version entries for an agent from post-graph agents_data table."""
         client = await self._get_pg_client(project_id)
         try:
-            records = await client.get_vertex_data("agents", realm=project_id, vertex_id=agent_id)
+            records = await client.get_vertex_data("agents", realm=org_id, vertex_id=agent_id)
             await client.close()
             return [r.to_dict() for r in records]
         except Exception as e:
@@ -2146,11 +2146,11 @@ class AgentCivilizationEngine:
             logger.error(f"Error fetching agent version history: {e}")
             return []
 
-    async def get_latest_agent_version(self, project_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+    async def get_latest_agent_version(self, project_id: str, agent_id: str, org_id: str = "org_default") -> Optional[Dict[str, Any]]:
         """Fetch the latest immutable version entry for an agent."""
         client = await self._get_pg_client(project_id)
         try:
-            record = await client.get_latest_vertex_data("agents", realm=project_id, vertex_id=agent_id)
+            record = await client.get_latest_vertex_data("agents", realm=org_id, vertex_id=agent_id)
             await client.close()
             return record.to_dict() if record else None
         except Exception as e:
@@ -2158,11 +2158,11 @@ class AgentCivilizationEngine:
             logger.error(f"Error fetching latest agent version: {e}")
             return None
 
-    async def get_agent_version_by_id(self, project_id: str, data_id: str) -> Optional[Dict[str, Any]]:
+    async def get_agent_version_by_id(self, project_id: str, data_id: str, org_id: str = "org_default") -> Optional[Dict[str, Any]]:
         """Query a specific data entry / version by its sequential data_id (version number)."""
         client = await self._get_pg_client(project_id)
         try:
-            record = await client.get_vertex_data_by_id("agents", realm=project_id, data_id=data_id)
+            record = await client.get_vertex_data_by_id("agents", realm=org_id, data_id=data_id)
             await client.close()
             return record.to_dict() if record else None
         except Exception as e:
