@@ -7,8 +7,8 @@ import React from 'react';
 export default function Logo({ size = 32, showText = true, variant = 'default' }) {
   const markSize = size;
   const textColor = variant === 'light' ? '#18181b' : variant === 'auto' ? 'currentColor' : '#fafafa';
-  const accentColor = '#4285F4';
-  const secondaryColor = '#34A853';
+  const accentColor = '#537ebf';
+  const secondaryColor = '#7ac943';
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: size * 0.25, lineHeight: 1 }}>
@@ -47,8 +47,8 @@ export default function Logo({ size = 32, showText = true, variant = 'default' }
       {/* Wordmark */}
       {showText && (
         <span style={{
-          fontFamily: '"Plus Jakarta Sans", sans-serif',
-          fontWeight: 700,
+          fontFamily: '"Archivo", system-ui, sans-serif',
+          fontWeight: 800,
           fontSize: size * 0.55,
           letterSpacing: '-0.03em',
           color: textColor,
