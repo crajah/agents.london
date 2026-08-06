@@ -11,6 +11,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import SettingsBrightnessIcon from '@mui/icons-material/SettingsBrightness';
+import Logo from './Logo';
 
 export default function Header({
   state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM, onToggleMobileSidebar,
@@ -19,7 +20,7 @@ export default function Header({
   const themeIcons = { system: <SettingsBrightnessIcon fontSize="small" />, light: <LightModeIcon fontSize="small" />, dark: <DarkModeIcon fontSize="small" /> };
   const nextTheme = { system: 'light', light: 'dark', dark: 'system' };
   return (
-    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: { xs: 1, sm: 2 } }}>
+    <AppBar position="static" color="transparent" elevation={0} sx={{ px: { xs: 1, sm: 2 } }}>
       <Toolbar sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, py: 1 }}>
         {/* Mobile Hamburger Menu Button & Brand */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -27,22 +28,13 @@ export default function Header({
             color="inherit"
             edge="start"
             onClick={onToggleMobileSidebar}
-            sx={{ display: { lg: 'none' }, color: '#60a5fa' }}
+            sx={{ display: { lg: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
 
-          <Box sx={{ fontSize: '1.8rem', lineHeight: 1 }}>🏛️</Box>
+          <Logo size={30} />
           <Box>
-            <Typography variant="h6" sx={{
-              fontWeight: 800,
-              background: 'linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              letterSpacing: '-0.5px'
-            }}>
-              agent.london
-            </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Chip label="1B Agent Civilization" size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', display: { xs: 'none', sm: 'inline' } }}>
@@ -108,13 +100,13 @@ export default function Header({
               deleteIcon={<LogoutIcon />}
               sx={{ fontWeight: 600, fontSize: '0.8rem' }}
             />
-            <Tooltip title={`Theme: ${themePreference || 'system'}`}>
+            <Tooltip title={"Theme: " + (themePreference || "system")}>
               <IconButton
                 size="small"
-                onClick={() => onThemeChange && onThemeChange(nextTheme[themePreference || 'system'])}
+                onClick={() => { if (onThemeChange) onThemeChange(nextTheme[themePreference || "system"]); }}
                 sx={{ ml: 0.5 }}
               >
-                {themeIcons[themePreference || 'system']}
+                {themeIcons[themePreference || "system"]}
               </IconButton>
             </Tooltip>
           ) : (
