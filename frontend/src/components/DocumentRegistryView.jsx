@@ -27,6 +27,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import DescriptionIcon from '@mui/icons-material/Description';
 import StorageIcon from '@mui/icons-material/Storage';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import HubIcon from '@mui/icons-material/Hub';
+import GraphRAGExplorer from './GraphRAGExplorer';
 
 export default function DocumentRegistryView({ currentProject, orgId }) {
   const projectId = currentProject?.id || 'proj_alpha_civilization';
@@ -51,6 +53,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
   const [queryResults, setQueryResults] = useState(null);
 
   const [documents, setDocuments] = useState([]);
+  const [viewMode, setViewMode] = useState('documents'); // 'documents' | 'graph'
 
   useEffect(() => {
     fetchSpaces();
@@ -219,17 +222,45 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
             </Typography>
           </Box>
         </Box>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => setOpenSpaceModal(true)}
-          sx={{ borderRadius: 2 }}
-        >
-          Create Document Space
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant={viewMode === 'documents' ? 'contained' : 'outlined'}
+            size="small"
+            startIcon={<DescriptionIcon />}
+            onClick={() => setViewMode('documents')}
+            sx={{ borderRadius: 2 }}
+          >
+            Documents
+          </Button>
+          <Button
+            variant={viewMode === 'graph' ? 'contained' : 'outlined'}
+            size="small"
+            color="secondary"
+            startIcon={<HubIcon />}
+            onClick={() => setViewMode('graph')}
+            sx={{ borderRadius: 2 }}
+          >
+            Graph Explorer
+          </Button>
+          {viewMode === 'documents' && (
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setOpenSpaceModal(true)}
+              sx={{ borderRadius: 2 }}
+            >
+              Create Space
+            </Button>
+          )}
+        </Stack>
       </Paper>
 
+      {viewMode === 'graph' ? (
+        <GraphRAGExplorer projectId={projectId} orgId={orgId} spaceName={selectedSpace} />
+      ) : (
+      <>
       {/* SPACE FILTER TABS */}
       <Paper sx={{ p: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', borderRadius: 2 }}>
         <Tabs
@@ -461,6 +492,9 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
           </Paper>
         </Grid>
       </Grid>
+
+      </>
+      )}
 
       {/* CREATE SPACE DIALOG */}
       <Dialog open={openSpaceModal} onClose={() => setOpenSpaceModal(false)} maxWidth="xs" fullWidth>

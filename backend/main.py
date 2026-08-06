@@ -1551,6 +1551,38 @@ async def upload_multiple_document_files(project_id: str, space_name: str, files
         "count": len(files)
     }
 
+@app.get("/api/projects/{project_id}/rag/graph")
+async def get_rag_graph(project_id: str, query: str = Query(...), space_name: Optional[str] = None, depth: int = Query(1)):
+    """Returns a focused subgraph from post-graph-rag centered on a search query.
+    Use depth=1 for immediate connections, increase to expand the neighborhood."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/query",
+                json={"project_id": project_id, "query": query, "space_name": space_name, "top_k": depth * 5, "mode": "local"}
+            )
+            if res.status_code == 200:
+                data = res.json().get("data", {})
+                return {
+                    "project_id": project_id,
+                    "query": query,
+                    "nodes": [
+                        {"id": e.get("entity_name", f"entity_{i}"), "type": e.get("entity_type", "unknown"), "description": e.get("description", "")}
+                        for i, e in enumerate(data.get("entities", []))
+                    ],
+                    "edges": [
+                        {"source": r.get("src_id", ""), "target": r.get("tgt_id", ""), "type": r.get("relation_type", ""), "description": r.get("description", ""), "weight": r.get("weight", 1)}
+                        for r in data.get("relationships", [])
+                    ],
+                    "chunks": [
+                        {"id": c.get("chunk_id", f"chunk_{i}"), "content": c.get("content", "")[:300], "metadata": c.get("metadata", {})}
+                        for i, c in enumerate(data.get("chunks", []))
+                    ]
+                }
+    except Exception as e:
+        logger.warning(f"Error fetching RAG graph: {e}")
+    return {"project_id": project_id, "query": query, "nodes": [], "edges": [], "chunks": []}
+
 @app.post("/api/projects/{project_id}/rag/query")
 async def query_document_rag(project_id: str, query: str = Query(...), space_name: Optional[str] = None):
     """Executes GraphRAG retrieval across a specific document space or space-agnostically."""
