@@ -281,15 +281,19 @@ function _openOAuthPopup(authUrl, provider, redirectUri, onSuccess, onError, cod
   window.addEventListener('message', messageHandler);
 
   const checkClosedTimer = setInterval(() => {
-    if (popup.closed) {
-      clearInterval(checkClosedTimer);
-      // Delay to allow any pending postMessage from the popup to arrive
-      setTimeout(() => {
-        if (!resolved) {
-          window.removeEventListener('message', messageHandler);
-          onError('Authentication window was closed');
-        }
-      }, 1000);
+    try {
+      if (popup.closed) {
+        clearInterval(checkClosedTimer);
+        setTimeout(() => {
+          if (!resolved) {
+            window.removeEventListener('message', messageHandler);
+            onError('Authentication window was closed');
+          }
+        }, 1000);
+      }
+    } catch (e) {
+      // Cross-Origin-Opener-Policy blocks popup.closed access on some providers.
+      // Auth still works via postMessage — this check is just a fallback.
     }
   }, 500);
 }
