@@ -131,6 +131,8 @@ kind: Service
 metadata:
   name: agent-london-backend-service
   namespace: default
+  annotations:
+    cloud.google.com/backend-config: '{"default": "agents-london-ws-backendconfig"}'
 spec:
   selector:
     app: agent-london-backend
