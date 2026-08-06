@@ -26,20 +26,22 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "1"
+              memory: 1Gi
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 20
+            initialDelaySeconds: 45
             periodSeconds: 15
+            timeoutSeconds: 5
           envFrom:
             - configMapRef:
                 name: litellm-config
@@ -92,6 +94,10 @@ spec:
               value: "http://litellm-service.default.svc.cluster.local:80/v1"
             - name: OPENAI_API_KEY
               value: "BEVZ-6L81-OZ8Y"
+            - name: RAG_EMBEDDING_MODEL
+              value: "text-embedding-3-small"
+            - name: RAG_EMBEDDING_DIM
+              value: "1536"
             - name: GOOGLE_SEARCH_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -112,6 +118,8 @@ metadata:
   namespace: default
   labels:
     app: agent-london-backend
+  annotations:
+    cloud.google.com/backend-config: '{"default": "agents-london-ws-backendconfig"}'
 spec:
   type: ClusterIP
   ports:
