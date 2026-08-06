@@ -29,10 +29,11 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
-            - name: POSTGRES_HOST
-              value: "postgres-service.default.svc.cluster.local"
-            - name: POSTGRES_PORT
-              value: "5432"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-api-keys
+                  key: GLOBAL_API_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
