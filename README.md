@@ -156,3 +156,4 @@ python test_civilization.py
 ```
 
 Validates user creation, project provisioning, Google ADK Prime Node scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Document Registry RAG, Google Search MCP tool execution, and Playground chat workflows.
+ 
