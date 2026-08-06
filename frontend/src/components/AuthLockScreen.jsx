@@ -6,6 +6,7 @@ import {
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import { triggerGoogleOIDC, triggerMicrosoftOIDC } from '../utils/oidc';
+import Logo from './Logo';
 
 const GENERIC_EMAIL_DOMAINS = new Set([
   "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.ca",
@@ -86,19 +87,10 @@ export default function AuthLockScreen({ onAuthenticate }) {
           }}
         >
           {/* Header Icon & Brand */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-            <Box sx={{ fontSize: '3rem', lineHeight: 1 }}>🏛️</Box>
-            <Typography variant="h4" sx={{
-              fontWeight: 800,
-              background: 'linear-gradient(135deg, #6366f1 0%, #a78bfa 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              letterSpacing: '-1px'
-            }}>
-              agent.london
-            </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+            <Logo size={48} />
             <Typography variant="body2" color="text.secondary">
-              Mandatory Authentication & Registration for 1B Agent Civilization
+              Multi-Agent Civilization Platform
             </Typography>
           </Box>
 
