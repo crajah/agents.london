@@ -66,8 +66,10 @@ export default function AuthLockScreen({ onAuthenticate }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#090d16',
-      backgroundImage: 'radial-gradient(circle at 50% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 60%)'
+      backgroundColor: 'background.default',
+      backgroundImage: (theme) => theme.palette.mode === 'dark'
+        ? 'radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.12) 0%, transparent 60%)'
+        : 'radial-gradient(circle at 50% 30%, rgba(79, 70, 229, 0.08) 0%, transparent 60%)'
     }}>
       <Container maxWidth="sm">
         <Paper
@@ -75,10 +77,8 @@ export default function AuthLockScreen({ onAuthenticate }) {
           sx={{
             p: 4,
             borderRadius: 4,
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            backgroundColor: 'background.paper',
             backdropFilter: 'blur(20px)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
             textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
@@ -90,7 +90,7 @@ export default function AuthLockScreen({ onAuthenticate }) {
             <Box sx={{ fontSize: '3rem', lineHeight: 1 }}>🏛️</Box>
             <Typography variant="h4" sx={{
               fontWeight: 800,
-              background: 'linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%)',
+              background: 'linear-gradient(135deg, #6366f1 0%, #a78bfa 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               letterSpacing: '-1px'
