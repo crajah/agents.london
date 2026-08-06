@@ -46,10 +46,11 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
-            - name: POSTGRES_HOST
-              value: "postgres-service.default.svc.cluster.local"
-            - name: POSTGRES_PORT
-              value: "5432"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-api-keys
+                  key: GLOBAL_API_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -86,18 +87,30 @@ spec:
                   name: redis-secret
                   key: REDIS_PASSWORD
                   optional: true
-            - name: AGENT_REGISTRY_URL
-              value: "http://agent-registry-service.default.svc.cluster.local:8001"
-            - name: TOOL_REGISTRY_URL
-              value: "http://tool-registry-service.default.svc.cluster.local:8002"
-            - name: OPENAI_API_BASE
-              value: "http://litellm-service.default.svc.cluster.local:80/v1"
-            - name: OPENAI_API_KEY
-              value: "BEVZ-6L81-OZ8Y"
-            - name: RAG_EMBEDDING_MODEL
-              value: "text-embedding-3-small"
-            - name: RAG_EMBEDDING_DIM
-              value: "1536"
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: GOOGLE_CLIENT_ID
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: GOOGLE_CLIENT_SECRET
+                  optional: true
+            - name: MS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: MS_CLIENT_ID
+                  optional: true
+            - name: MS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: MS_CLIENT_SECRET
+                  optional: true
             - name: GOOGLE_SEARCH_API_KEY
               valueFrom:
                 secretKeyRef:

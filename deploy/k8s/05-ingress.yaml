@@ -47,6 +47,13 @@ spec:
                 name: agent-london-backend-service
                 port:
                   number: 8000
+          - path: /telemetry
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-proxy-service
+                port:
+                  number: 3000
           - path: /
             pathType: Prefix
             backend:
@@ -54,3 +61,17 @@ spec:
                 name: agent-london-frontend-service
                 port:
                   number: 80
+---
+# ExternalName service to proxy Grafana from telemetry namespace
+# into default namespace so the ingress can route to it
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-proxy-service
+  namespace: default
+spec:
+  type: ExternalName
+  externalName: grafana-service.telemetry.svc.cluster.local
+  ports:
+    - port: 3000
+      targetPort: 3000

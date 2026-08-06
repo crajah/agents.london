@@ -44,10 +44,11 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
-            - name: POSTGRES_HOST
-              value: "postgres-service.default.svc.cluster.local"
-            - name: POSTGRES_PORT
-              value: "5432"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-api-keys
+                  key: GLOBAL_API_KEY
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -61,11 +62,11 @@ spec:
                   key: POSTGRES_PASSWORD
                   optional: true
             - name: POSTGRES_DB
-              value: "postgres"
-            - name: OPENAI_API_BASE
-              value: "http://litellm-service.default.svc.cluster.local:80/v1"
-            - name: OPENAI_API_KEY
-              value: "BEVZ-6L81-OZ8Y"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_DB
+                  optional: true
           volumeMounts:
             - name: document-registry-data
               mountPath: /app/data
