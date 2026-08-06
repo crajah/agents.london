@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { ThemeProvider, CssBaseline, Box } from '@mui/material';
-import theme from './theme';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ThemeProvider, CssBaseline, Box, useMediaQuery } from '@mui/material';
+import { darkTheme, lightTheme } from './theme';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import ChatbotView from './components/ChatbotView';
@@ -19,6 +19,17 @@ import AgentDiscoveryView from './components/AgentDiscoveryView';
 import DocumentRegistryView from './components/DocumentRegistryView';
 
 export default function App() {
+  // Theme: 'system' | 'light' | 'dark'
+  const [themePreference, setThemePreference] = useState(() => localStorage.getItem('theme') || 'system');
+  const systemPrefersDark = useMediaQuery('(prefers-color-scheme: dark)');
+  const isDark = themePreference === 'dark' || (themePreference === 'system' && systemPrefersDark);
+  const activeTheme = useMemo(() => isDark ? darkTheme : lightTheme, [isDark]);
+
+  const handleThemeChange = (mode) => {
+    setThemePreference(mode);
+    localStorage.setItem('theme', mode);
+  };
+
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
 
   const [currentTab, setCurrentTab] = useState('chatbot');
@@ -175,7 +186,7 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={activeTheme}>
       <CssBaseline />
 
       {!userSession ? (
@@ -194,6 +205,8 @@ export default function App() {
             onOpenMaterialize={() => setMaterializeModalOpen(true)}
             onOpenBYOM={() => setByomModalOpen(true)}
             onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
+            themePreference={themePreference}
+            onThemeChange={handleThemeChange}
           />
 
           {/* Project Universes Sub-Header Tabs Bar */}

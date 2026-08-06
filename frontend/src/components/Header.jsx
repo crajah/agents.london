@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link, IconButton
+  AppBar, Toolbar, Typography, Box, Select, MenuItem, FormControl, InputLabel, Button, Chip, Link, IconButton, Tooltip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import LockIcon from '@mui/icons-material/Lock';
@@ -8,10 +8,16 @@ import AddIcon from '@mui/icons-material/Add';
 import KeyIcon from '@mui/icons-material/Key';
 import LogoutIcon from '@mui/icons-material/Logout';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import SettingsBrightnessIcon from '@mui/icons-material/SettingsBrightness';
 
 export default function Header({
-  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM, onToggleMobileSidebar
+  state, setState, userSession, onLogout, onOpenSSO, onOpenMaterialize, onOpenBYOM, onToggleMobileSidebar,
+  themePreference, onThemeChange
 }) {
+  const themeIcons = { system: <SettingsBrightnessIcon fontSize="small" />, light: <LightModeIcon fontSize="small" />, dark: <DarkModeIcon fontSize="small" /> };
+  const nextTheme = { system: 'light', light: 'dark', dark: 'system' };
   return (
     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', backgroundColor: 'rgba(11, 15, 25, 0.85)', px: { xs: 1, sm: 2 } }}>
       <Toolbar sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, py: 1 }}>
@@ -102,6 +108,15 @@ export default function Header({
               deleteIcon={<LogoutIcon />}
               sx={{ fontWeight: 600, fontSize: '0.8rem' }}
             />
+            <Tooltip title={`Theme: ${themePreference || 'system'}`}>
+              <IconButton
+                size="small"
+                onClick={() => onThemeChange && onThemeChange(nextTheme[themePreference || 'system'])}
+                sx={{ ml: 0.5 }}
+              >
+                {themeIcons[themePreference || 'system']}
+              </IconButton>
+            </Tooltip>
           ) : (
             <Button variant="outlined" color="primary" startIcon={<LockIcon />} onClick={onOpenSSO} size="small" sx={{ fontSize: '0.75rem' }}>
               Sign In
