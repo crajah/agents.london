@@ -184,7 +184,7 @@ jobs:
 
           if [ "${{ matrix.k8s.type }}" = "deployment" ]; then
             echo "[+] Verifying rollout status for deployment/${{ matrix.k8s.target }}..."
-            kubectl rollout status deployment/${{ matrix.k8s.target }} --namespace default --timeout=1200s
+            kubectl rollout status deployment/${{ matrix.k8s.target }} --namespace default --timeout=1200s --watch=false
           fi
 
   # =========================================================================
