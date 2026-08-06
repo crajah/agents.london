@@ -885,7 +885,7 @@ class AgentCivilizationEngine:
 
                 for target_agent_id in assigned_agent_ids:
                     try:
-                        await pg_client.add_edge("composes_pipeline", realm=org_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id})
+                        await pg_client.add_edge("composes_pipeline", realm=org_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id}, space=project_id)
                     except Exception:
                         pass
 
@@ -895,7 +895,7 @@ class AgentCivilizationEngine:
                     dst_agent = nodes_by_id.get(edge.get("to"), {}).get("agent_id", edge.get("to"))
                     if src_agent and dst_agent:
                         try:
-                            await pg_client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id})
+                            await pg_client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id}, space=project_id)
                         except Exception:
                             pass
             except Exception as edge_err:
@@ -1899,7 +1899,8 @@ class AgentCivilizationEngine:
                         from_id=parent_agent_id,
                         to_id=agent_id,
                         relation_type="SPAWNED",
-                        payload={"timestamp": datetime.now(timezone.utc).isoformat(), "relationship": "progeny"}
+                        payload={"timestamp": datetime.now(timezone.utc).isoformat(), "relationship": "progeny"},
+                        space=project_id
                     )
                 except Exception:
                     pass

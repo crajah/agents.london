@@ -101,7 +101,7 @@ async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
             for target_agent_id in payload.get("assigned_agents", []):
                 try:
                     await client.add_edge("composes_pipeline", realm=org_id, from_id=agent_id, to_id=target_agent_id,
-                                          payload={"relation": "contains_agent", "pipeline_id": agent_id})
+                                          payload={"relation": "contains_agent", "pipeline_id": agent_id}, space=project_id)
                 except Exception:
                     pass
 
@@ -113,7 +113,7 @@ async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
                 if src and dst:
                     try:
                         await client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src, to_id=dst,
-                                              payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": agent_id})
+                                              payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": agent_id}, space=project_id)
                     except Exception:
                         pass
         await client.close()
