@@ -3,10 +3,10 @@ import { createTheme } from '@mui/material/styles';
 const shared = {
   typography: {
     fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    h1: { fontFamily: '"Outfit", sans-serif', fontWeight: 700, letterSpacing: '-0.025em', fontSize: '2.25rem' },
-    h2: { fontFamily: '"Outfit", sans-serif', fontWeight: 700, letterSpacing: '-0.02em', fontSize: '1.875rem' },
-    h3: { fontFamily: '"Outfit", sans-serif', fontWeight: 600, letterSpacing: '-0.015em', fontSize: '1.5rem' },
-    h4: { fontFamily: '"Outfit", sans-serif', fontWeight: 600, letterSpacing: '-0.01em', fontSize: '1.25rem' },
+    h1: { fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 700, letterSpacing: '-0.025em', fontSize: '2.25rem' },
+    h2: { fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 700, letterSpacing: '-0.02em', fontSize: '1.875rem' },
+    h3: { fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600, letterSpacing: '-0.015em', fontSize: '1.5rem' },
+    h4: { fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600, letterSpacing: '-0.01em', fontSize: '1.25rem' },
     h5: { fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '1.1rem' },
     h6: { fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '1rem' },
     subtitle1: { fontWeight: 500, fontSize: '0.95rem', lineHeight: 1.5 },

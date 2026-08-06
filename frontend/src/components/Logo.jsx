@@ -47,7 +47,7 @@ export default function Logo({ size = 32, showText = true, variant = 'default' }
       {/* Wordmark */}
       {showText && (
         <span style={{
-          fontFamily: '"Outfit", sans-serif',
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
           fontWeight: 700,
           fontSize: size * 0.55,
           letterSpacing: '-0.03em',
