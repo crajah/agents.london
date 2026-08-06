@@ -69,8 +69,8 @@ export default function AuthLockScreen({ onAuthenticate }) {
       justifyContent: 'center',
       backgroundColor: 'background.default',
       backgroundImage: (theme) => theme.palette.mode === 'dark'
-        ? 'radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.12) 0%, transparent 60%)'
-        : 'radial-gradient(circle at 50% 30%, rgba(79, 70, 229, 0.08) 0%, transparent 60%)'
+        ? 'radial-gradient(circle at 50% 30%, rgba(66, 133, 244, 0.1) 0%, transparent 60%)'
+        : 'radial-gradient(circle at 50% 30%, rgba(26, 115, 232, 0.06) 0%, transparent 60%)'
     }}>
       <Container maxWidth="sm">
         <Paper

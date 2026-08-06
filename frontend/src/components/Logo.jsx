@@ -7,8 +7,8 @@ import React from 'react';
 export default function Logo({ size = 32, showText = true, variant = 'default' }) {
   const markSize = size;
   const textColor = variant === 'light' ? '#18181b' : variant === 'auto' ? 'currentColor' : '#fafafa';
-  const accentColor = '#6366f1';
-  const secondaryColor = '#a78bfa';
+  const accentColor = '#4285F4';
+  const secondaryColor = '#34A853';
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: size * 0.25, lineHeight: 1 }}>
