@@ -208,21 +208,20 @@ class VerifyMicrosoftTokenRequest(BaseModel):
 @app.post("/api/auth/ms/verify")
 async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
     client_id = os.getenv("MS_CLIENT_ID", "")
-    client_secret = os.getenv("MS_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        raise HTTPException(status_code=500, detail="Microsoft OAuth credentials not configured. Set MS_CLIENT_ID and MS_CLIENT_SECRET env vars.")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Microsoft OAuth not configured. Set MS_CLIENT_ID env var.")
 
     async with httpx.AsyncClient() as client:
         if req.code:
             token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
             payload = {
                 "client_id": client_id,
-                "client_secret": client_secret,
                 "code": req.code,
                 "grant_type": "authorization_code",
                 "redirect_uri": req.redirect_uri or "http://localhost:3000",
                 "scope": "openid email profile"
             }
+            # PKCE public client — use code_verifier instead of client_secret
             if req.code_verifier:
                 payload["code_verifier"] = req.code_verifier
             resp = await client.post(token_url, data=payload)
