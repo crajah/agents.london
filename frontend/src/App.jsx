@@ -70,13 +70,26 @@ export default function App() {
     const wsUrl = `${protocol}//${window.location.host}/ws/civilization`;
     let ws;
     let reconnectTimer;
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
 
     function connect() {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => setState(prev => ({ ...prev, wsConnected: true }));
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        return; // WebSocket constructor failed (e.g., invalid URL)
+      }
+      ws.onopen = () => {
+        retryCount = 0;
+        setState(prev => ({ ...prev, wsConnected: true }));
+      };
       ws.onclose = () => {
         setState(prev => ({ ...prev, wsConnected: false }));
-        reconnectTimer = setTimeout(connect, 5000);
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.min(5000 * Math.pow(2, retryCount - 1), 60000);
+          reconnectTimer = setTimeout(connect, delay);
+        }
       };
       ws.onerror = () => ws.close();
       ws.onmessage = (event) => {
@@ -91,6 +104,7 @@ export default function App() {
     connect();
 
     return () => {
+      retryCount = MAX_RETRIES; // prevent reconnect on unmount
       clearTimeout(reconnectTimer);
       if (ws) ws.close();
     };
