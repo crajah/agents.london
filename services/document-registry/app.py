@@ -81,16 +81,7 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    """Initializes document spaces schema in post-graph on startup."""
-    client = await get_pg_client()
-    if client:
-        try:
-            await client.create_vertex_table("document_spaces", realm="global")
-            await client.create_vertex_table("documents_catalog", realm="global")
-        except Exception as e:
-            logger.info(f"Document registry schema setup note: {e}")
-        finally:
-            await client.close()
+    """Document registry startup. Tables are created lazily on first write per-org."""
     yield
 
 tags_metadata = [
@@ -121,11 +112,13 @@ app = FastAPI(
 
 # Models
 class CreateSpaceRequest(BaseModel):
-    project_id: str = Field(..., description="Project ID (post-graph realm)")
+    org_id: str = Field(default="org_default", description="Organization ID (post-graph realm — physical isolation)")
+    project_id: str = Field(..., description="Project ID (post-graph space — logical isolation)")
     space_name: str = Field(..., description="Document space identifier (e.g. engineering_docs)")
     description: Optional[str] = Field("Document space for project domain knowledge", description="Description")
 
 class UploadDocumentTextRequest(BaseModel):
+    org_id: str = "org_default"
     project_id: str
     space_name: str = "default"
     document_name: str
@@ -133,6 +126,7 @@ class UploadDocumentTextRequest(BaseModel):
     category: Optional[str] = "unstructured"
 
 class RAGQueryRequest(BaseModel):
+    org_id: str = "org_default"
     project_id: str
     query: str
     space_name: Optional[str] = Field(None, description="Target document space or None for all spaces")
@@ -165,10 +159,11 @@ async def create_document_space(req: CreateSpaceRequest):
     client = await get_pg_client()
     if client:
         try:
+            await client.create_vertex_table("document_spaces", realm=req.org_id)
             await client.add_vertex(
                 "document_spaces",
-                realm=req.project_id,
-                space=req.space_name,
+                realm=req.org_id,
+                space=req.project_id,
                 payload=space_obj
             )
         except Exception as e:
@@ -178,8 +173,8 @@ async def create_document_space(req: CreateSpaceRequest):
 
     return space_obj
 
-async def persist_document_catalog_entry(project_id: str, space_name: str, doc_entry: Dict[str, Any]):
-    """Persists document entry to PostgreSQL post-graph vertex table documents_catalog."""
+async def persist_document_catalog_entry(org_id: str, project_id: str, space_name: str, doc_entry: Dict[str, Any]):
+    """Persists document entry to post-graph. realm=org_id (physical), space=project_id (logical)."""
     if project_id not in DOCUMENTS_CATALOG:
         DOCUMENTS_CATALOG[project_id] = []
     DOCUMENTS_CATALOG[project_id].append(doc_entry)
@@ -187,12 +182,13 @@ async def persist_document_catalog_entry(project_id: str, space_name: str, doc_e
     client = await get_pg_client()
     if client:
         try:
+            await client.create_vertex_table("documents_catalog", realm=org_id)
             doc_name = doc_entry.get("document_name") or doc_entry.get("filename") or "doc"
             vertex_id = f"doc_{project_id}_{space_name}_{doc_name}".replace("/", "_").replace(" ", "_")
             await client.add_vertex(
                 "documents_catalog",
-                realm=project_id,
-                space=space_name,
+                realm=org_id,
+                space=project_id,
                 vertex_id=vertex_id,
                 payload=doc_entry
             )
@@ -202,14 +198,14 @@ async def persist_document_catalog_entry(project_id: str, space_name: str, doc_e
             await client.close()
 
 @app.get("/projects/{project_id}/spaces")
-async def list_document_spaces(project_id: str):
-    """Lists all document spaces belonging to a project."""
+async def list_document_spaces(project_id: str, org_id: str = "org_default"):
+    """Lists all document spaces belonging to a project. realm=org_id, space=project_id."""
     client = await get_pg_client()
     spaces = []
     if client:
         try:
-            vertices = await client.get_vertices("document_spaces", realm=project_id)
-            doc_vertices = await client.get_vertices("documents_catalog", realm=project_id)
+            vertices = await client.get_vertices("document_spaces", realm=org_id, space=project_id)
+            doc_vertices = await client.get_vertices("documents_catalog", realm=org_id, space=project_id)
             doc_counts = {}
             for dv in doc_vertices:
                 payload = dv.payload if isinstance(dv.payload, dict) else {}
@@ -245,13 +241,13 @@ async def list_document_spaces(project_id: str):
     return {"project_id": project_id, "spaces": spaces}
 
 @app.get("/projects/{project_id}/documents")
-async def list_project_documents(project_id: str, space_name: Optional[str] = None):
-    """Lists all uploaded documents stored persistently in post-graph documents_catalog."""
+async def list_project_documents(project_id: str, space_name: Optional[str] = None, org_id: str = "org_default"):
+    """Lists all uploaded documents. realm=org_id, space=project_id."""
     client = await get_pg_client()
     docs = []
     if client:
         try:
-            vertices = await client.get_vertices("documents_catalog", realm=project_id)
+            vertices = await client.get_vertices("documents_catalog", realm=org_id, space=project_id)
             for v in vertices:
                 payload = v.payload if isinstance(v.payload, dict) else {}
                 if not space_name or payload.get("space_name") == space_name:
@@ -273,8 +269,9 @@ async def upload_document_text(req: UploadDocumentTextRequest):
     text_content = req.content
     doc_name = req.document_name
 
-    # Index into post-graph-rag
-    rag = get_rag_engine(realm=req.project_id, space=req.space_name)
+    # Index into post-graph-rag: realm=org_id, space=project_id
+    # document_space stored as metadata for filtering within the project
+    rag = get_rag_engine(realm=req.org_id, space=req.project_id)
     rag_result = {}
     if rag:
         try:
@@ -284,15 +281,17 @@ async def upload_document_text(req: UploadDocumentTextRequest):
                 category=req.category or "text",
                 collection=req.space_name,
                 document=doc_name,
-                space=req.space_name
+                space=req.project_id,
+                extra={"document_space": req.space_name}
             )
-            rag_result = await rag.index_document(text_content, metadata=meta, space=req.space_name)
+            rag_result = await rag.index_document(text_content, metadata=meta, space=req.project_id)
         except Exception as e:
             logger.error(f"RAG Indexing error: {e}")
         finally:
             await rag.close()
 
     doc_record = {
+        "org_id": req.org_id,
         "project_id": req.project_id,
         "space_name": req.space_name,
         "document_name": doc_name,
@@ -300,7 +299,7 @@ async def upload_document_text(req: UploadDocumentTextRequest):
         "rag_result": rag_result
     }
 
-    await persist_document_catalog_entry(req.project_id, req.space_name, doc_record)
+    await persist_document_catalog_entry(req.org_id, req.project_id, req.space_name, doc_record)
 
     return {
         "status": "success",
@@ -420,9 +419,10 @@ def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> Tuple[str,
 async def upload_document_file(
     space_name: str,
     project_id: str = Form(...),
+    org_id: str = Form("org_default"),
     file: UploadFile = File(...)
 ):
-    """Uploads a PDF, DOCX, or text file, extracts text via Docling / PyPDF, and indexes into GraphRAG space."""
+    """Uploads a file, extracts text, indexes into GraphRAG. realm=org_id, space=project_id."""
     file_bytes = await file.read()
     filename = file.filename or "uploaded_document"
 
@@ -431,8 +431,8 @@ async def upload_document_file(
     if not extracted_text.strip():
         extracted_text = f"Document content from file {filename}"
 
-    # Index extracted text into post-graph-rag
-    rag = get_rag_engine(realm=project_id, space=space_name)
+    # Index into post-graph-rag: realm=org_id, space=project_id
+    rag = get_rag_engine(realm=org_id, space=project_id)
     rag_result = {}
     if rag:
         try:
@@ -442,15 +442,17 @@ async def upload_document_file(
                 category="file_upload",
                 collection=space_name,
                 document=filename,
-                space=space_name
+                space=project_id,
+                extra={"document_space": space_name}
             )
-            rag_result = await rag.index_document(extracted_text, metadata=meta, space=space_name)
+            rag_result = await rag.index_document(extracted_text, metadata=meta, space=project_id)
         except Exception as e:
             logger.error(f"GraphRAG indexing failed: {e}")
         finally:
             await rag.close()
 
     doc_entry = {
+        "org_id": org_id,
         "project_id": project_id,
         "space_name": space_name,
         "filename": filename,
@@ -459,7 +461,7 @@ async def upload_document_file(
         "rag_result": rag_result
     }
 
-    await persist_document_catalog_entry(project_id, space_name, doc_entry)
+    await persist_document_catalog_entry(org_id, project_id, space_name, doc_entry)
 
     return {
         "status": "success",
@@ -471,11 +473,12 @@ async def upload_document_file(
 async def upload_multiple_document_files(
     space_name: str,
     project_id: str = Form(...),
+    org_id: str = Form("org_default"),
     files: List[UploadFile] = File(...)
 ):
-    """Uploads multiple files, extracts text via Docling/PyPDF/PPTX/XLSX, and indexes all documents into space."""
+    """Uploads multiple files and indexes into GraphRAG. realm=org_id, space=project_id."""
     results = []
-    rag = get_rag_engine(realm=project_id, space=space_name)
+    rag = get_rag_engine(realm=org_id, space=project_id)
     if rag:
         try:
             await rag.initialize()
@@ -497,13 +500,15 @@ async def upload_multiple_document_files(
                     category="file_upload",
                     collection=space_name,
                     document=filename,
-                    space=space_name
+                    space=project_id,
+                    extra={"document_space": space_name}
                 )
-                rag_result = await rag.index_document(extracted_text, metadata=meta, space=space_name)
+                rag_result = await rag.index_document(extracted_text, metadata=meta, space=project_id)
             except Exception as e:
                 logger.error(f"GraphRAG indexing failed for {filename}: {e}")
 
         doc_entry = {
+            "org_id": org_id,
             "project_id": project_id,
             "space_name": space_name,
             "filename": filename,
@@ -511,7 +516,7 @@ async def upload_multiple_document_files(
             "content_length": len(extracted_text),
             "rag_result": rag_result
         }
-        await persist_document_catalog_entry(project_id, space_name, doc_entry)
+        await persist_document_catalog_entry(org_id, project_id, space_name, doc_entry)
         results.append(doc_entry)
 
     if rag:
@@ -530,14 +535,15 @@ async def upload_multiple_document_files(
 @app.post("/query")
 async def query_document_rag(req: RAGQueryRequest):
     """Executes GraphRAG retrieval across a specific document space or space-agnostically."""
-    rag = get_rag_engine(realm=req.project_id, space=req.space_name)
+    # realm=org_id, space=project_id. document_space (space_name) is metadata-level filtering.
+    rag = get_rag_engine(realm=req.org_id, space=req.project_id)
     if rag:
         try:
             await rag.initialize()
             param = QueryParam(
                 mode=req.mode,
                 top_k=req.top_k,
-                space=req.space_name  # None queries space-agnostically across all spaces
+                space=req.project_id  # project-scoped within the org realm
             )
             res = await rag.query_data(req.query, param=param)
             return {
@@ -561,7 +567,7 @@ async def query_document_rag(req: RAGQueryRequest):
     if client:
         try:
             docs = []
-            vertices = await client.get_vertices("documents", realm=req.project_id)
+            vertices = await client.get_vertices("documents", realm=req.org_id, space=req.project_id)
             for v in vertices:
                 payload = v.payload if isinstance(v.payload, dict) else {}
                 doc_space = payload.get("space") or payload.get("collection")
