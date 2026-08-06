@@ -62,16 +62,59 @@ spec:
                 port:
                   number: 80
 ---
-# ExternalName service to proxy Grafana from telemetry namespace
-# into default namespace so the ingress can route to it
+# Nginx reverse proxy to bridge Grafana from telemetry namespace
+# into default namespace (GCE Ingress does not support ExternalName services)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-proxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-proxy
+  template:
+    metadata:
+      labels:
+        app: grafana-proxy
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat > /etc/nginx/conf.d/default.conf << 'CONF'
+              server {
+                listen 3000;
+                location / {
+                  proxy_pass http://grafana-service.telemetry.svc.cluster.local:3000;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                }
+              }
+              CONF
+              nginx -g 'daemon off;'
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana-proxy-service
   namespace: default
 spec:
-  type: ExternalName
-  externalName: grafana-service.telemetry.svc.cluster.local
+  type: ClusterIP
+  selector:
+    app: grafana-proxy
   ports:
     - port: 3000
       targetPort: 3000
