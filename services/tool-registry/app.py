@@ -30,65 +30,52 @@ DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 
 TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
-async def get_pg_client(realm: str = "global") -> Optional[Any]:
+async def get_pg_client(org_id: str = "org_default") -> Optional[Any]:
+    """Connect to post-graph. Creates mcp_tools table in the org realm."""
     if not AsyncPostGraph:
         return None
-
-    local_user = os.getenv("USER", "crajah")
-    candidate_dsns = [
-        DB_URI,
-        f"postgresql://{local_user}@localhost:5432/postgres",
-        f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
-        f"postgresql://postgres:postgres@localhost:5432/postgres"
-    ]
-    unique_dsns = []
-    for d in candidate_dsns:
-        if d and d not in unique_dsns:
-            unique_dsns.append(d)
-
-    for dsn in unique_dsns:
+    for dsn in [DB_URI, f"postgresql://crajah:postgrespassword@localhost:5432/postgres"]:
         try:
             client = AsyncPostGraph(dsn=dsn)
             await client.connect()
-            await client.create_vertex_table("mcp_tools", realm=realm)
+            await client.create_vertex_table("mcp_tools", realm=org_id)
             return client
         except Exception as e:
-            logger.debug(f"PostGraph connection attempt to {dsn} failed: {e}")
-
+            logger.debug(f"PostGraph connection attempt failed: {e}")
     return None
 
 async def sync_tools_from_post_graph():
-    """Populates local cache from post-graph database on startup using project realms."""
-    realms_to_sync = ["proj_alpha_civilization", "proj_quantum_agents", "proj_neural_swarm", "org_london_meta"]
-    for r in realms_to_sync:
-        client = await get_pg_client(r)
+    """Populates local cache from post-graph on startup. Syncs across known org realms."""
+    for org_id in ["org_london_meta", "org_default"]:
+        client = await get_pg_client(org_id)
         if not client:
             continue
         try:
-            vertices = await client.get_vertices(table_name="mcp_tools", realm=r)
+            vertices = await client.get_vertices(table_name="mcp_tools", realm=org_id)
             for v in vertices:
                 payload = v.payload if hasattr(v, "payload") else v
                 if isinstance(payload, dict) and "tool_id" in payload:
                     TOOL_REGISTRY[payload["tool_id"]] = payload
             await client.close()
         except Exception as e:
-            logger.warning(f"Failed to sync tool registry from post-graph in realm '{r}': {e}")
+            logger.warning(f"Failed to sync tool registry from post-graph realm '{org_id}': {e}")
             try:
                 await client.close()
             except Exception:
                 pass
 
 async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
-    """Persists tool vertex into post-graph database using project realm."""
-    realm = payload.get("project_id") or payload.get("org_id") or "proj_alpha_civilization"
-    client = await get_pg_client(realm)
+    """Persists tool vertex into post-graph. realm=org_id (physical), space=project_id (logical)."""
+    org_id = payload.get("org_id", "org_default")
+    project_id = payload.get("project_id")
+    client = await get_pg_client(org_id)
     if not client:
         return
     try:
-        await client.add_vertex(table_name="mcp_tools", realm=realm, payload=payload)
+        await client.add_vertex(table_name="mcp_tools", realm=org_id, space=project_id, payload=payload)
         await client.close()
     except Exception as e:
-        logger.warning(f"Error persisting tool '{tool_id}' to post-graph in realm '{realm}': {e}")
+        logger.warning(f"Error persisting tool '{tool_id}' to post-graph in realm '{org_id}': {e}")
         try:
             await client.close()
         except Exception:

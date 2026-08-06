@@ -34,123 +34,91 @@ DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 AGENT_REGISTRY: Dict[str, Dict[str, Any]] = {}
 AGENT_VERSIONS: Dict[str, List[Dict[str, Any]]] = {}
 
-async def get_pg_client(realm: str = "global") -> Optional[Any]:
-    """Helper to connect to post-graph PostgreSQL database."""
+async def get_pg_client(org_id: str = "org_default") -> Optional[Any]:
+    """Connect to post-graph. Creates agent_registry table in the org realm."""
     if not AsyncPostGraph:
         return None
-
-    local_user = os.getenv("USER", "crajah")
-    candidate_dsns = [
-        DB_URI,
-        f"postgresql://{local_user}@localhost:5432/postgres",
-        f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
-        f"postgresql://postgres:postgres@localhost:5432/postgres"
-    ]
-    unique_dsns = []
-    for d in candidate_dsns:
-        if d and d not in unique_dsns:
-            unique_dsns.append(d)
-
-    for dsn in unique_dsns:
+    for dsn in [DB_URI, f"postgresql://crajah:postgrespassword@localhost:5432/postgres"]:
         try:
             client = AsyncPostGraph(dsn=dsn)
             await client.connect()
-            await client.create_vertex_table("agent_registry", realm=realm)
+            await client.create_vertex_table("agent_registry", realm=org_id)
             return client
         except Exception as e:
-            logger.debug(f"PostGraph connection attempt to {dsn} failed: {e}")
-
+            logger.debug(f"PostGraph connection attempt failed: {e}")
     return None
 
-async def sync_from_post_graph(project_id: str = "proj_alpha_civilization"):
-    """Populates local cache from post-graph database on startup using project realm."""
-    realms_to_sync = [project_id, "proj_alpha_civilization", "proj_quantum_agents", "proj_neural_swarm"]
-    unique_realms = []
-    for r in realms_to_sync:
-        if r and r not in unique_realms:
-            unique_realms.append(r)
-
-    for r in unique_realms:
-        client = await get_pg_client(r)
+async def sync_from_post_graph():
+    """Populates local cache from post-graph on startup. Syncs across known org realms."""
+    orgs_to_sync = ["org_london_meta", "org_default"]
+    for org_id in orgs_to_sync:
+        client = await get_pg_client(org_id)
         if not client:
             continue
         try:
-            vertices = await client.get_vertices(table_name="agent_registry", realm=r)
+            # get_vertices without space returns all spaces (all projects) in the realm
+            vertices = await client.get_vertices(table_name="agent_registry", realm=org_id)
             for v in vertices:
                 payload = v.payload if hasattr(v, "payload") else v
                 if isinstance(payload, dict) and "agent_id" in payload:
                     agent_id = payload["agent_id"]
                     AGENT_REGISTRY[agent_id] = payload
                     try:
-                        records = await client.get_vertex_data(table_name="agent_registry", realm=r, vertex_id=agent_id)
+                        records = await client.get_vertex_data(table_name="agent_registry", realm=org_id, vertex_id=agent_id)
                         AGENT_VERSIONS[agent_id] = [rec.to_dict() for rec in records]
                     except Exception:
                         if agent_id not in AGENT_VERSIONS:
                             AGENT_VERSIONS[agent_id] = [payload]
             await client.close()
         except Exception as e:
-            logger.warning(f"Failed to sync agent registry from post-graph in realm '{r}': {e}")
+            logger.warning(f"Failed to sync agent registry from post-graph realm '{org_id}': {e}")
             try:
                 await client.close()
             except Exception:
                 pass
 
 async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
-    """Persists agent vertex and appends immutable version entry into post-graph tables using project realm."""
-    project_id = payload.get("project_id", "proj_alpha_civilization")
-    client = await get_pg_client(project_id)
+    """Persists agent to post-graph. realm=org_id (physical), space=project_id (logical)."""
+    org_id = payload.get("org_id", "org_default")
+    project_id = payload.get("project_id", "proj_default")
+    client = await get_pg_client(org_id)
     if not client:
         return
     try:
-        await client.add_vertex(table_name="agent_registry", realm=project_id, payload=payload)
+        await client.add_vertex(table_name="agent_registry", realm=org_id, space=project_id, payload=payload)
         try:
-            await client.add_vertex_data(table_name="agent_registry", realm=project_id, vertex_id=agent_id, payload=payload)
+            await client.add_vertex_data(table_name="agent_registry", realm=org_id, vertex_id=agent_id, payload=payload)
         except Exception:
             pass
 
-        # If payload is a multi-agent execution pipeline graph, persist explicit post-graph graph edges!
         if payload.get("caste") == "pipeline" or payload.get("role") == "multi_agent_execution_pipeline":
             try:
-                await client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
-                await client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
+                await client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
             except Exception:
                 pass
 
-            assigned = payload.get("assigned_agents", [])
-            for target_agent_id in assigned:
+            for target_agent_id in payload.get("assigned_agents", []):
                 try:
-                    await client.add_edge(
-                        "composes_pipeline",
-                        realm=project_id,
-                        from_id=agent_id,
-                        to_id=target_agent_id,
-                        payload={"relation": "contains_agent", "pipeline_id": agent_id}
-                    )
+                    await client.add_edge("composes_pipeline", realm=org_id, from_id=agent_id, to_id=target_agent_id,
+                                          payload={"relation": "contains_agent", "pipeline_id": agent_id})
                 except Exception:
                     pass
 
             graph_data = payload.get("graph", {})
-            edges = graph_data.get("edges", [])
             nodes = {n.get("id"): n for n in graph_data.get("nodes", []) if n.get("id")}
-            for edge in edges:
-                src_node_id = edge.get("from")
-                dst_node_id = edge.get("to")
-                src_agent = nodes.get(src_node_id, {}).get("agent_id", src_node_id)
-                dst_agent = nodes.get(dst_node_id, {}).get("agent_id", dst_node_id)
-                if src_agent and dst_agent:
+            for edge in graph_data.get("edges", []):
+                src = nodes.get(edge.get("from"), {}).get("agent_id", edge.get("from"))
+                dst = nodes.get(edge.get("to"), {}).get("agent_id", edge.get("to"))
+                if src and dst:
                     try:
-                        await client.add_edge(
-                            "pipeline_step_dependency",
-                            realm=project_id,
-                            from_id=src_agent,
-                            to_id=dst_agent,
-                            payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": agent_id, "from_step": src_node_id, "to_step": dst_node_id}
-                        )
+                        await client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src, to_id=dst,
+                                              payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": agent_id})
                     except Exception:
                         pass
         await client.close()
     except Exception as e:
-        logger.warning(f"Error persisting agent '{agent_id}' to post-graph in realm '{project_id}': {e}")
+        logger.warning(f"Error persisting agent '{agent_id}' to post-graph realm '{org_id}': {e}")
         try:
             await client.close()
         except Exception:
@@ -501,21 +469,21 @@ async def get_pipeline_graph(pipeline_id: str):
         raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found in registry.")
 
     pipeline_entity = AGENT_REGISTRY[pipeline_id]
-    project_id = pipeline_entity.get("project_id", "proj_alpha_civilization")
+    org_id = pipeline_entity.get("org_id", "org_default")
 
     contained_agents = []
     step_dependencies = []
 
-    client = await get_pg_client(project_id)
+    client = await get_pg_client(org_id)
     if client:
         try:
-            edges_composes = await client.get_edges(table_name="composes_pipeline", realm=project_id, from_id=pipeline_id)
+            edges_composes = await client.get_edges(table_name="composes_pipeline", realm=org_id, from_id=pipeline_id)
             contained_agents = [e.to_id for e in edges_composes if hasattr(e, "to_id")]
         except Exception as e:
             logger.debug(f"Post-graph fetch composes_pipeline note: {e}")
 
         try:
-            edges_deps = await client.get_edges(table_name="pipeline_step_dependency", realm=project_id)
+            edges_deps = await client.get_edges(table_name="pipeline_step_dependency", realm=org_id)
             step_dependencies = [
                 {
                     "from_agent": e.from_id,
