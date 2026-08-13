@@ -17,6 +17,10 @@ from typing import Dict, Any, List, Optional
 from post_graph import AsyncPostGraph
 from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
 try:
+    from backend.env_config import require_env
+except ImportError:  # started with backend/ as the working directory
+    from env_config import require_env
+try:
     from backend.redis_bus import redis_bus
 except (ImportError, ModuleNotFoundError):
     try:
@@ -278,7 +282,7 @@ DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
 TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_PROXY_URL", os.getenv("LITELLM_URL", "http://litellm-service.default.svc.cluster.local:80/v1")))
-API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
+API_KEY = require_env("OPENAI_API_KEY")
 
 async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_alpha_civilization", org_id: str = "org_london_meta") -> str:
     """Generates a response by sending the user's prompt to the LLM.
@@ -302,8 +306,8 @@ async def generate_dynamic_task_document(prompt: str, project_id: str = "proj_al
                     if isinstance(val, float) and val.is_integer():
                         val = int(val)
                     return f"Calculated Result: **{val}**"
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning("%s: recoverable Exception in generate_dynamic_task_document, continuing", type(_e).__name__, exc_info=_e)
 
     # LLM inference via LiteLLM proxy
     k8s_service_url = os.getenv("OPENAI_API_BASE") or os.getenv("LITELLM_URL") or "http://litellm-service.default.svc.cluster.local:80/v1"
@@ -483,10 +487,9 @@ class AgentCivilizationEngine:
             )
             provisioned_agents.append(agent)
             await client.add_vertex(table_name="agents", realm=org_id, space=project_id, payload=agent)
-            try:
-                await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=agent["agent_id"], payload=agent)
-            except Exception:
-                pass
+            # Version history is part of the write, not a nicety: swallowing it
+            # left a vertex with no recorded provenance and no error anywhere.
+            await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=agent["agent_id"], payload=agent)
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "project_civilization_initialized",
@@ -791,8 +794,8 @@ class AgentCivilizationEngine:
                         res = await client.post(u, json={"query": query, "num_results": num_results, "project_id": project_id})
                         if res.status_code == 200:
                             return res.json()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.warning("%s: recoverable Exception in execute_registered_tool, continuing", type(_e).__name__, exc_info=_e)
             return {
                 "status": "success",
                 "source": "cluster_search_engine_fallback",
@@ -884,20 +887,14 @@ class AgentCivilizationEngine:
                 await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
 
                 for target_agent_id in assigned_agent_ids:
-                    try:
-                        await pg_client.add_edge("composes_pipeline", realm=org_id, from_id=pipeline_id, to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": pipeline_id}, space=project_id)
-                    except Exception:
-                        pass
+                    await pg_client.add_edge("composes_pipeline", realm=org_id, from_id=pipeline_id, to_id=target_agent_id, relation_type="contains_agent", payload={"relation": "contains_agent", "pipeline_id": pipeline_id}, space=project_id)
 
                 nodes_by_id = {n.get("id"): n for n in graph_nodes if n.get("id")}
                 for edge in graph_edges:
                     src_agent = nodes_by_id.get(edge.get("from"), {}).get("agent_id", edge.get("from"))
                     dst_agent = nodes_by_id.get(edge.get("to"), {}).get("agent_id", edge.get("to"))
                     if src_agent and dst_agent:
-                        try:
-                            await pg_client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id}, space=project_id)
-                        except Exception:
-                            pass
+                        await pg_client.add_edge("pipeline_step_dependency", realm=org_id, from_id=src_agent, to_id=dst_agent, relation_type=edge.get("relationship", "depends_on"), payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": pipeline_id}, space=project_id)
             except Exception as edge_err:
                 logger.debug(f"Post-graph edge table creation note for pipeline: {edge_err}")
             await pg_client.close()
@@ -1367,7 +1364,8 @@ class AgentCivilizationEngine:
                     )
                     if res.status_code == 200:
                         return res.json()["choices"][0]["message"]["content"].strip()
-            except Exception:
+            except Exception as _e:
+                logger.warning("%s: recoverable Exception in _llm_call, continuing", type(_e).__name__, exc_info=_e)
                 continue
         return None
 
@@ -1496,7 +1494,8 @@ class AgentCivilizationEngine:
                                 verdict["judge_model"] = model
                                 verdicts.append(verdict)
                                 break
-                    except Exception:
+                    except Exception as _e:
+                        logger.warning("%s: recoverable Exception in _evaluate_with_judge_panel, continuing", type(_e).__name__, exc_info=_e)
                         continue
             except Exception as e:
                 logger.debug(f"Judge {model} evaluation note: {e}")
@@ -1629,8 +1628,8 @@ class AgentCivilizationEngine:
         if raw_response:
             try:
                 decision = json.loads(raw_response)
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as _e:
+                logger.warning("%s: recoverable json.JSONDecodeError in process_user_prompt_with_llm, continuing", type(_e).__name__, exc_info=_e)
 
         if not decision or "mode" not in decision:
             decision = {"mode": "SIMPLE_CHAT", "reasoning": "LLM router unavailable, defaulting to direct chat."}
@@ -1885,10 +1884,7 @@ class AgentCivilizationEngine:
             client = await self._get_pg_client(org_id)
             v_res = await client.add_vertex(table_name="agents", realm=org_id, space=project_id, payload=reg_data)
             if v_res and isinstance(v_res, dict) and "id" in v_res:
-                try:
-                    await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=v_res["id"], payload=reg_data)
-                except Exception:
-                    pass
+                await client.add_vertex_data(table_name="agents", realm=org_id, vertex_id=v_res["id"], payload=reg_data)
             
             # If parent agent is specified, create 'spawns' edge in post-graph
             if parent_agent_id:
@@ -1903,15 +1899,18 @@ class AgentCivilizationEngine:
                         space=project_id
                     )
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Failed to record 'spawns' edge %s -> %s in realm '%s'",
+                        parent_agent_id, agent_id, org_id)
+                    raise
             await client.close()
         except Exception as e:
             logger.warning(f"Post-graph agent persistence fallback for '{agent_id}': {e}")
 
         try:
             await self.index_agent_registry_for_rag(org_id, project_id)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in materialize_worker_agent, continuing", type(_e).__name__, exc_info=_e)
 
         return reg_data
 
@@ -1957,8 +1956,8 @@ class AgentCivilizationEngine:
 
         try:
             await client.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in get_all_project_agents, continuing", type(_e).__name__, exc_info=_e)
 
         return agents
 
@@ -2064,10 +2063,7 @@ class AgentCivilizationEngine:
             client = await self._get_pg_client(project_id)
             await client.create_vertex_table("agent_registry", realm=org_id)
             await client.add_vertex(table_name="agent_registry", realm=org_id, space=project_id, payload=payload)
-            try:
-                await client.add_vertex_data(table_name="agent_registry", realm=org_id, vertex_id=agent_id, payload=payload)
-            except Exception:
-                pass
+            await client.add_vertex_data(table_name="agent_registry", realm=org_id, vertex_id=agent_id, payload=payload)
             await client.close()
         except Exception as e:
             logger.debug(f"Post-graph direct agent_registry write note: {e}")

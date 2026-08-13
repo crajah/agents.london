@@ -7,27 +7,33 @@ Allows agents and users to query document spaces specifically or project-wide (s
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
-try:
-    from post_graph import AsyncPostGraph
-except ImportError:
-    AsyncPostGraph = None
-
-try:
-    from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
-except ImportError:
-    GraphRAG = None
-
-try:
-    from docling.document_converter import DocumentConverter
-    DOCLING_AVAILABLE = True
-except ImportError:
-    DOCLING_AVAILABLE = False
+from post_graph import AsyncPostGraph
+from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
+from docling.document_converter import DocumentConverter
 
 logger = logging.getLogger(__name__)
+
+# This service runs in its own container and cannot import the backend package,
+# so it loads the same .env directly. Walking up to the repository root keeps
+# that working both in the image and from a checkout.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not _OPENAI_API_KEY:
+    # Raised at import rather than at first query: a document service that
+    # starts without a key accepts uploads and fails only once embedding
+    # begins, after the caller has been told the upload succeeded.
+    raise RuntimeError(
+        "OPENAI_API_KEY is not set. Add it to .env (see .env.example) or to the "
+        "container environment."
+    )
+OPENAI_API_KEY: str = _OPENAI_API_KEY
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
@@ -43,31 +49,23 @@ MODEL_ROUTER_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_URL", "http:/
 DOCUMENT_SPACES: Dict[str, Dict[str, Any]] = {}
 DOCUMENTS_CATALOG: Dict[str, List[Dict[str, Any]]] = {}
 
-async def get_pg_client() -> Optional[Any]:
-    if not AsyncPostGraph:
-        return None
-    local_user = os.getenv("USER", "crajah")
-    candidate_dsns = [
-        DB_URI,
-        f"postgresql://{local_user}@localhost:5432/postgres",
-        f"postgresql://crajah:postgrespassword@localhost:5432/postgres",
-        f"postgresql://postgres:postgres@localhost:5432/postgres"
-    ]
-    for dsn in candidate_dsns:
-        try:
-            client = AsyncPostGraph(dsn=dsn)
-            await client.connect()
-            return client
-        except Exception:
-            continue
-    return None
+async def get_pg_client() -> Any:
+    """Connect to post-graph at the configured DSN, or raise.
 
-def get_rag_engine(realm: str, space: Optional[str] = "default") -> Optional[Any]:
-    if not GraphRAG:
-        return None
+    Previously this tried four DSNs in turn — the configured one, then three
+    hardcoded localhost guesses with embedded credentials — and returned None
+    when all failed. A typo in POSTGRES_URI therefore did not fail: it silently
+    connected to whichever local database happened to accept one of the
+    guesses, and wrote a tenant's documents there.
+    """
+    client = AsyncPostGraph(dsn=DB_URI)
+    await client.connect()
+    return client
+
+def get_rag_engine(realm: str, space: Optional[str] = "default") -> Any:
     config = RAGConfig(
         api_base=MODEL_ROUTER_URL,
-        api_key=os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y"),
+        api_key=OPENAI_API_KEY,
         model=os.getenv("RAG_MODEL", "DeepSeek-V3.2"),
         embedding_model=os.getenv("RAG_EMBEDDING_MODEL", "text-embedding-3-small"),
         embedding_dim=int(os.getenv("RAG_EMBEDDING_DIM", "1536")),
@@ -138,8 +136,8 @@ async def health_check():
     return {
         "status": "ok",
         "service": "document-registry",
-        "docling_available": DOCLING_AVAILABLE,
-        "graph_rag_available": GraphRAG is not None
+        "docling_available": True,
+        "graph_rag_available": True
     }
 
 @app.post("/spaces")
@@ -156,20 +154,20 @@ async def create_document_space(req: CreateSpaceRequest):
     }
     DOCUMENT_SPACES[key] = space_obj
 
+    # Raises if the space cannot be persisted. Returning the object anyway
+    # would report a space that exists only in this process and disappears on
+    # restart, while documents uploaded into it appear to succeed.
     client = await get_pg_client()
-    if client:
-        try:
-            await client.create_vertex_table("document_spaces", realm=req.org_id)
-            await client.add_vertex(
-                "document_spaces",
-                realm=req.org_id,
-                space=req.project_id,
-                payload=space_obj
-            )
-        except Exception as e:
-            logger.warning(f"Failed to persist space to post-graph: {e}")
-        finally:
-            await client.close()
+    try:
+        await client.create_vertex_table("document_spaces", realm=req.org_id)
+        await client.add_vertex(
+            "document_spaces",
+            realm=req.org_id,
+            space=req.project_id,
+            payload=space_obj
+        )
+    finally:
+        await client.close()
 
     return space_obj
 
@@ -180,22 +178,19 @@ async def persist_document_catalog_entry(org_id: str, project_id: str, space_nam
     DOCUMENTS_CATALOG[project_id].append(doc_entry)
 
     client = await get_pg_client()
-    if client:
-        try:
-            await client.create_vertex_table("documents_catalog", realm=org_id)
-            doc_name = doc_entry.get("document_name") or doc_entry.get("filename") or "doc"
-            vertex_id = f"doc_{project_id}_{space_name}_{doc_name}".replace("/", "_").replace(" ", "_")
-            await client.add_vertex(
-                "documents_catalog",
-                realm=org_id,
-                space=project_id,
-                vertex_id=vertex_id,
-                payload=doc_entry
-            )
-        except Exception as e:
-            logger.warning(f"Failed to persist doc_entry to post-graph: {e}")
-        finally:
-            await client.close()
+    try:
+        await client.create_vertex_table("documents_catalog", realm=org_id)
+        doc_name = doc_entry.get("document_name") or doc_entry.get("filename") or "doc"
+        vertex_id = f"doc_{project_id}_{space_name}_{doc_name}".replace("/", "_").replace(" ", "_")
+        await client.add_vertex(
+            "documents_catalog",
+            realm=org_id,
+            space=project_id,
+            vertex_id=vertex_id,
+            payload=doc_entry
+        )
+    finally:
+        await client.close()
 
 @app.get("/projects/{project_id}/spaces")
 async def list_document_spaces(project_id: str, org_id: str = "org_default"):
@@ -314,8 +309,8 @@ def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> Tuple[str,
     """Extracts structured text from PDF, DOCX, Markdown, TXT, HTML, JSON files using Docling or PyPDF fallbacks."""
     ext = os.path.splitext(filename)[1].lower()
 
-    # 1. Use Docling if available
-    if DOCLING_AVAILABLE:
+    # 1. Docling is a declared dependency, so it is always present.
+    if True:
         try:
             import tempfile
             converter = DocumentConverter()
@@ -405,15 +400,29 @@ def extract_text_from_file_bytes(file_bytes: bytes, filename: str) -> Tuple[str,
         except Exception as e:
             logger.info(f"openpyxl extraction note: {e}")
 
-    # 6. Text / Markdown / JSON / HTML / CSV decoding
+    # 6. Text / Markdown / JSON / HTML / CSV decoding.
+    # Decoded strictly, not with errors="ignore". Ignoring errors turns any
+    # binary file into mojibake that passes the `if text.strip()` check, so a
+    # PDF whose parsers had all failed was indexed as garbage rather than
+    # rejected.
     try:
-        text = file_bytes.decode("utf-8", errors="ignore")
-        if text.strip():
-            return text, "utf8_text_reader"
-    except Exception:
-        pass
+        text = file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        text = ""
+    if text.strip():
+        return text, "utf8_text_reader"
 
-    return str(file_bytes), "raw_bytes_fallback"
+    # Nothing could read this. The previous behaviour was to return
+    # str(file_bytes) — the repr of the raw bytes — as the document's text,
+    # which was then embedded and indexed into the knowledge graph as if it
+    # were prose, with nothing anywhere signalling that extraction had failed.
+    raise HTTPException(
+        status_code=415,
+        detail=(
+            f"Could not extract text from '{filename}': no parser succeeded and "
+            f"the file is not valid UTF-8 text."
+        ),
+    )
 
 @app.post("/spaces/{space_name}/documents/upload-file")
 async def upload_document_file(
@@ -426,10 +435,9 @@ async def upload_document_file(
     file_bytes = await file.read()
     filename = file.filename or "uploaded_document"
 
+    # Raises 415 if nothing could be extracted, rather than substituting a
+    # placeholder sentence and indexing that as the document's content.
     extracted_text, extraction_method = extract_text_from_file_bytes(file_bytes, filename)
-
-    if not extracted_text.strip():
-        extracted_text = f"Document content from file {filename}"
 
     # Index into post-graph-rag: realm=org_id, space=project_id
     rag = get_rag_engine(realm=org_id, space=project_id)
@@ -523,7 +531,9 @@ async def upload_multiple_document_files(
         try:
             await rag.close()
         except Exception:
-            pass
+            # Indexing already succeeded; a close failure must not undo that,
+            # but leaking a pooled connection is worth seeing in the log.
+            logger.exception("Failed to close GraphRAG engine after indexing")
 
     return {
         "status": "success",
@@ -560,7 +570,7 @@ async def query_document_rag(req: RAGQueryRequest):
             try:
                 await rag.close()
             except Exception:
-                pass
+                logger.exception("Failed to close GraphRAG engine after query")
 
     # Direct real PostgreSQL Graph database query fallback
     client = await get_pg_client()

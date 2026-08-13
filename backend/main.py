@@ -16,6 +16,10 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Quer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 try:
+    from backend.env_config import require_env
+except ImportError:  # started with backend/ as the working directory
+    from env_config import require_env
+try:
     from backend.civilization import civilization_engine, get_real_telemetry, record_execution_telemetry, generate_dynamic_task_document
     from backend.redis_bus import redis_bus
 except (ImportError, ModuleNotFoundError):
@@ -258,7 +262,7 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
         }
 
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
+OPENAI_API_KEY = require_env("OPENAI_API_KEY")
 POSTGRES_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
 
 # ─── RAG Discovery Helpers ──────────────────────────────────────────────────
@@ -315,8 +319,8 @@ async def _ensure_agents_indexed_in_rag(org_id: str, project_id: str, agents_lis
         logger.warning(f"RAG agent indexing unavailable: {e}")
         try:
             await rag.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in _ensure_agents_indexed_in_rag, continuing", type(_e).__name__, exc_info=_e)
 
 
 async def _rag_discover_agents(org_id: str, project_id: str, query: str, agents_list: list, top_k: int = 4):
@@ -376,8 +380,8 @@ async def _rag_discover_agents(org_id: str, project_id: str, query: str, agents_
         logger.warning(f"RAG agent discovery query failed: {e}")
         try:
             await rag.close()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in _rag_discover_agents, continuing", type(_e).__name__, exc_info=_e)
         return None
 
 
@@ -1347,8 +1351,8 @@ async def list_user_org_projects(org_id: str, user_id: str):
         pg_projects = await civilization_engine.get_user_projects(org_id, user_id)
         if pg_projects:
             return {"org_id": org_id, "user_id": user_id, "projects": pg_projects}
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning("%s: recoverable Exception in list_user_org_projects, continuing", type(_e).__name__, exc_info=_e)
 
     # In-memory cache fallback
     key = f"{org_id}:{user_id}"
@@ -1621,8 +1625,8 @@ async def broadcast_ws_event(event_dict: Dict[str, Any]):
     for conn in ACTIVE_CONNECTIONS:
         try:
             await conn.send_text(message)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in broadcast_ws_event, continuing", type(_e).__name__, exc_info=_e)
 
 if __name__ == "__main__":
     import uvicorn

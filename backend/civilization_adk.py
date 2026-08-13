@@ -24,6 +24,10 @@ except (ImportError, ModuleNotFoundError):
 
 from backend.civilization_interface import AbstractCivilizationEngine
 try:
+    from backend.env_config import require_env
+except ImportError:  # started with backend/ as the working directory
+    from env_config import require_env
+try:
     from backend.redis_bus import redis_bus
 except (ImportError, ModuleNotFoundError):
     from redis_bus import redis_bus
@@ -57,7 +61,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_URL", "http://litellm-service.default.svc.cluster.local:80/v1"))
-API_KEY = os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
+API_KEY = require_env("OPENAI_API_KEY")
 
 
 AGENT_REGISTRY_CANDIDATE_URLS = [
@@ -97,10 +101,7 @@ async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str,
 
                 assigned = payload.get("assigned_agents", [])
                 for target_agent_id in assigned:
-                    try:
-                        await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=payload["agent_id"], to_id=target_agent_id, payload={"relation": "contains_agent", "pipeline_id": payload["agent_id"]})
-                    except Exception:
-                        pass
+                    await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=payload["agent_id"], to_id=target_agent_id, relation_type="contains_agent", payload={"relation": "contains_agent", "pipeline_id": payload["agent_id"]})
 
                 graph_data = payload.get("graph", {})
                 edges = graph_data.get("edges", [])
@@ -111,10 +112,7 @@ async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str,
                     src_agent = nodes.get(src_node_id, {}).get("agent_id", src_node_id)
                     dst_agent = nodes.get(dst_node_id, {}).get("agent_id", dst_node_id)
                     if src_agent and dst_agent:
-                        try:
-                            await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": payload["agent_id"], "from_step": src_node_id, "to_step": dst_node_id})
-                        except Exception:
-                            pass
+                        await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, relation_type=edge.get("relationship", "depends_on"), payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": payload["agent_id"], "from_step": src_node_id, "to_step": dst_node_id})
             except Exception as edge_err:
                 logger.debug(f"Post-graph edge table creation note for ADK pipeline: {edge_err}")
         await pg_client.close()
@@ -140,8 +138,8 @@ async def get_persisted_custom_model_config(project_id: str, org_id: str = "org_
                     "api_base": p.get("api_base") or os.getenv("OPENAI_API_BASE") or "http://litellm-service.default.svc.cluster.local:80/v1"
                 }
         await pg_client.close()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.warning("%s: recoverable Exception in get_persisted_custom_model_config, continuing", type(_e).__name__, exc_info=_e)
     return None
 
 
@@ -167,7 +165,7 @@ class ADKAgentNode:
         persisted = await get_persisted_custom_model_config(project_id, org_id)
 
         target_api_base = custom_api_base or (persisted and persisted.get("api_base")) or os.getenv("OPENAI_API_BASE") or os.getenv("LITELLM_URL") or "http://litellm-service.default.svc.cluster.local:80/v1"
-        target_api_key = custom_api_key or (persisted and persisted.get("api_key")) or os.getenv("OPENAI_API_KEY", "BEVZ-6L81-OZ8Y")
+        target_api_key = custom_api_key or (persisted and persisted.get("api_key")) or API_KEY
         target_model = custom_model or (persisted and persisted.get("model")) or os.getenv("RAG_MODEL", "DeepSeek-V3.2")
 
         # 1. Primary: Execute via in-cluster LiteLLM service (or user custom model endpoint)
@@ -207,8 +205,8 @@ class ADKAgentNode:
                 )
                 if res.status_code == 200:
                     return res.json()["choices"][0]["message"]["content"].strip()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in execute, continuing", type(_e).__name__, exc_info=_e)
 
         try:
             from backend.civilization import generate_dynamic_task_document
@@ -405,8 +403,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             try:
                 query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=3))
                 rag_docs = [c["content"] for c in query_res.get("data", {}).get("chunks", [])]
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning("%s: recoverable Exception in process_user_prompt_with_llm, continuing", type(_e).__name__, exc_info=_e)
             await rag.close()
 
             answer = await self.context_weaver.execute(f"Document Context: {rag_docs}\n\n{augmented_prompt}", project_id=project_id, org_id=org_id)
@@ -1031,8 +1029,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
 
         try:
             await self.index_agent_registry_for_rag(org_id, project_id)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("%s: recoverable Exception in materialize_worker_agent, continuing", type(_e).__name__, exc_info=_e)
 
         redis_bus.publish_event(org_id, project_id, {
             "event": "agent_materialized",
@@ -1375,8 +1373,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                         res = await client.post(u, json={"query": query, "num_results": num_results, "project_id": project_id})
                         if res.status_code == 200:
                             return res.json()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.warning("%s: recoverable Exception in execute_registered_tool, continuing", type(_e).__name__, exc_info=_e)
             return {
                 "status": "success",
                 "source": "cluster_search_engine_fallback",

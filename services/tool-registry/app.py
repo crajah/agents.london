@@ -9,15 +9,36 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
+import httpx
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-try:
-    from post_graph import AsyncPostGraph
-except ImportError:
-    AsyncPostGraph = None
+from post_graph import AsyncPostGraph
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def pg_client(org_id: str = "org_default"):
+    """Connected post-graph client for one org realm, closed on the way out.
+
+    Connection failures are raised. This registry has no meaningful degraded
+    mode: without the database it can neither read the tools it is asked for
+    nor persist the ones it is given, and answering "no tools" is worse than
+    refusing, because the caller cannot tell the two apart.
+    """
+    client = AsyncPostGraph(dsn=DB_URI)
+    await client.connect()
+    try:
+        await client.create_vertex_table("mcp_tools", realm=org_id)
+        yield client
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            # The work is already done or already failed; a close error must
+            # not mask either, but it is still worth seeing.
+            logger.exception("Failed to close post-graph client for realm '%s'", org_id)
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
@@ -30,56 +51,32 @@ DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 
 TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
-async def get_pg_client(org_id: str = "org_default") -> Optional[Any]:
-    """Connect to post-graph. Creates mcp_tools table in the org realm."""
-    if not AsyncPostGraph:
-        return None
-    for dsn in [DB_URI, f"postgresql://crajah:postgrespassword@localhost:5432/postgres"]:
-        try:
-            client = AsyncPostGraph(dsn=dsn)
-            await client.connect()
-            await client.create_vertex_table("mcp_tools", realm=org_id)
-            return client
-        except Exception as e:
-            logger.debug(f"PostGraph connection attempt failed: {e}")
-    return None
-
 async def sync_tools_from_post_graph():
-    """Populates local cache from post-graph on startup. Syncs across known org realms."""
+    """Populates local cache from post-graph on startup, across known org realms.
+
+    Raises if a realm cannot be read. Starting with an empty cache would make
+    the registry answer "no such tool" for every tool that exists, which is
+    indistinguishable from a correct answer.
+    """
     for org_id in ["org_london_meta", "org_default"]:
-        client = await get_pg_client(org_id)
-        if not client:
-            continue
-        try:
+        async with pg_client(org_id) as client:
             vertices = await client.get_vertices(table_name="mcp_tools", realm=org_id)
             for v in vertices:
                 payload = v.payload if hasattr(v, "payload") else v
                 if isinstance(payload, dict) and "tool_id" in payload:
                     TOOL_REGISTRY[payload["tool_id"]] = payload
-            await client.close()
-        except Exception as e:
-            logger.warning(f"Failed to sync tool registry from post-graph realm '{org_id}': {e}")
-            try:
-                await client.close()
-            except Exception:
-                pass
 
 async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
-    """Persists tool vertex into post-graph. realm=org_id (physical), space=project_id (logical)."""
+    """Persists tool vertex into post-graph. realm=org_id (physical), space=project_id (logical).
+
+    Raises if the write fails. A registration that returns success while the
+    tool exists only in this process's memory is lost at the next restart, and
+    nothing downstream can detect that it was never stored.
+    """
     org_id = payload.get("org_id", "org_default")
     project_id = payload.get("project_id")
-    client = await get_pg_client(org_id)
-    if not client:
-        return
-    try:
+    async with pg_client(org_id) as client:
         await client.add_vertex(table_name="mcp_tools", realm=org_id, space=project_id, payload=payload)
-        await client.close()
-    except Exception as e:
-        logger.warning(f"Error persisting tool '{tool_id}' to post-graph in realm '{org_id}': {e}")
-        try:
-            await client.close()
-        except Exception:
-            pass
 
 async def register_default_tools():
     """Pre-registers standard MCP tools in tool registry cache."""
@@ -289,53 +286,49 @@ class GoogleSearchRequest(BaseModel):
 
 @app.post("/tools/google-search")
 async def execute_google_search(req: GoogleSearchRequest):
-    """Executes a Google Search query from within the Kubernetes cluster via GCP Custom Search API."""
-    import httpx
+    """Executes a Google Search query from within the Kubernetes cluster via GCP Custom Search API.
+
+    Every failure path returns an error. This endpoint previously answered
+    `status: success` with three invented results whose snippets described
+    themselves as "empirically retrieved" — handing an agent fabricated
+    evidence it had no way to distinguish from a real search, and which would
+    then be reasoned over and persisted as fact.
+    """
     api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-    cx = os.getenv("GOOGLE_SEARCH_CX", "017576662512468239146:omuauf_lfve")
+    cx = os.getenv("GOOGLE_SEARCH_CX")
+    if not api_key or not cx:
+        raise HTTPException(
+            status_code=503,
+            detail="Search is unconfigured: set GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX.",
+        )
 
-    if api_key:
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {"key": api_key, "cx": cx, "q": req.query, "num": req.num_results}
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(url, params=params)
-                if res.status_code == 200:
-                    data = res.json()
-                    items = data.get("items", [])
-                    results = [{"title": item.get("title"), "snippet": item.get("snippet"), "link": item.get("link")} for item in items]
-                    return {
-                        "status": "success",
-                        "source": "gcp_custom_search_api",
-                        "query": req.query,
-                        "count": len(results),
-                        "results": results
-                    }
-        except Exception as e:
-            logger.warning(f"GCP Custom Search API error: {e}")
+    url = "https://www.googleapis.com/customsearch/v1"
+    params = {"key": api_key, "cx": cx, "q": req.query, "num": req.num_results}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(url, params=params)
+    except httpx.HTTPError as e:
+        logger.warning("GCP Custom Search request failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Search upstream unreachable: {e}") from e
 
+    if res.status_code != 200:
+        logger.warning("GCP Custom Search returned %s: %s", res.status_code, res.text[:200])
+        raise HTTPException(
+            status_code=502,
+            detail=f"Search upstream returned {res.status_code}.",
+        )
+
+    items = res.json().get("items", [])
+    results = [
+        {"title": item.get("title"), "snippet": item.get("snippet"), "link": item.get("link")}
+        for item in items
+    ]
     return {
         "status": "success",
-        "source": "cluster_search_engine_fallback",
+        "source": "gcp_custom_search_api",
         "query": req.query,
-        "count": 3,
-        "results": [
-            {
-                "title": f"Google Search Results for '{req.query}' - GCP API Cluster Gateway",
-                "snippet": f"Empirically retrieved web search results for '{req.query}' from inside Kubernetes cluster.",
-                "link": f"https://www.google.com/search?q={req.query.replace(' ', '+')}"
-            },
-            {
-                "title": "agent.london MCP Cluster Tool Registry Documentation",
-                "snippet": "Kubernetes cluster integration allowing Prime Agents and Progeny workers to query GCP Custom Search API.",
-                "link": "https://agents.london/telemetry"
-            },
-            {
-                "title": "Google Cloud Platform Custom Search JSON API Overview",
-                "snippet": "Official GCP REST API for executing programmatic web search queries with ED25519 signature provenance.",
-                "link": "https://cloud.google.com/custom-search"
-            }
-        ]
+        "count": len(results),
+        "results": results,
     }
 
 @app.delete("/tools/{tool_id}")
