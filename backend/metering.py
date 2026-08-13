@@ -190,6 +190,10 @@ class Meter:
             try:
                 await self._task
             except asyncio.CancelledError:
+                # Not a swallowed failure: awaiting a task we just cancelled
+                # raises this by definition, and it is the confirmation the
+                # cancel took effect. Left bare so a sweep for silent handlers
+                # finds this comment rather than an unexplained `pass`.
                 pass
             self._task = None
         await self._flush(self._take_batch())
