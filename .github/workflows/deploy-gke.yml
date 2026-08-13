@@ -39,7 +39,13 @@ jobs:
       matrix:
         service:
           - name: agent-registry
-            context: services/agent-registry
+            # Root context: this image copies backend/metering.py and
+            # backend/pipeline_runtime.py, which a service-scoped context
+            # cannot reach. Building it from services/agent-registry shipped
+            # an image containing only app.py, which then died on
+            # `import registry_api` at startup.
+            context: .
+            dockerfile: services/agent-registry/Dockerfile
           - name: tool-registry
             context: services/tool-registry
           - name: document-registry-service
@@ -77,6 +83,11 @@ jobs:
         run: |
           IMAGE_NAME="${{ matrix.service.name }}"
           CONTEXT_DIR="${{ matrix.service.context }}"
+          DOCKERFILE="${{ matrix.service.dockerfile }}"
+          FILE_ARG=""
+          if [ -n "${DOCKERFILE}" ]; then
+            FILE_ARG="--file ${DOCKERFILE}"
+          fi
 
           REMOTE_TAGGED="${GCR_REGISTRY}/${IMAGE_NAME}:${DOCKER_TAG}"
           REMOTE_LATEST="${GCR_REGISTRY}/${IMAGE_NAME}:latest"
@@ -89,6 +100,7 @@ jobs:
           fi
 
           docker buildx build \
+            ${FILE_ARG} \
             ${BUILD_ARGS} \
             --tag "${REMOTE_TAGGED}" \
             --tag "${REMOTE_LATEST}" \

@@ -119,7 +119,7 @@ build: _check-gcloud
 	@TAG=$$(date +'%y%m%d.%H%M%S') && echo $$TAG > .docker_tag && \
 	echo "Building all images with tag $$TAG..." && \
 	\
-	docker build -t agent-registry:$$TAG services/agent-registry && \
+	docker build -t agent-registry:$$TAG -f services/agent-registry/Dockerfile . && \
 	docker build -t tool-registry:$$TAG services/tool-registry && \
 	docker build -t document-registry-service:$$TAG services/document-registry && \
 	docker build -t agent-london-backend:$$TAG backend && \

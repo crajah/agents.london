@@ -280,8 +280,6 @@ async def mcp_call(tool_name: str, req: CallRequest, request: Request):
 async def _run_pipeline(request: Request, client, req: CallRequest,
                         entry: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a published pipeline version through the runtime."""
-    import sys
-    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "backend"))
     from execution import step_runner_for
     from pipeline_runtime import PipelineExecutor, RedisTransport, RunStore
     from registry_model import PipelineVersionSpec

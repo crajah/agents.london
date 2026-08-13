@@ -6,3 +6,4 @@ post-graph>=0.6.2
 asyncpg>=0.29.0
 sqlalchemy>=2.0.0
 httpx>=0.24.0
+redis>=5.0.0
