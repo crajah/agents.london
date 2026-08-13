@@ -21,7 +21,7 @@ export DOCKER_TAG="${TAG}"
 echo "[+] Docker Image Tag: ${TAG}"
 
 echo "[+] Building agent-registry image..."
-docker build -t "agent-registry:${TAG}" "${PROJECT_ROOT}/services/agent-registry"
+docker build -t "agent-registry:${TAG}" -f "${PROJECT_ROOT}/services/agent-registry/Dockerfile" "${PROJECT_ROOT}"
 
 echo "[+] Building tool-registry image..."
 docker build -t "tool-registry:${TAG}" "${PROJECT_ROOT}/services/tool-registry"

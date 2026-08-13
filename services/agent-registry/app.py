@@ -126,20 +126,35 @@ async def lifespan(app: FastAPI):
     # the registry will not start (Rule 12.2).
     app.state.meter = None
     try:
-        import sys, pathlib as _p
-        sys.path.insert(0, str(_p.Path(__file__).resolve().parents[2] / "backend"))
         from metering import configure
         app.state.meter = configure(pg_client)
         await app.state.meter.start()
     except Exception:
         logger.exception("metering unavailable; the registry runs unmetered")
 
+    # Redis carries step messages (spec §8.1). Optional: without it the
+    # transport is a no-op and runs still execute, so a broken cache cannot
+    # stop the registry serving. Rule 8.3 applies once a client is present —
+    # a publish failure then fails the run rather than silently skipping it.
     app.state.redis = None
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        try:
+            import redis.asyncio as aioredis
+            app.state.redis = aioredis.from_url(redis_url, decode_responses=True)
+            await app.state.redis.ping()
+            logger.info("Redis transport connected at %s", redis_url)
+        except Exception:
+            app.state.redis = None
+            logger.exception("Redis unreachable at %s; runs will execute without "
+                             "a published event stream", redis_url)
     try:
         yield
     finally:
         if app.state.meter:
             await app.state.meter.stop()
+        if app.state.redis:
+            await app.state.redis.aclose()
         await client.close()
 
 tags_metadata = [
