@@ -121,9 +121,25 @@ async def lifespan(app: FastAPI):
     client = AsyncPostGraph(dsn=DB_URI)
     await client.connect()
     app.state.pg_client = client
+
+    # Metering is optional infrastructure: accounting must never be the reason
+    # the registry will not start (Rule 12.2).
+    app.state.meter = None
+    try:
+        import sys, pathlib as _p
+        sys.path.insert(0, str(_p.Path(__file__).resolve().parents[2] / "backend"))
+        from metering import configure
+        app.state.meter = configure(pg_client)
+        await app.state.meter.start()
+    except Exception:
+        logger.exception("metering unavailable; the registry runs unmetered")
+
+    app.state.redis = None
     try:
         yield
     finally:
+        if app.state.meter:
+            await app.state.meter.stop()
         await client.close()
 
 tags_metadata = [

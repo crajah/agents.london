@@ -8,6 +8,7 @@ caller.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -215,3 +216,122 @@ async def a2a_card(plural: str, slug: str, version: str, request: Request,
     # an unpublished version must not be discoverable by probing.
     raise HTTPException(status_code=404,
                         detail=f"No published {kind} {slug}@{version}.")
+
+
+# ------------------------------------------------------- invocation (MCP/A2A)
+
+class CallRequest(BaseModel):
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    org_id: str = "org_default"
+    project_id: str = "proj_default"
+
+
+def parse_tool_name(name: str) -> tuple:
+    """`agent:slug@1.2.3` -> ("agent", "slug", "1.2.3"); version optional."""
+    kind, _, rest = name.partition(":")
+    if kind not in ("agent", "pipeline") or not rest:
+        raise HTTPException(status_code=400, detail=f"Malformed tool name {name!r}.")
+    slug, _, version = rest.partition("@")
+    return kind, slug, (version or None)
+
+
+async def _find_by_slug(client, realm: str, table: str, slug: str,
+                        version: Optional[str]) -> Dict[str, Any]:
+    for entry in await published_versions(client, realm, table):
+        if entry["identity"].get("slug") != slug:
+            continue
+        if version is None or entry["version"] == version:
+            return entry
+    raise HTTPException(status_code=404,
+                        detail=f"No published {table[:-1]} {slug}"
+                               f"{'@' + version if version else ''}.")
+
+
+@router.post("/mcp/tools/{tool_name}/call", tags=["MCP"])
+async def mcp_call(tool_name: str, req: CallRequest, request: Request):
+    """tools/call — resolve the name to a published version and execute it.
+
+    Listing without invoking made the MCP surface descriptive only: a client
+    could discover a tool and had no way to use it.
+    """
+    from execution import ExecutionError, run_agent
+    client = _client(request)
+    kind, slug, version = parse_tool_name(tool_name)
+    table = AGENTS if kind == "agent" else PIPELINES
+    entry = await _find_by_slug(client, req.org_id, table, slug, version)
+
+    try:
+        if kind == "agent":
+            out = await run_agent(
+                client, req.org_id, entry["identity"]["agent_id"], req.arguments,
+                version=entry["version"], project_id=req.project_id,
+                meter=getattr(request.app.state, "meter", None))
+            return {"content": [{"type": "text", "text": out["result"]}],
+                    "isError": False, "usage": out["usage"]}
+        out = await _run_pipeline(request, client, req, entry)
+        # Rule 6.3 surfaced at the protocol edge: a halted run is not success.
+        return {"content": [{"type": "text", "text": json.dumps(out["output"])}],
+                "isError": out["status"] != "succeeded",
+                "status": out["status"], "halt_reason": out.get("halt_reason")}
+    except ExecutionError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+async def _run_pipeline(request: Request, client, req: CallRequest,
+                        entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute a published pipeline version through the runtime."""
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2] / "backend"))
+    from execution import step_runner_for
+    from pipeline_runtime import PipelineExecutor, RedisTransport, RunStore
+    from registry_model import PipelineVersionSpec
+
+    spec = PipelineVersionSpec(**{
+        k: v for k, v in entry["record"].items()
+        if k in PipelineVersionSpec.model_fields})
+    executor = PipelineExecutor(
+        step_runner_for(client, req.org_id, req.project_id,
+                        meter=getattr(request.app.state, "meter", None)),
+        transport=RedisTransport(getattr(request.app.state, "redis", None)),
+        meter=getattr(request.app.state, "meter", None),
+        org_id=req.org_id, project_id=req.project_id)
+    run = await executor.execute(spec, req.arguments)
+    return run.to_payload()
+
+
+@router.post("/a2a/{plural}/{slug}/{version}/tasks", tags=["A2A"])
+async def a2a_task(plural: str, slug: str, version: str, req: CallRequest,
+                   request: Request):
+    """A2A task submission, mapped onto a run.
+
+    A halted run is reported `failed` with a halt_reason (spec §11.5). A2A has
+    no state for "stopped early with partial output", and mapping it to
+    `completed` would let a client read a partial result as a complete one.
+    """
+    from execution import ExecutionError, run_agent
+    if plural not in ("agents", "pipelines"):
+        raise HTTPException(status_code=404, detail="Unknown task target.")
+    client = _client(request)
+    table = AGENTS if plural == "agents" else PIPELINES
+    entry = await _find_by_slug(client, req.org_id, table, slug, version)
+
+    try:
+        if plural == "agents":
+            out = await run_agent(
+                client, req.org_id, entry["identity"]["agent_id"], req.arguments,
+                version=version, project_id=req.project_id,
+                meter=getattr(request.app.state, "meter", None))
+            return {"state": "completed",
+                    "artifacts": [{"parts": [{"type": "text", "text": out["result"]}]}],
+                    "usage": out["usage"]}
+        run = await _run_pipeline(request, client, req, entry)
+    except ExecutionError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    state = {"succeeded": "completed"}.get(run["status"], "failed")
+    body = {"state": state,
+            "artifacts": [{"parts": [{"type": "text",
+                                      "text": json.dumps(run["output"])}]}]}
+    if run["status"] == "halted":
+        body["halt_reason"] = run.get("halt_reason")
+    return body
