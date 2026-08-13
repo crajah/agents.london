@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from post_graph import AsyncPostGraph
 
+from registry_api import router as graph_router
+
 logger = logging.getLogger(__name__)
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -113,7 +115,16 @@ async def persist_agent_to_pg(agent_id: str, payload: Dict[str, Any]):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await sync_from_post_graph()
-    yield
+    # One long-lived client for the graph endpoints (§9). Opened here so a
+    # database that is unreachable stops the service starting, rather than
+    # surfacing as a 503 on the first registration.
+    client = AsyncPostGraph(dsn=DB_URI)
+    await client.connect()
+    app.state.pg_client = client
+    try:
+        yield
+    finally:
+        await client.close()
 
 tags_metadata = [
     {"name": "Agent Registration", "description": "Register, retrieve, update, and manage agent version histories."},
@@ -195,6 +206,8 @@ class VerifySignatureRequest(BaseModel):
     public_key: str
     signature: str
     payload_text: str
+
+app.include_router(graph_router)
 
 @app.get("/")
 @app.get("/health")
