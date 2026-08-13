@@ -635,18 +635,61 @@ indistinguishable, to every caller, from one that worked.
 
 ---
 
-## 11. Open questions
+## 11. Resolved design questions
 
-1. **Cross-org publishing.** §2.2 forbids cross-realm edges and §4.4 gestures at
-   `derived_from`, but the copy mechanism is unspecified.
-2. **Step-level retries versus cycles.** A retried step and a one-node cycle are
-   currently indistinguishable in `iteration_count`.
-3. **Schema evolution of context.** `context_entries.value` is unvalidated. It
-   probably wants a per-key schema in `context_policy`.
-4. **Cost accounting.** `resource_limits` is per agent version; a run-level
-   budget across a recursive tree is not modelled.
-5. **A2A streaming** maps cleanly to the events channel, but partial-result
-   semantics for a halted cyclic run are undefined.
+Each of these was open in the first draft. They are recorded with their
+resolution because the reasoning is the useful part.
+
+### 11.1 Cross-org publishing
+
+**Resolved: publish by copy, with lineage.** §2.2 forbids cross-realm edges, and
+a realm is a PostgreSQL schema, so a reference across one is not merely
+discouraged — it cannot carry a foreign key. Sharing an agent between
+organisations therefore copies the version record into the target realm and
+writes a `derived_from` edge **within** that realm, pointing at a local stub
+that records the origin realm, agent id, version and `content_hash`.
+
+The hash is what makes the copy honest: it proves the two are the same
+extraction without requiring a live link the schema cannot express. A copy that
+diverges is a new version with its own hash, which is exactly the signal a
+consumer needs.
+
+### 11.2 Retries versus cycles
+
+**Resolved: separate counters.** A retried step and a one-node cycle looked
+identical in `iteration_count`, which made an iteration budget uninterpretable —
+a pipeline could exhaust its cycle allowance on transport retries. `pipeline_runs`
+therefore carries `retry_count` alongside `iteration_count`, and only edge
+traversals increment the latter. A step re-executed for the same `msg_id`
+(Rule 8.2) is a retry; a step reached again along an edge is an iteration.
+
+### 11.3 Context value schemas
+
+**Resolved: optional per-key schemas, validated on write.** `context_policy`
+gains an optional `schemas` map from key to JSON Schema. Where a key has one, a
+write that fails validation raises rather than storing — consistent with Rule
+8.4, which already makes an undeclared write an error. Where a key has none,
+values are unvalidated, because requiring a schema for every scratch value
+would push authors toward one untyped bag key to avoid the ceremony.
+
+### 11.4 Run-level cost accounting
+
+**Resolved: §12 plus a per-run budget.** `resource_limits` remains per agent
+version. `execution` gains an optional `max_compute_units` covering the whole
+run *including* recursive children, enforced against the ledger's running total
+for the run tree before dispatching a step — the same before-the-work rule as
+iteration and depth (Rule 6.5). Exceeding it ends the run `halted`, never
+`succeeded` (Rule 6.3).
+
+### 11.5 A2A partial results for a halted run
+
+**Resolved: `failed` with a halt reason.** A2A has no state meaning "stopped
+early but produced something", and inventing one would not be understood by
+standard clients. A halted run therefore surfaces as `failed` with
+`halt_reason` and the partial context attached as an artifact. Mapping it to
+`completed` was rejected outright: a client that reads a partial result as a
+complete one is the precise failure Rule 6.3 exists to prevent, and it would be
+undetectable from the caller's side.
 
 ---
 

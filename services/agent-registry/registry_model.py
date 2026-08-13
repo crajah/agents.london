@@ -133,6 +133,9 @@ class ExecutionPolicy(BaseModel):
     max_recursion_depth: int = 1
     on_limit: str = "fail"
     concurrency: int = 1
+    # Whole-run budget including recursive children (spec §11.4). None means
+    # unbounded, which is only safe for an acyclic, non-recursive pipeline.
+    max_compute_units: Optional[int] = None
 
     @field_validator("on_limit")
     @classmethod

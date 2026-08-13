@@ -139,3 +139,48 @@ async def test_payload_map_renames_fields_between_steps():
         return {"out": 42}
     await PipelineExecutor(capture).execute(s, {})
     assert seen["b"] == {"in": 42}
+
+
+@pytest.mark.asyncio
+async def test_compute_budget_halts_the_run():
+    """§11.4: a run-level budget ends the run halted, never succeeded."""
+    s = spec(["a", "b"], [("a", "b", {})], ["a"],
+             execution=ExecutionPolicy(max_compute_units=100))
+    # 50 tokens x 4 = 200 units on the first step, over the 100 budget.
+    ex = PipelineExecutor(runner({"a": {"usage": {"input_tokens": 30, "output_tokens": 20}}}))
+    run = await ex.execute(s, {})
+    assert run.status == HALTED
+    assert run.succeeded is False
+    assert "compute budget" in run.halt_reason
+
+
+@pytest.mark.asyncio
+async def test_compute_units_accumulate_across_steps():
+    s = spec(["a", "b"], [("a", "b", {})], ["a"])
+    ex = PipelineExecutor(runner({
+        "a": {"usage": {"input_tokens": 10, "output_tokens": 0}},
+        "b": {"usage": {"input_tokens": 5, "output_tokens": 5}}}))
+    run = await ex.execute(s, {})
+    assert run.status == SUCCEEDED
+    assert run.compute_units == (10 + 10) * 4
+
+
+@pytest.mark.asyncio
+async def test_metering_failure_never_fails_the_run():
+    """Rule 12.2: accounting degrades, the request path does not."""
+    class Exploding:
+        def record(self, event):
+            raise RuntimeError("meter is broken")
+    s = spec(["a"], [], ["a"])
+    run = await PipelineExecutor(runner(), meter=Exploding()).execute(s, {})
+    assert run.status == SUCCEEDED
+
+
+@pytest.mark.asyncio
+async def test_persistence_failure_never_fails_a_completed_run():
+    class Failing:
+        async def save(self, *a, **kw):
+            raise RuntimeError("database down")
+    s = spec(["a"], [], ["a"])
+    run = await PipelineExecutor(runner(), store=Failing()).execute(s, {})
+    assert run.status == SUCCEEDED, "a completed run stands even if unrecorded"
