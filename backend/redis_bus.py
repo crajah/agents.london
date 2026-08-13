@@ -135,8 +135,8 @@ class RedisBus:
             try:
                 raw_items = self.redis_client.lrange(f"audit:{channel}", 0, limit - 1)
                 return [json.loads(item) for item in raw_items]
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning("%s: recoverable Exception in get_recent_events, continuing", type(_e).__name__, exc_info=_e)
 
         return self._in_memory_events.get(channel, [])[-limit:]
 
