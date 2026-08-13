@@ -647,3 +647,103 @@ indistinguishable, to every caller, from one that worked.
    budget across a recursive tree is not modelled.
 5. **A2A streaming** maps cleanly to the events channel, but partial-result
    semantics for a halted cyclic run are undefined.
+
+---
+
+## 12. Accounting and metering
+
+Usage is accounted **per organisation**, which is already the realm boundary
+(§2), so accounting inherits the isolation the graph enforces rather than
+re-deriving it.
+
+### 12.1 What is measured
+
+| Metric | Unit | Where it is captured |
+| :--- | :--- | :--- |
+| **Bytes processed** | bytes | document ingestion, RAG lookup, room use, search query, search results |
+| **Tokens** | count | `input`, `output`, and `total` per LLM call |
+| **Compute units** | derived | `total_tokens x 4` |
+
+Bytes are counted per *operation kind*, so ingestion and retrieval are separable
+in the ledger — they have very different cost profiles and are worth billing
+apart.
+
+**Rule 12.1** — Compute units are `total_tokens * 4`, stored as a derived
+column at write time rather than computed at read. The multiplier will change;
+recomputing history under a new multiplier would silently restate past
+invoices.
+
+### 12.2 Where it is stored, and why not Prometheus
+
+The telemetry stack at `marty/infra/telemetry` runs Prometheus with
+Kubernetes pod service discovery, Loki and Grafana. Two properties of that
+deployment decide the design:
+
+```yaml
+--storage.tsdb.retention.time=7d      # 01-prometheus.yaml
+volumes: [{ emptyDir: {} }]           # storage is a pod-local scratch dir
+```
+
+**Seven days of retention, on `emptyDir`.** The data is deleted when the pod
+restarts. That is entirely appropriate for dashboards and alerts, and
+disqualifying for an accounting ledger — a month-end invoice cannot be derived
+from a store that forgets on reschedule. Prometheus is also lossy by design:
+scrape intervals sample, counters reset on restart, and `rate()` interpolates.
+Those are the right trade-offs for observability and the wrong ones for money.
+
+Cardinality is the second objection. `org_id` as a Prometheus label is fine for
+tens of organisations and becomes a cardinality problem at thousands — and the
+number of organisations is exactly the dimension expected to grow.
+
+So the split is:
+
+| | System of record | Observability |
+| :--- | :--- | :--- |
+| **Store** | post-graph (`usage_events`) | Prometheus, via existing scrape |
+| **Guarantee** | exact, durable, append-only | sampled, ephemeral, 7 days |
+| **Answers** | "what does org X owe for March" | "what is the token rate right now" |
+| **Cost to add** | one table | one annotation, zero infrastructure |
+
+post-graph is a defensible time-series store *for this shape of data*: the
+volume is one row per operation rather than per scrape, it is append-only by
+construction, `realm` gives per-tenant physical isolation, and the same
+database already holds the graph the usage refers to — so "which agent version
+burned these tokens" is a join, not a correlation across two systems.
+
+**Option (z), OpenTelemetry, is not adopted.** There is no collector in the
+stack, so it would mean deploying and operating a new component. Prometheus
+already scrapes any pod carrying `prometheus.io/scrape`, which is the same
+outcome with nothing new to run. OTel becomes worth revisiting when traces are
+wanted alongside metrics; it buys nothing for counters.
+
+### 12.3 `usage_events`
+
+```jsonc
+{
+  "event_id": "01J…",          // ULID, idempotency key
+  "org_id": "org_…",           // realm — the accounting boundary
+  "project_id": "proj_…",      // space
+  "occurred_at": "…",          // event time, not write time
+  "kind": "document_ingest" | "rag_lookup" | "room_use" | "search_query"
+        | "search_results" | "llm_call",
+  "bytes": 20481,
+  "tokens_input": 1200, "tokens_output": 380, "tokens_total": 1580,
+  "compute_units": 6320,       // tokens_total * 4, stored (Rule 12.1)
+  "agent_id": "agt_…", "agent_version": "3.1.0",
+  "pipeline_id": "pln_…", "run_id": "run_…",
+  "model": "DeepSeek-V3.2"
+}
+```
+
+**Rule 12.2** — Metering never blocks the operation it measures. Events go to an
+in-process queue and are flushed in batches by a background task. A metering
+failure degrades accounting, and must never degrade throughput or fail a user's
+request.
+
+**Rule 12.3** — The queue is **bounded**, and overflow is counted and logged,
+never silently dropped. An unbounded queue turns a slow database into an
+out-of-memory kill; a silent drop turns it into an undetectable revenue leak.
+
+**Rule 12.4** — Events carry `occurred_at` from the moment of the operation, not
+the moment of the flush. Batching otherwise smears usage across period
+boundaries, and month-end is a period boundary.
