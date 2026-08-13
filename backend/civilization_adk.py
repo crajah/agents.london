@@ -22,6 +22,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     GOOGLE_GENAI_AVAILABLE = False
 
+from backend.registry_contract import to_registration
 from backend.civilization_interface import AbstractCivilizationEngine
 try:
     from backend.env_config import require_env
@@ -76,16 +77,28 @@ async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str,
     unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
     
     registered_http = False
+    org_id = payload.get("org_id", "org_default")
+    project_id = payload.get("project_id", "proj_alpha_civilization")
+    body = to_registration(payload, org_id, project_id)
     for base in unique_urls:
         try:
-            url = f"{base.rstrip('/')}/agents/register"
+            # POST /agents is the versioned contract (spec §3.2). The old
+            # /agents/register took an untyped blob with no schemas and no
+            # version, so nothing downstream could pin what it registered.
+            url = f"{base.rstrip('/')}/agents"
             async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(url, json=payload)
+                res = await client.post(url, json=body)
                 if res.status_code == 200:
                     registered_http = True
                     break
+                # A 400 is the registry rejecting the payload by rule, and
+                # trying the next host would just repeat it.
+                if res.status_code == 400:
+                    logger.error("Agent registry rejected %s: %s",
+                                 payload.get("agent_id"), res.text[:300])
+                    break
         except Exception as e:
-            logger.debug(f"Agent Registry HTTP registration call to {base} note: {e}")
+            logger.warning("Agent Registry registration to %s failed: %s", base, e)
 
     # Always persist into post-graph table agent_registry using project realm
     project_id = payload.get("project_id", "proj_alpha_civilization")
