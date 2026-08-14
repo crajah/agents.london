@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, attempt } from '../utils/api';
+import { casteColor } from '../utils/caste';
 import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
 import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab , Tooltip} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -53,16 +54,6 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
   }, [state.projectId, state.orgId, reloadToken]);
 
   const filteredAgents = agents.filter(a => casteFilter === 'all' || a.caste === casteFilter);
-
-  const getCasteColor = (caste) => {
-    switch (caste) {
-      case 'genesis': return 'secondary';
-      case 'archivist': return 'info';
-      case 'architect': return 'primary';
-      case 'auditor': return 'success';
-      default: return 'default';
-    }
-  };
 
   const handleSaveModel = (agentId, modelId, newDescription) => {
     setAgentModels(prev => ({ ...prev, [agentId]: { modelId, description: newDescription } }));
@@ -122,7 +113,7 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
               >
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Chip label={a.caste.toUpperCase()} size="small" color={getCasteColor(a.caste)} sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
+                    <Chip label={a.caste.toUpperCase()} size="small" color={casteColor(a.caste)} sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
                     <VerifiedUserIcon sx={{ fontSize: 16, color: '#10b981' }} />
                   </Stack>
 

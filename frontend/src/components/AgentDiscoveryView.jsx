@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
 import { api, attempt } from '../utils/api';
+import { casteColor } from '../utils/caste';
 import {
   Box, Paper, Typography, TextField, Button, Chip, Stack, Card, CardContent, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
 , Alert, Tooltip} from '@mui/material';
@@ -293,7 +294,7 @@ export default function AgentDiscoveryView({ state }) {
 
                 <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center">
                   <Stack direction="row" spacing={1}>
-                    <Chip label={(agent.caste || 'architect').toUpperCase()} size="small" color={getCasteColor(agent.caste)} sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
+                    <Chip label={(agent.caste || 'architect').toUpperCase()} size="small" color={casteColor(agent.caste)} sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
                     <Chip icon={<VerifiedUserIcon sx={{ fontSize: 12 }} />} label="ED25519 Verified" size="small" color="success" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                   </Stack>
                   <Typography variant="caption" sx={{ color: '#60a5fa', fontWeight: 600, fontSize: '0.72rem' }}>
