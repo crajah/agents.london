@@ -1,44 +1,29 @@
 """Tool Registry Microservice (Kubernetes Service) for agent.london
 
-Registers every Model Context Protocol (MCP) tool available to agents.
-Tools can be linked and scoped to an {org} or a {project}.
-Persisted in post-graph database table (mcp_tools).
+Registers every Model Context Protocol (MCP) tool available to agents, as
+versioned, content-hashed records an agent version can pin (see
+spec/tool-registry-spec.md). Tools are scoped to an {org} or a {project}, and
+persisted in post-graph under realm = org_id, space = project_id.
 """
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from post_graph import AsyncPostGraph
 
+from tool_api import router as tool_router
+from tool_cache import ToolCache
+from tool_model import ToolIdentity, ToolVersionSpec
+from tool_store import (
+    ensure_schema, list_realms, list_tools, register_or_bump,
+)
+
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def pg_client(org_id: str = "org_default"):
-    """Connected post-graph client for one org realm, closed on the way out.
-
-    Connection failures are raised. This registry has no meaningful degraded
-    mode: without the database it can neither read the tools it is asked for
-    nor persist the ones it is given, and answering "no tools" is worse than
-    refusing, because the caller cannot tell the two apart.
-    """
-    client = AsyncPostGraph(dsn=DB_URI)
-    await client.connect()
-    try:
-        await client.create_vertex_table("mcp_tools", realm=org_id)
-        yield client
-    finally:
-        try:
-            await client.close()
-        except Exception:
-            # The work is already done or already failed; a close error must
-            # not mask either, but it is still worth seeing.
-            logger.exception("Failed to close post-graph client for realm '%s'", org_id)
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
@@ -49,244 +34,269 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 
-TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
+# Realm means schema (spec §2): physical isolation per organisation. Matched to
+# the agent registry's default so the two services address the same tables.
+SCHEMA_PER_REALM = os.getenv("SCHEMA_PER_REALM", "1").lower() in ("1", "true", "yes")
 
-async def sync_tools_from_post_graph():
-    """Populates local cache from post-graph on startup, across known org realms.
+# The realm the first-party catalogue is seeded into.
+SEED_REALM = os.getenv("TOOL_SEED_REALM", "org_london_meta")
 
-    Raises if a realm cannot be read. Starting with an empty cache would make
-    the registry answer "no such tool" for every tool that exists, which is
-    indistinguishable from a correct answer.
+BACKEND_MCP = os.getenv(
+    "BACKEND_MCP_URL",
+    "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call")
+SELF_URL = os.getenv(
+    "TOOL_REGISTRY_URL",
+    "http://tool-registry-service.default.svc.cluster.local:8002")
+
+
+@asynccontextmanager
+async def pg_client(org_id: str = "org_default"):
+    """A short-lived post-graph client for one realm, closed on the way out.
+
+    Used by the metering flush, which writes per realm in batches. Request
+    handling uses the long-lived client on app.state instead.
     """
-    for org_id in ["org_london_meta", "org_default"]:
-        async with pg_client(org_id) as client:
-            vertices = await client.get_vertices(table_name="mcp_tools", realm=org_id)
-            for v in vertices:
-                payload = v.payload if hasattr(v, "payload") else v
-                if isinstance(payload, dict) and "tool_id" in payload:
-                    TOOL_REGISTRY[payload["tool_id"]] = payload
+    client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM)
+    await client.connect()
+    try:
+        yield client
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            logger.exception("Failed to close post-graph client for realm '%s'", org_id)
 
-async def persist_tool_to_pg(tool_id: str, payload: Dict[str, Any]):
-    """Persists tool vertex into post-graph. realm=org_id (physical), space=project_id (logical).
 
-    Raises if the write fails. A registration that returns success while the
-    tool exists only in this process's memory is lost at the next restart, and
-    nothing downstream can detect that it was never stored.
+# ---------------------------------------------------------- default catalogue
+
+def _obj(properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
+    return {"type": "object", "properties": properties, "required": required}
+
+
+DEFAULT_TOOLS = [
+    (
+        ToolIdentity(
+            tool_id="mcp-google-search", name="Google Search (GCP API)",
+            description="Performs web and Google searches from within the Kubernetes "
+                        "cluster via the GCP Custom Search API.",
+            scope_type="org", org_id=SEED_REALM, kind="builtin",
+            capabilities=["web_search", "retrieve"]),
+        dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/google-search",
+             side_effects="external",
+             input_schema=_obj({"query": {"type": "string", "description": "Search query prompt"},
+                                "num_results": {"type": "integer", "description": "How many results to return"}},
+                               ["query"]),
+             output_schema=_obj({"results": {"type": "array", "description": "Titles, snippets and links"},
+                                 "count": {"type": "integer"}}, []),
+             cost_hint={"kind": "search_query"}),
+    ),
+    (
+        ToolIdentity(
+            tool_id="mcp-pgvector-search", name="PostGraph Vector Memory Search",
+            description="Queries post-graph-rag shared vector memory for semantic "
+                        "document chunks and knowledge graphs.",
+            scope_type="org", org_id=SEED_REALM,
+            capabilities=["retrieve", "semantic_search"]),
+        dict(endpoint_url=BACKEND_MCP, side_effects="read",
+             input_schema=_obj({"query": {"type": "string", "description": "Vector similarity query text"},
+                                "top_k": {"type": "integer", "description": "How many chunks to return"}},
+                               ["query"]),
+             output_schema=_obj({"chunks": {"type": "array"}, "references": {"type": "array"}}, []),
+             cost_hint={"kind": "rag_lookup"}),
+    ),
+    (
+        ToolIdentity(
+            tool_id="mcp-redis-queue", name="Redis Cluster Event Bus & Task Queue",
+            description="Publishes event streams or queues background sub-tasks on "
+                        "Redis pub-sub channels.",
+            scope_type="org", org_id=SEED_REALM, capabilities=["publish", "enqueue"]),
+        dict(endpoint_url=BACKEND_MCP, side_effects="write",
+             input_schema=_obj({"channel": {"type": "string", "description": "Target Redis channel or queue name"},
+                                "payload": {"type": "object", "description": "Event message JSON payload"}},
+                               ["channel", "payload"]),
+             output_schema=_obj({"published": {"type": "boolean"}}, [])),
+    ),
+    (
+        ToolIdentity(
+            tool_id="mcp-sql-query", name="PostgreSQL Relational DB Executor",
+            description="Executes parameterized SQL queries against post-graph "
+                        "database tables.",
+            scope_type="org", org_id=SEED_REALM, capabilities=["query", "sql"]),
+        dict(endpoint_url=BACKEND_MCP, side_effects="write",
+             input_schema=_obj({"sql_query": {"type": "string", "description": "SQL statement to execute"}},
+                               ["sql_query"]),
+             output_schema=_obj({"rows": {"type": "array"}}, [])),
+    ),
+    (
+        ToolIdentity(
+            tool_id="kagent-operator", name="Kubernetes Agent Cluster Operator",
+            description="Interacts with the Kubernetes API server to inspect pods, "
+                        "deployments, and cluster rollouts.",
+            scope_type="org", org_id=SEED_REALM, capabilities=["operate", "inspect"]),
+        dict(endpoint_url=BACKEND_MCP, side_effects="write",
+             input_schema=_obj({"command": {"type": "string", "description": "Cluster operator command (e.g. get pods, status)"}},
+                               ["command"]),
+             output_schema=_obj({"output": {"type": "string"}}, [])),
+    ),
+]
+
+
+async def seed_default_tools(client, cache: ToolCache) -> int:
+    """Register the first-party catalogue. Idempotent (Rule 7.4).
+
+    `register_or_bump` returns the existing record when the content hash is
+    unchanged, so a restart appends nothing. The previous implementation called
+    `add_vertex` unconditionally and grew the table by the size of this list on
+    every pod restart — invisibly, because the read path deduplicated by
+    `tool_id`.
+
+    When the content *has* changed — most often because the deployment moved
+    and `SELF_URL` with it — the seed publishes the next patch rather than
+    failing on immutability (Rule 4.1). Failing would leave the catalogue
+    advertising the old address with only a log line to say so.
     """
-    org_id = payload.get("org_id", "org_default")
-    project_id = payload.get("project_id")
-    async with pg_client(org_id) as client:
-        await client.add_vertex(table_name="mcp_tools", realm=org_id, space=project_id, payload=payload)
+    seeded = 0
+    await ensure_schema(client, SEED_REALM)
+    for identity, version_fields in DEFAULT_TOOLS:
+        spec = ToolVersionSpec(tool_id=identity.tool_id, version="1.0.0",
+                               **version_fields)
+        try:
+            record = await register_or_bump(client, identity, spec)
+        except Exception:
+            logger.exception("failed to seed tool %s", identity.tool_id)
+            continue
+        cache.put(SEED_REALM, identity.tool_id, record.get("version"),
+                  identity.model_dump(mode="json"), record)
+        seeded += 1
+    return seeded
 
-async def register_default_tools():
-    """Pre-registers standard MCP tools in tool registry cache."""
-    default_tools = [
-        {
-            "tool_id": "mcp-google-search",
-            "name": "Google Search (GCP API)",
-            "description": "Performs web and Google searches from within Kubernetes cluster via GCP Custom Search API.",
-            "scope_type": "org",
-            "org_id": "org_london_meta",
-            "endpoint_url": "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
-            "min_reputation_score": 0.0,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query prompt"},
-                    "num_results": {"type": "integer", "default": 5}
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "tool_id": "mcp-pgvector-search",
-            "name": "PostGraph Vector Memory Search",
-            "description": "Queries post-graph-rag shared vector memory for semantic document chunks and knowledge graphs.",
-            "scope_type": "org",
-            "org_id": "org_london_meta",
-            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-            "min_reputation_score": 0.0,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Vector similarity query text"},
-                    "top_k": {"type": "integer", "default": 3}
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "tool_id": "mcp-redis-queue",
-            "name": "Redis Cluster Event Bus & Task Queue",
-            "description": "Publishes event streams or queues background sub-tasks on Redis pub-sub channels.",
-            "scope_type": "org",
-            "org_id": "org_london_meta",
-            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-            "min_reputation_score": 0.0,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "channel": {"type": "string", "description": "Target Redis channel or queue name"},
-                    "payload": {"type": "object", "description": "Event message JSON payload"}
-                },
-                "required": ["channel", "payload"]
-            }
-        },
-        {
-            "tool_id": "mcp-sql-query",
-            "name": "PostgreSQL Relational DB Executor",
-            "description": "Executes parameterized SQL queries against post-graph database tables.",
-            "scope_type": "org",
-            "org_id": "org_london_meta",
-            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-            "min_reputation_score": 0.0,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "sql_query": {"type": "string", "description": "SQL statement to execute"}
-                },
-                "required": ["sql_query"]
-            }
-        },
-        {
-            "tool_id": "kagent-operator",
-            "name": "Kubernetes Agent Cluster Operator",
-            "description": "Interacts with Kubernetes API server to inspect pods, deployments, and cluster rollouts.",
-            "scope_type": "org",
-            "org_id": "org_london_meta",
-            "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-            "min_reputation_score": 0.0,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "Cluster operator command (e.g. get pods, status)"}
-                },
-                "required": ["command"]
-            }
-        }
-    ]
-    for tool in default_tools:
-        TOOL_REGISTRY[tool["tool_id"]] = tool
-        await persist_tool_to_pg(tool["tool_id"], tool)
+
+async def warm_cache(client, cache: ToolCache) -> int:
+    """Populate the cache from every realm that has tools (Rule 10.3).
+
+    Realms are enumerated from the database. A hardcoded list — which is what
+    this was — means a new organisation's tools stay invisible until someone
+    edits and redeploys this service, and nothing reports that.
+    """
+    total = 0
+    try:
+        realms = await list_realms(client)
+    except Exception:
+        logger.exception("could not enumerate realms; starting with a cold cache")
+        return 0
+    for realm in realms:
+        try:
+            for entry in await list_tools(client, realm):
+                cache.put(realm, entry["identity"].tool_id, entry["version"],
+                          entry["identity"].model_dump(mode="json"), entry["record"])
+                total += 1
+        except Exception:
+            logger.exception("could not read tools in realm %r", realm)
+    return total
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await sync_tools_from_post_graph()
-    await register_default_tools()
-    yield
+    # Connection failures are raised. This registry has no meaningful degraded
+    # mode: without the database it can neither read the tools it is asked for
+    # nor persist the ones it is given, and answering "no tools" is worse than
+    # refusing, because the caller cannot tell the two apart.
+    client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM)
+    await client.connect()
+    app.state.pg_client = client
+    app.state.pg_client_factory = pg_client
+    app.state.cache = ToolCache()
+
+    # Metering is optional infrastructure: accounting must never be the reason
+    # the registry will not start (AG Rule 12.2).
+    app.state.meter = None
+    try:
+        from metering import configure
+        app.state.meter = configure(pg_client)
+        await app.state.meter.start()
+    except Exception:
+        logger.exception("metering unavailable; the tool registry runs unmetered")
+
+    seeded = await seed_default_tools(client, app.state.cache)
+    warmed = await warm_cache(client, app.state.cache)
+    logger.info("tool registry ready: %d default tools, %d cached", seeded, warmed)
+
+    try:
+        yield
+    finally:
+        if app.state.meter:
+            await app.state.meter.stop()
+        await client.close()
+
 
 tags_metadata = [
-    {"name": "Tool Registry", "description": "Register, retrieve, link, and execute Model Context Protocol (MCP) tools."},
-    {"name": "System", "description": "Health check and microservice status endpoints."}
+    {"name": "Tool Registry", "description": "Register, version, discover, and invoke Model Context Protocol (MCP) tools."},
+    {"name": "Builtin Tools", "description": "First-party tools implemented by this service."},
+    {"name": "System", "description": "Health check and microservice status endpoints."},
 ]
 
 app = FastAPI(
     title="MCP Tool Registry Microservice",
     description="""
     # 🧰 agent.london MCP Tool Registry OpenAPI Specs
-    
-    Manages registration, capability discovery, and execution binding for Model Context Protocol (MCP) tools (Search, Code Execution, SQL Queries, Kubernetes Operators) backed by `post-graph`.
-    
+
+    Manages versioned registration, capability discovery, and execution binding for
+    Model Context Protocol (MCP) tools (Search, Code Execution, SQL Queries, Kubernetes
+    Operators) backed by `post-graph`.
+
+    Every tool version is content-hashed and pinnable, so an agent that names a tool
+    names a specific, immutable contract.
+
     - **Interactive Swagger Documentation:** [/docs](/docs)
     - **ReDoc API Documentation:** [/redoc](/redoc)
     - **OpenAPI Schema JSON:** [/openapi.json](/openapi.json)
     """,
-    version="2.0.0",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     openapi_tags=tags_metadata,
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-class ToolRegistrationRequest(BaseModel):
-    tool_id: str = Field(..., description="Unique MCP tool identifier (e.g. mcp-pgvector-search)")
-    name: str
-    description: str
-    scope_type: str = Field("project", description="Scope level: 'org' or 'project'")
-    org_id: str
-    project_id: Optional[str] = None
-    endpoint_url: str = Field(..., description="HTTP/gRPC/IPC endpoint for MCP tool execution")
-    min_reputation_score: float = Field(0.0, description="Minimum reputation score required to access tool")
-    input_schema: Dict[str, Any] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+app.include_router(tool_router)
 
-@app.get("/")
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "tool-registry", "registered_tools": len(TOOL_REGISTRY), "persistence": "post-graph"}
 
-@app.post("/tools/register")
-async def register_tool(req: ToolRegistrationRequest):
-    tool_dict = req.model_dump()
-    tool_id = req.tool_id
-    TOOL_REGISTRY[tool_id] = tool_dict
+@app.get("/", tags=["System"])
+@app.get("/health", tags=["System"])
+async def health_check():
+    """Reports what is actually reachable, not constants."""
+    database = "unreachable"
+    try:
+        await app.state.pg_client._fetch("SELECT 1")
+        database = "ok"
+    except Exception as e:
+        logger.warning("health: database unreachable: %s", e)
 
-    # Persist tool vertex to post-graph database
-    await persist_tool_to_pg(tool_id, tool_dict)
+    cache: ToolCache = app.state.cache
+    return {
+        "status": "ok" if database == "ok" else "degraded",
+        "service": "tool-registry",
+        "database": database,
+        "persistence": "post-graph",
+        "cached_tools": cache.count(),
+        "cache_hits": cache.hits,
+        "cache_misses": cache.misses,
+        "metering": "on" if app.state.meter else "off",
+    }
 
-    return {"status": "registered", "tool_id": tool_id, "scope": req.scope_type}
 
-@app.get("/tools")
-def list_tools(
-    org_id: Optional[str] = Query(None),
-    project_id: Optional[str] = Query(None),
-    scope_type: Optional[str] = Query(None)
-):
-    results = list(TOOL_REGISTRY.values())
-    if org_id:
-        results = [t for t in results if t.get("org_id") == org_id]
-    if project_id:
-        results = [t for t in results if t.get("scope_type") == "org" or t.get("project_id") == project_id]
-    if scope_type:
-        results = [t for t in results if t.get("scope_type") == scope_type]
-    return {"tools": results, "count": len(results)}
-
-@app.get("/tools/rag-documents")
-def get_tool_rag_documents(project_id: Optional[str] = Query(None), org_id: Optional[str] = Query(None)):
-    """Export human-readable text documents of registered MCP tools for post-graph-rag indexing."""
-    import json
-    tools = list(TOOL_REGISTRY.values())
-    if org_id:
-        tools = [t for t in tools if t.get("org_id") == org_id]
-    if project_id:
-        tools = [t for t in tools if t.get("scope_type") == "org" or t.get("project_id") == project_id]
-
-    documents = []
-    for t in tools:
-        doc_text = (
-            f"Tool Name: {t['name']}\n"
-            f"Tool ID: {t['tool_id']}\n"
-            f"Scope Type: {t.get('scope_type')}\n"
-            f"Endpoint URL: {t.get('endpoint_url')}\n"
-            f"Description & Capabilities: {t.get('description')}\n"
-            f"Input Schema Parameters: {json.dumps(t.get('input_schema', {}))}\n"
-            f"Metadata: {json.dumps(t.get('metadata', {}))}"
-        )
-        documents.append({
-            "id": t["tool_id"],
-            "tool_id": t["tool_id"],
-            "name": t["name"],
-            "description": t.get("description"),
-            "content": doc_text,
-            "title": f"Tool_{t['tool_id']}"
-        })
-    return {"documents": documents, "count": len(documents)}
-
-@app.get("/tools/{tool_id}")
-def get_tool(tool_id: str):
-    if tool_id not in TOOL_REGISTRY:
-        raise HTTPException(status_code=404, detail=f"MCP Tool '{tool_id}' not found in registry.")
-    return {"tool": TOOL_REGISTRY[tool_id]}
+# ------------------------------------------------------------- builtin tools
 
 class GoogleSearchRequest(BaseModel):
     query: str
     num_results: int = Field(5, ge=1, le=10)
     project_id: Optional[str] = "proj_alpha_civilization"
 
-@app.post("/tools/google-search")
+
+@app.post("/tools/google-search", tags=["Builtin Tools"])
 async def execute_google_search(req: GoogleSearchRequest):
-    """Executes a Google Search query from within the Kubernetes cluster via GCP Custom Search API.
+    """Executes a Google Search query from within the cluster via the GCP Custom Search API.
 
     Every failure path returns an error. This endpoint previously answered
     `status: success` with three invented results whose snippets described
@@ -313,10 +323,8 @@ async def execute_google_search(req: GoogleSearchRequest):
 
     if res.status_code != 200:
         logger.warning("GCP Custom Search returned %s: %s", res.status_code, res.text[:200])
-        raise HTTPException(
-            status_code=502,
-            detail=f"Search upstream returned {res.status_code}.",
-        )
+        raise HTTPException(status_code=502,
+                            detail=f"Search upstream returned {res.status_code}.")
 
     items = res.json().get("items", [])
     results = [
@@ -331,12 +339,6 @@ async def execute_google_search(req: GoogleSearchRequest):
         "results": results,
     }
 
-@app.delete("/tools/{tool_id}")
-def delete_tool(tool_id: str):
-    if tool_id not in TOOL_REGISTRY:
-        raise HTTPException(status_code=404, detail=f"MCP Tool '{tool_id}' not found.")
-    del TOOL_REGISTRY[tool_id]
-    return {"status": "deleted", "tool_id": tool_id}
 
 if __name__ == "__main__":
     import uvicorn
