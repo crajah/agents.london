@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box, Paper, Typography, Button, TextField, Stack, Container, Divider, Alert,
   CircularProgress
@@ -6,42 +6,43 @@ import {
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import { triggerGoogleOIDC, triggerMicrosoftOIDC } from '../utils/oidc';
+import { attempt } from '../utils/api';
+import { looksLikeEmail, resolveUnverifiedEmailSession, toSession } from '../utils/tenancy';
 import Logo from './Logo';
-
-const GENERIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.ca",
-  "hotmail.com", "hotmail.co.uk", "outlook.com", "live.com", "msn.com",
-  "icloud.com", "me.com", "mac.com", "aol.com", "protonmail.com", "proton.me",
-  "zoho.com", "gmx.com", "gmx.net", "yandex.com", "mail.com", "fastmail.com",
-  "comcast.net", "sbcglobal.net", "verizon.net", "att.net"
-]);
 
 export default function AuthLockScreen({ onAuthenticate }) {
   const [email, setEmail] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [preview, setPreview] = useState(null);
 
-  const resolveTenancy = (rawEmail) => {
-    if (!rawEmail || !rawEmail.includes('@')) {
-      return { userPart: 'user', domainPart: 'unknown', orgId: 'org_unknown', isGeneric: true, clean: rawEmail || '' };
+  // The organisation an address resolves to is the server's answer — the same
+  // function the verified routes use — not a second copy of the rule in the
+  // browser. There were three copies, and three copies of a tenancy rule that
+  // can disagree is a way to land in a different organisation depending on
+  // which door you came through (F.5).
+  useEffect(() => {
+    if (!looksLikeEmail(email)) {
+      setPreview(null);
+      return undefined;
     }
-    const clean = rawEmail.toLowerCase().trim();
-    const parts = clean.split('@');
-    const userPart = (parts[0] || 'user').replace(/[^a-z0-9]/g, '_');
-    const domainPart = parts[1] || 'gmail.com';
-    const sanitizedDomain = domainPart.replace(/[^a-z0-9]/g, '_');
-
-    const isGeneric = GENERIC_EMAIL_DOMAINS.has(domainPart);
-    const orgId = isGeneric ? `org_user_${userPart}_${sanitizedDomain}` : `org_${sanitizedDomain}`;
-    return { userPart, domainPart, orgId, isGeneric, clean };
-  };
-
-  const tenancy = resolveTenancy(email);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data } = await attempt(resolveUnverifiedEmailSession(email));
+      if (!cancelled) setPreview(data);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [email]);
 
   const handleOAuthSuccess = (session) => {
     setAuthLoading(false);
     setAuthError(null);
-    onAuthenticate(session);
+    // A verified route says so. The client does not decide it (F.7).
+    onAuthenticate(toSession({ ...session, verified: true },
+                             { method: session.method || 'oidc' }));
   };
 
   const handleOAuthError = (errorMsg) => {
@@ -49,15 +50,17 @@ export default function AuthLockScreen({ onAuthenticate }) {
     setAuthError(errorMsg);
   };
 
-  const handleEmailLogin = () => {
-    if (!email || !email.includes('@')) return;
-    const resolved = resolveTenancy(email);
-    onAuthenticate({
-      email: resolved.clean,
-      orgId: resolved.orgId,
-      userId: `user_${resolved.userPart}`,
-      isGeneric: resolved.isGeneric,
-    });
+  const handleEmailLogin = async () => {
+    if (!looksLikeEmail(email)) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    const { data, error } = await attempt(resolveUnverifiedEmailSession(email));
+    setAuthLoading(false);
+    if (error) {
+      setAuthError(error.userMessage);
+      return;
+    }
+    onAuthenticate(data);
   };
 
   return (
@@ -162,23 +165,32 @@ export default function AuthLockScreen({ onAuthenticate }) {
               placeholder="e.g. dev@company.com"
             />
 
-            {email && email.includes('@') && (
-              <Alert severity={tenancy.isGeneric ? "warning" : "success"} sx={{ borderRadius: 2, fontSize: '0.8rem' }}>
-                <strong>Tenancy Auto-Resolution:</strong> {tenancy.isGeneric ? 'Generic Public Provider' : 'Corporate Domain'} &rarr; Org Realm: <code style={{ fontWeight: 700 }}>{tenancy.orgId}</code>
+            {preview && (
+              <Alert severity={preview.isGeneric ? "warning" : "success"} sx={{ borderRadius: 2, fontSize: '0.8rem' }}>
+                <strong>Tenancy:</strong> {preview.isGeneric ? 'Personal provider' : 'Corporate domain'} &rarr; <code style={{ fontWeight: 700 }}>{preview.orgId}</code>
               </Alert>
             )}
+
+            {/* F.7 — this route verifies nothing, and says so where the choice
+                is made rather than in a document nobody reads. */}
+            <Alert severity="warning" sx={{ borderRadius: 2, fontSize: '0.78rem' }}>
+              <strong>Unverified sign-in.</strong> Continuing with an email address
+              does not prove the address is yours: no password is checked and no
+              confirmation is sent. Anyone entering this address reaches the same
+              organisation. Use Google or Microsoft for a verified session.
+            </Alert>
 
             <Button
               variant="contained"
               color="primary"
               size="large"
               fullWidth
-              disabled={!email || !email.includes('@')}
-              endIcon={<ArrowForwardIcon />}
+              disabled={!looksLikeEmail(email) || authLoading}
+              endIcon={authLoading ? <CircularProgress size={16} color="inherit" /> : <ArrowForwardIcon />}
               onClick={handleEmailLogin}
               sx={{ py: 1.2, fontWeight: 700 }}
             >
-              Log In & Enter Civilization
+              Continue unverified
             </Button>
           </Box>
         </Paper>

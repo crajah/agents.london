@@ -17,6 +17,16 @@ import BYOMModal from './components/BYOMModal';
 import ProjectTabsBar from './components/ProjectTabsBar';
 import AgentDiscoveryView from './components/AgentDiscoveryView';
 import DocumentRegistryView from './components/DocumentRegistryView';
+import { api, attempt, setApiContext } from './utils/api';
+import { readRoute, writeRoute } from './utils/route';
+import { fetchModels, resetModelCache } from './utils/models';
+import { resolveUnverifiedEmailSession, toSession } from './utils/tenancy';
+
+/** Events that change the population, and so invalidate what the lists show. */
+const RELOAD_EVENTS = new Set([
+  'agent_materialized', 'project_created', 'agent_registered',
+  'pipeline_materialized_and_registered', 'workflow_completed',
+]);
 
 export default function App() {
   // Theme: 'system' | 'light' | 'dark'
@@ -32,7 +42,10 @@ export default function App() {
 
   const [userSession, setUserSession] = useState(null); // null = locked authentication wall
 
-  const [currentTab, setCurrentTab] = useState('chatbot');
+  // F.4 — the view and the project are addressable. Without this a person
+  // cannot send a colleague a link to what they are looking at, and a refresh
+  // always lands back on the chatbot.
+  const [currentTab, setCurrentTab] = useState(() => readRoute().view);
   const [ssoModalOpen, setSsoModalOpen] = useState(false);
   const [materializeModalOpen, setMaterializeModalOpen] = useState(false);
   const [byomModalOpen, setByomModalOpen] = useState(false);
@@ -42,37 +55,51 @@ export default function App() {
     userId: 'user_chandan',
     projectId: 'proj_alpha_civilization',
     wsConnected: false,
-    availableModels: [
-      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', provider: 'MiniMax AI', context_window: 128000, status: 'active' },
-      { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', provider: 'OpenAI / OSS', context_window: 128000, status: 'active' },
-      { id: 'Meta-Llama-3.3-70B-Instruct', name: 'Meta Llama 3.3 70B Instruct', provider: 'Meta AI', context_window: 128000, status: 'active' },
-      { id: 'gemma-4-31B-it', name: 'Gemma 4 31B Instruct', provider: 'Google DeepMind', context_window: 131072, status: 'active' },
-      { id: 'DeepSeek-V3.1', name: 'DeepSeek V3.1', provider: 'DeepSeek AI', context_window: 128000, status: 'active' },
-      { id: 'DeepSeek-V3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek AI', context_window: 128000, status: 'active' },
-      { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', provider: 'OpenAI / Embeddings', context_window: 8191, status: 'active' }
-    ],
-    tools: [
-      { tool_id: 'mcp-google-search', name: 'Google Search (GCP API)', scope_type: 'org', endpoint_url: 'http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search', input_schema: { query: 'string', num_results: 'int' } },
-      { tool_id: 'mcp-pgvector-search', name: 'pgvector Vector Search', scope_type: 'org', endpoint_url: 'http://localhost:8002/tools/pgvector', input_schema: { query_vector: 'list[float]' } },
-      { tool_id: 'mcp-redis-queue', name: 'Redis Event Queue', scope_type: 'project', endpoint_url: 'http://localhost:8002/tools/redis', input_schema: { channel: 'str' } }
-    ]
+    // No seeded model list either. It named two models the router had stopped
+    // serving, so a user could select one before the fetch replaced it (F.41).
+    availableModels: [],
+    // No `tools` here. The shell used to hold a copy of the tool catalogue and
+    // prepend to it on registration, so the interface showed tools the server
+    // did not have; the tools view now reads the registry (F.53).
   });
 
   useEffect(() => {
-    async function fetchModels() {
-      try {
-        const res = await fetch('/api/models');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.models) {
-            setState(prev => ({ ...prev, availableModels: data.models, routerSource: data.source }));
-          }
-        }
-      } catch (e) {
-        console.error('Could not fetch models from backend:', e);
+    setApiContext({ orgId: state.orgId, projectId: state.projectId });
+  }, [state.orgId, state.projectId]);
+
+  // The URL follows the interface…
+  useEffect(() => {
+    writeRoute({ view: currentTab, project: state.projectId });
+  }, [currentTab, state.projectId]);
+
+  // …and the interface follows the back button.
+  useEffect(() => {
+    const onPop = () => {
+      const route = readRoute();
+      setCurrentTab(route.view);
+      if (route.project) {
+        setState((prev) => (prev.projectId === route.project
+          ? prev
+          : { ...prev, projectId: route.project }));
       }
-    }
-    fetchModels();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // One module owns the catalogue, cached for the session (F.41).
+  useEffect(() => {
+    let cancelled = false;
+    fetchModels().then((catalogue) => {
+      if (cancelled) return;
+      setState((prev) => ({
+        ...prev,
+        availableModels: catalogue.models,
+        routerSource: catalogue.source,
+        modelWarning: catalogue.warning,
+      }));
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // WebSocket connection for real-time civilization events
@@ -106,9 +133,19 @@ export default function App() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'agent_materialized' || msg.type === 'project_created') {
-            console.log('WS event:', msg.type, msg.data);
-          }
+          // F.48 — events update the screen. They used to be logged to the
+          // console, which is a connection that costs something and returns
+          // nothing.
+          setState((prev) => ({
+            ...prev,
+            lastEvent: { type: msg.type, at: Date.now(), data: msg.data },
+            // Anything that changes the population invalidates the lists that
+            // show it; the views refetch on this token rather than being
+            // patched from an event payload the server did not confirm.
+            populationVersion: RELOAD_EVENTS.has(msg.type)
+              ? (prev.populationVersion || 0) + 1
+              : (prev.populationVersion || 0),
+          }));
         } catch (e) { /* ignore non-JSON */ }
       };
     }
@@ -126,22 +163,25 @@ export default function App() {
     setState(prev => ({
       ...prev,
       orgId: session.orgId,
-      userId: session.userId
+      userId: session.userId,
+      verified: Boolean(session.verified),
     }));
   };
 
-  const handleSSOLoginSuccess = (email) => {
-    const clean = email.toLowerCase().trim();
-    const parts = clean.split('@');
-    const userPart = (parts[0] || 'user').replace(/[^a-z0-9]/g, '_');
-    const domainPart = parts[1] || 'gmail.com';
-    const sanitizedDomain = domainPart.replace(/[^a-z0-9]/g, '_');
-
-    const isGeneric = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'icloud.com', 'protonmail.com'].includes(domainPart);
-    const orgId = isGeneric ? `org_user_${userPart}_${sanitizedDomain}` : `org_${sanitizedDomain}`;
-    const userId = `user_${userPart}`;
-
-    handleAuthenticate({ email: clean, orgId, userId, isGeneric });
+  // The SSO modal hands back a session the server resolved. The shell used to
+  // re-derive the organisation from the email itself — a third copy of a rule
+  // that only has to disagree once to put someone in the wrong realm (F.5).
+  const handleSSOLoginSuccess = async (emailOrSession) => {
+    if (emailOrSession && typeof emailOrSession === 'object') {
+      handleAuthenticate(toSession(emailOrSession));
+      return;
+    }
+    const { data, error } = await attempt(resolveUnverifiedEmailSession(emailOrSession));
+    if (error) {
+      console.error('Could not resolve tenancy:', error.userMessage);
+      return;
+    }
+    handleAuthenticate(data);
   };
 
   const handleLogout = () => {
@@ -149,38 +189,28 @@ export default function App() {
   };
 
   const handleMaterializeSubmit = async (data) => {
-    try {
-      const res = await fetch('/api/agents/materialize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: state.orgId,
-          project_id: state.projectId,
-          user_id: state.userId,
-          agent_name: data.name,
-          system_prompt: data.systemPrompt,
-          parent_agent_id: data.parentId || null,
-          tools: data.tools || [],
-        })
-      });
-      if (!res.ok) console.error('Materialize failed:', await res.text());
-    } catch (e) {
-      console.error('Materialize error:', e);
-    }
+    const { error } = await attempt(api.post('/api/agents/materialize', {
+      user_id: state.userId,
+      agent_name: data.name,
+      system_prompt: data.systemPrompt,
+      parent_agent_id: data.parentId || null,
+      tools: data.tools || [],
+    }));
+    if (error) console.error('Materialize failed:', error.userMessage);
   };
 
-  const handleAddTool = (newTool) => {
-    setState(prev => ({
-      ...prev,
-      tools: [newTool, ...prev.tools]
-    }));
-  };
+  // Registering a tool refetches; it does not prepend to an array the server
+  // does not know about (F.53).
+  const [toolsVersion, setToolsVersion] = useState(0);
+  const handleAddTool = () => setToolsVersion((n) => n + 1);
 
-  const handleAddCustomModel = (customModel) => {
-    setState(prev => ({
-      ...prev,
-      availableModels: [customModel, ...prev.availableModels]
-    }));
+  // A custom model is saved server-side; the catalogue is re-read rather than
+  // patched locally (F.53).
+  const handleAddCustomModel = () => {
+    resetModelCache();
+    fetchModels().then((catalogue) => {
+      setState((prev) => ({ ...prev, availableModels: catalogue.models }));
+    });
   };
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -228,9 +258,9 @@ export default function App() {
               {currentTab === 'chatbot' && <ChatbotView state={state} />}
               {currentTab === 'playground' && <PlaygroundView state={state} />}
               {currentTab === 'discovery' && <AgentDiscoveryView state={state} />}
-              {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
-              {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} />}
-              {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} />}
+              {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} reloadToken={state.populationVersion || 0} />}
+              {currentTab === 'agents' && <AgentRegistryView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} reloadToken={state.populationVersion || 0} />}
+              {currentTab === 'tools' && <ToolRegistryView state={state} onAddTool={handleAddTool} reloadToken={toolsVersion} />}
               {currentTab === 'documents' && <DocumentRegistryView currentProject={{ id: state.projectId }} orgId={state.orgId} />}
               {currentTab === 'sessions' && <SharedMemoryView state={state} />}
               {currentTab === 'guardrails' && <GuardrailsView state={state} />}

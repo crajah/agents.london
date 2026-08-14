@@ -45,7 +45,7 @@ const PRIME_AGENTS = [
   { id: 'synchronicity-engine', name: 'The Synchronicity Engine', caste: 'Evaluators', func: 'Collaboration', topo: 'Parallel', color: '#10b981' }
 ];
 
-export default function CivilizationGraphView({ state, onOpenMaterialize }) {
+export default function CivilizationGraphView({ state, onOpenMaterialize, reloadToken = 0 }) {
   const canvasRef = useRef(null);
   const [viewMode, setViewMode] = useState('graph'); // 'graph' or 'matrix'
 

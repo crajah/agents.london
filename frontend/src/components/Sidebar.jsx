@@ -1,3 +1,4 @@
+import { api, attempt } from '../utils/api';
 import React, { useState, useEffect } from 'react';
 import {
   Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Paper, Typography, Divider, Link, Chip, Tooltip, Drawer
@@ -39,8 +40,8 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
     async function fetchMetrics() {
       try {
         const [gRes, pRes] = await Promise.allSettled([
-          fetch('/api/metrics/global').then(r => r.ok ? r.json() : null),
-          fetch(`/api/metrics/project/${state?.projectId || 'proj_alpha_civilization'}`).then(r => r.ok ? r.json() : null)
+          attempt(api.get('/api/metrics/global', { scoped: false })).then(r => r.data),
+          attempt(api.get(`/api/metrics/project/${state?.projectId || 'proj_alpha_civilization'}`, { scoped: false })).then(r => r.data)
         ]);
         if (gRes.status === 'fulfilled' && gRes.value) {
           setGlobalMetrics(gRes.value);

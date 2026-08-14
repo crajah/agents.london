@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api, attempt } from '../utils/api';
 import {
   Box, Paper, Tabs, Tab, Button, Chip, Typography, Stack, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert, IconButton, Tooltip
 } from '@mui/material';
@@ -14,7 +15,11 @@ export default function ProjectTabsBar({ state, setState }) {
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [copied, setCopied] = useState(false);
-  const [projectApiKey, setProjectApiKey] = useState('A1B2-C3D4-E5F6-G7H8');
+  // No placeholder key. A string in the right shape reads as a real
+  // credential, and the previous default was copied and used (F.10).
+  const [projectApiKey, setProjectApiKey] = useState(null);
+  const [keyError, setKeyError] = useState(null);
+  const [createError, setCreateError] = useState(null);
 
   const orgId = state.orgId || 'org_london_meta';
   const userId = state.userId || 'user_chandan';
@@ -25,45 +30,35 @@ export default function ProjectTabsBar({ state, setState }) {
     { id: 'proj_neural_synth', name: 'Neural Synthesis Universe', agentsCount: 12, status: 'ACTIVE' }
   ];
 
-  // Fetch authorized projects for the current Org & User
   useEffect(() => {
-    async function fetchOrgUserProjects() {
-      try {
-        const res = await fetch(`/api/orgs/${orgId}/users/${userId}/projects`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.projects && data.projects.length > 0) {
-            setState(prev => {
-              const hasCurrentProj = data.projects.some(p => p.id === prev.projectId);
-              return {
-                ...prev,
-                projects: data.projects,
-                projectId: hasCurrentProj ? prev.projectId : data.projects[0].id
-              };
-            });
-          }
-        }
-      } catch (e) {
-        console.warn("Could not fetch org/user projects:", e);
-      }
-    }
-    fetchOrgUserProjects();
+    let cancelled = false;
+    (async () => {
+      const { data } = await attempt(
+        api.get(`/api/orgs/${orgId}/users/${userId}/projects`, { scoped: false }));
+      if (cancelled || !data?.projects?.length) return;
+      setState((prev) => ({
+        ...prev,
+        projects: data.projects,
+        projectId: data.projects.some((p) => p.id === prev.projectId)
+          ? prev.projectId
+          : data.projects[0].id,
+      }));
+    })();
+    return () => { cancelled = true; };
   }, [orgId, userId]);
 
   useEffect(() => {
-    // Fetch 16-character project API key for active project
-    async function fetchApiKey() {
-      try {
-        const res = await fetch(`/api/projects/${state.projectId}/key`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.api_key) setProjectApiKey(data.api_key);
-        }
-      } catch (e) {
-        console.log('Using default project API key:', e);
-      }
-    }
-    fetchApiKey();
+    let cancelled = false;
+    (async () => {
+      setProjectApiKey(null);
+      setKeyError(null);
+      const { data, error } = await attempt(
+        api.get(`/api/projects/${state.projectId}/key`, { scoped: false }));
+      if (cancelled) return;
+      if (error) setKeyError(error);
+      else setProjectApiKey(data?.api_key || null);
+    })();
+    return () => { cancelled = true; };
   }, [state.projectId]);
 
   const handleTabChange = (event, newValue) => {
@@ -76,55 +71,47 @@ export default function ProjectTabsBar({ state, setState }) {
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
-    try {
-      const res = await fetch(`/api/orgs/${orgId}/users/${userId}/projects?name=${encodeURIComponent(newProjectName.trim())}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.project) {
-          setState(prev => ({
-            ...prev,
-            projectId: data.project.id,
-            projects: [...(prev.projects || []), data.project]
-          }));
-        }
-      }
-    } catch (e) {
-      console.warn("Create project fallback:", e);
-      const cleanId = `proj_${newProjectName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-      const newProjObj = { id: cleanId, name: newProjectName.trim(), agentsCount: 1, status: 'ACTIVE' };
-      setState(prev => ({
-        ...prev,
-        projectId: cleanId,
-        projects: [...(prev.projects || projects), newProjObj]
-      }));
-    } finally {
-      setNewProjectName('');
-      setCreateOpen(false);
+    setCreateError(null);
+    // Creating a project is a server operation. A project that exists only in
+    // this browser accepts documents and agents that go nowhere (F.9).
+    const { data, error } = await attempt(api.post(
+      `/api/orgs/${orgId}/users/${userId}/projects`, undefined,
+      { params: { name: newProjectName.trim() }, scoped: false }));
+    if (error) {
+      setCreateError(error);
+      return;
     }
+    if (data?.project) {
+      setState((prev) => ({
+        ...prev,
+        projectId: data.project.id,
+        projects: [...(prev.projects || []), data.project],
+      }));
+    }
+    setNewProjectName('');
+    setCreateOpen(false);
   };
 
   const handleCopyKey = () => {
+    if (!projectApiKey) return;
     navigator.clipboard.writeText(projectApiKey);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleRegenerateKey = async () => {
-    try {
-      const res = await fetch(`/api/projects/${state.projectId}/key/regenerate`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.api_key) setProjectApiKey(data.api_key);
-      }
-    } catch (e) {
-      // Generate fallback local 16-char key
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let r = '';
-      for (let i = 0; i < 16; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
-      setProjectApiKey(`${r.substring(0, 4)}-${r.substring(4, 8)}-${r.substring(8, 12)}-${r.substring(12, 16)}`);
+    setKeyError(null);
+    const { data, error } = await attempt(api.post(
+      `/api/projects/${state.projectId}/key/regenerate`, undefined, { scoped: false }));
+    if (error) {
+      // A locally generated key is in the right shape and authenticates
+      // nothing: the user copies it, uses it, and receives a 401 from a
+      // service that never heard of it (F.10).
+      setProjectApiKey(null);
+      setKeyError(error);
+      return;
     }
+    setProjectApiKey(data?.api_key || null);
   };
 
   return (
@@ -230,14 +217,30 @@ export default function ProjectTabsBar({ state, setState }) {
             <strong>16-Character Project API Key Format:</strong> 16 uppercase alphanumeric digits separated by hyphens (<code>XXXX-XXXX-XXXX-XXXX</code>).
           </Alert>
 
+          {keyError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setKeyError(null)}>
+              {keyError.userMessage}
+              <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                No key is shown. A key generated here would be the right shape
+                and authenticate nothing.
+              </Typography>
+            </Alert>
+          )}
+
           <Paper sx={{ p: 2, backgroundColor: 'rgba(9, 13, 22, 0.85)', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 PROJECT API KEY ({state.projectId})
               </Typography>
-              <Typography variant="h6" sx={{ fontFamily: '"JetBrains Mono", monospace', fontWeight: 800, color: '#10b981', letterSpacing: '1px' }}>
-                {projectApiKey}
-              </Typography>
+              {projectApiKey ? (
+                <Typography variant="h6" sx={{ fontFamily: '"JetBrains Mono", monospace', fontWeight: 800, color: '#10b981', letterSpacing: '1px' }}>
+                  {projectApiKey}
+                </Typography>
+              ) : (
+                <Typography variant="body2" sx={{ color: '#f87171', fontWeight: 600 }}>
+                  {keyError ? 'Unavailable' : 'Loading…'}
+                </Typography>
+              )}
             </Box>
 
             <Stack direction="row" spacing={1}>
@@ -259,10 +262,23 @@ export default function ProjectTabsBar({ state, setState }) {
             <Typography variant="caption" sx={{ fontWeight: 700, color: '#60a5fa', display: 'block', mb: 1 }}>
               MCP & A2A AUTHENTICATION HEADERS:
             </Typography>
-            <div style={{ color: '#e2e8f0' }}>Authorization: Bearer {projectApiKey}</div>
-            <div style={{ color: '#e2e8f0' }}>X-Project-API-Key: {projectApiKey}</div>
+            {projectApiKey ? (
+              <>
+                <div style={{ color: '#e2e8f0' }}>Authorization: Bearer {projectApiKey}</div>
+                <div style={{ color: '#e2e8f0' }}>X-Project-API-Key: {projectApiKey}</div>
+              </>
+            ) : (
+              <div style={{ color: '#94a3b8' }}>
+                No key to show — headers cannot be built without one.
+              </div>
+            )}
           </Box>
         </DialogContent>
+        {createError && (
+          <Alert severity="error" sx={{ mx: 3 }} onClose={() => setCreateError(null)}>
+            {createError.userMessage}
+          </Alert>
+        )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setKeyModalOpen(false)} variant="contained" color="primary">
             Close

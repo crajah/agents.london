@@ -37,6 +37,19 @@ export default function Header({
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Chip label="1B Agent Civilization" size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+              {/* The unverified state travels with the session, so it is
+                  visible wherever the user is — not only at the door (F.7). */}
+              {userSession && !userSession.verified && (
+                <Tooltip title="This session was not verified: the email address was never confirmed. Sign in with Google or Microsoft for a verified session.">
+                  <Chip
+                    label="UNVERIFIED"
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700 }}
+                  />
+                </Tooltip>
+              )}
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', display: { xs: 'none', sm: 'inline' } }}>
                 Brainchild of <Link href="https://www.linkedin.com/in/crajah/" target="_blank" rel="noopener" underline="hover" sx={{ color: '#60a5fa', fontWeight: 600 }}>Chandan Rajah</Link>
               </Typography>

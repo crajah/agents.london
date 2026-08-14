@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { api, attempt } from '../utils/api';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Alert, Stack, Chip
 } from '@mui/material';
@@ -30,13 +31,9 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
     };
 
     try {
-      const res = await fetch('/api/models/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.post('/api/models/custom', payload);
 
-      if (res.ok) {
+      {
         setSuccessMsg(`Successfully saved BYOM & BYOK model '${customModelId}' to post-graph DB at '${scope}' scope!`);
       }
     } catch (e) {

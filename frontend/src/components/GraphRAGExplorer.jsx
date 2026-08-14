@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { api, attempt } from '../utils/api';
 import { Box, Paper, Typography, TextField, Button, Chip, Stack, CircularProgress, Divider } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import HubIcon from '@mui/icons-material/Hub';
@@ -31,11 +32,11 @@ export default function GraphRAGExplorer({ projectId, orgId, spaceName }) {
     if (!q.trim()) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ query: q, depth: '1' });
-      if (spaceName && spaceName !== 'all') params.set('space_name', spaceName);
-      const res = await fetch(`/api/projects/${projectId}/rag/graph?${params}`);
-      if (res.ok) {
-        const data = await res.json();
+      const graphParams = { query: q, depth: 1 };
+      if (spaceName && spaceName !== 'all') graphParams.space_name = spaceName;
+      const { data, error } = await attempt(
+        api.get(`/api/projects/${projectId}/rag/graph`, { params: graphParams }));
+      if (!error) {
         const newNodes = data.nodes || [];
         const newEdges = data.edges || [];
 

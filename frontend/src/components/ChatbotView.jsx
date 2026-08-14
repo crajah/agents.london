@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { api, attempt } from '../utils/api';
 import {
   Box, Paper, Typography, TextField, Button, Avatar, IconButton, Tooltip, List, ListItem, ListItemButton, ListItemIcon, ListItemText, CircularProgress
 } from '@mui/material';
@@ -126,29 +127,17 @@ export default function ChatbotView({ state }) {
 
     let agentResponseContent = "⚠️ Error: Unable to communicate with the civilization engine.";
 
-    try {
-      const res = await fetch('/api/agent/interact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: orgId,
-          project_id: projectId,
-          prompt: userPrompt,
-          session_id: activeSessionId,
-          isolation_mode: isolationMode
-        })
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        agentResponseContent = data.final_answer || data.answer || "No response received.";
-      } else {
-        console.warn(`Backend returned ${res.status}:`, await res.text());
-        agentResponseContent = `⚠️ **System Error:** Backend API request failed (HTTP ${res.status}).`;
-      }
-    } catch (err) {
-      console.warn("Backend execution API call fallback:", err);
-      agentResponseContent = `⚠️ **System Error:** Failed to connect to the backend API. Please ensure the backend server is running.`;
+    const { data, error } = await attempt(api.post('/api/agent/interact', {
+      prompt: userPrompt,
+      session_id: activeSessionId,
+      isolation_mode: isolationMode,
+    }));
+    if (error) {
+      // The failure is shown as a failure, in the transcript, where the user
+      // is looking (F.12).
+      agentResponseContent = `⚠️ **System Error:** ${error.userMessage}`;
+    } else {
+      agentResponseContent = data.final_answer || data.answer || 'No response received.';
     }
 
     const agentMsg = {
