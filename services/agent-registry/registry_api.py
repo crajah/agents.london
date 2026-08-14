@@ -287,11 +287,15 @@ async def _run_pipeline(request: Request, client, req: CallRequest,
     spec = PipelineVersionSpec(**{
         k: v for k, v in entry["record"].items()
         if k in PipelineVersionSpec.model_fields})
+    # A run with no store executes and leaves no record — the audit trail the
+    # whole design rests on is only there if something writes it.
+    store = RunStore(request.app.state.pg_client_factory) \
+        if getattr(request.app.state, "pg_client_factory", None) else None
     executor = PipelineExecutor(
         step_runner_for(client, req.org_id, req.project_id,
                         meter=getattr(request.app.state, "meter", None)),
         transport=RedisTransport(getattr(request.app.state, "redis", None)),
-        meter=getattr(request.app.state, "meter", None),
+        meter=getattr(request.app.state, "meter", None), store=store,
         org_id=req.org_id, project_id=req.project_id)
     run = await executor.execute(spec, req.arguments)
     return run.to_payload()
