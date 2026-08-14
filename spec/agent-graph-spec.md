@@ -4,7 +4,16 @@ Specification for the agent.london registry. Target substrate is **post-graph**
 on PostgreSQL: vertex and edge tables with JSONB payloads, pgvector embeddings,
 realm/space tenancy, and append-only `{table}_data` history.
 
-Status: draft for implementation. Section 11 lists what is deliberately left open.
+Companion specifications, sharing this document's tenancy, versioning and
+accounting models:
+
+- `tool-registry-spec.md` — the MCP tools an agent version's `tools` list names
+- `document-registry-spec.md` — the corpus agents retrieve over
+
+Status: implemented in `services/agent-registry`. Section 11 records design
+questions and their resolutions; section 13 records implementation status,
+including the defects the end-to-end suite found and the items still
+outstanding.
 
 ---
 
@@ -65,9 +74,15 @@ its origin in `derived_from` (§4.4), not by pointing across a realm boundary.
 
 ## 3. Vertex tables
 
-Four vertex tables, each with its append-only `{table}_data` companion
-(§3.2). All carry `realm`, `space`, `id`, `uuid`, `payload` (JSONB),
-`embedding` (`vector(1536)`), `created_at`, `updated_at`.
+Four vertex tables — `agents`, `pipelines`, `prompts`, `pipeline_runs` — each
+with its append-only `{table}_data` companion (§3.2). All carry `realm`,
+`space`, `id`, `uuid`, `payload` (JSONB), `created_at`, `updated_at`.
+
+`agents` and `pipelines` additionally carry `embedding` (`vector(1536)`),
+because those are the two things discovery searches over (§10). `prompts` and
+`pipeline_runs` do not: a run is reached from its definition or its id, never
+by similarity, and a vector column on a table that grows one row per execution
+is an index nothing queries.
 
 ### 3.1 `agents` — the stable identity
 
@@ -79,7 +94,10 @@ change between versions.
   "agent_id": "agt_researcher_7f3a",     // stable, immutable, globally unique
   "name": "Corpus Researcher",
   "slug": "corpus-researcher",           // unique per (realm, space); URL and MCP safe
-  "caste": "permanent" | "progeny" | "pipeline",
+  "caste": "genesis" | "archivist" | "economist" | "judicature"
+         | "architect" | "task_workforce" | "auditor",
+  "role":  "permanent_governor" | "permanent_creator" | "permanent_inspector"
+         | "permanent_conductor" | "permanent_react" | "worker",
   "telos": "One sentence: what this agent exists to do.",
   "description": "Prose. Embedded for semantic discovery.",
   "owner": "user_id or agent_id of the spawner",
@@ -88,6 +106,15 @@ change between versions.
   "created_at": "2026-08-13T09:00:00Z"
 }
 ```
+
+`caste` and `role` are two independent axes and are often collapsed by mistake.
+**Caste** is what part of the civilisation an agent belongs to — governance,
+memory, economics, adjudication, design, work, oversight. **Role** is its
+standing within that caste, and the `permanent_` prefix marks an agent the
+population does not garbage-collect. Neither says anything about provenance:
+whether an agent was spawned by another is recorded by the `spawns` edge (§5),
+not by a field, because provenance is transitive and a field cannot be
+traversed.
 
 `embedding` is computed from `name + telos + description + capability names`. This
 is what makes "find me an agent that can summarise filings" work without a
@@ -160,7 +187,10 @@ execution resolves.** An agent vertex with no version record is not executable.
     "params": {"temperature": 0.2, "max_tokens": 2048},
     "fallback_models": ["MiniMax-M2.7"]
   },
-  "tools": ["mcp-google-search", "mcp-pgvector-search"],   // tool_ids in the tool registry
+  "tools": [                                              // resolved pins; see tool-registry-spec §4.3
+    {"tool_id": "mcp-google-search", "version": "1.2.0", "content_hash": "sha256:…"},
+    {"tool_id": "mcp-pgvector-search", "version": "0.9.1", "content_hash": "sha256:…"}
+  ],
   "input_schema":  { "$schema": "…", "type": "object", … }, // JSON Schema, required
   "output_schema": { "$schema": "…", "type": "object", … }, // JSON Schema, required
   "capabilities": ["summarise", "cite", "retrieve"],
@@ -178,6 +208,14 @@ recomputes it and rejects a mismatch against a published version.
 **Rule 3.4** — `input_schema` and `output_schema` are **required**, not optional.
 They are what makes MCP exposure (§7) mechanical rather than hand-written, and
 what lets a pipeline edge be validated at registration instead of at runtime.
+
+**Rule 3.5** — `tools` holds resolved pins — `tool_id`, `version`,
+`content_hash` — not bare ids, and it is inside `content_hash` (§4.2). A bare
+id is a reference to whatever that tool currently is, so an agent's hash would
+certify a behaviour that changes when someone edits a tool's endpoint or input
+schema. The resolution happens at registration, against the tool registry
+(`tool-registry-spec.md` §4.3), and fails the registration if a named tool is
+missing, unpublished, revoked, or out of scope for this `(realm, space)`.
 
 ### 3.3 `pipelines` — the stable identity
 
@@ -249,14 +287,47 @@ them is what keeps a cyclic definition finite (§6).
   "depth": 0,                            // recursion depth; parent.depth + 1
   "trigger": {"kind": "mcp" | "a2a" | "schedule" | "agent", "by": "…"},
   "status": "queued" | "running" | "succeeded" | "failed" | "halted",
-  "iteration_count": 0,
+  "iteration_count": 0,                  // edge traversals; §11.2
+  "retry_count": 0,                      // redeliveries; §11.2
+  "compute_units": 0,                    // running total for this run; §11.4
   "started_at": "…", "ended_at": "…",
   "input": { … }, "output": { … },
-  "error": {"step_id": "…", "type": "…", "message": "…"} | null
+  "error": {"step_id": "…", "type": "…", "message": "…"} | null,
+  "halt_reason": "…" | null              // set iff status = halted; §11.5
 }
 ```
 
-### 3.6 `context_entries` — shared context, §8
+`halt_reason` is a field on the run, not something reconstructed at the
+protocol edge. A2A reports a halted run as `failed` and needs the reason to
+attach (§11.5); MCP reports it as an error and needs the same string. Deriving
+it twice from `status` plus `error` is how the two surfaces come to disagree
+about why a run stopped.
+
+### 3.6 Shared context lives in `pipeline_runs_data`, not its own table
+
+Context is per-run, append-only, and only ever read in the context of its run —
+which is exactly the shape `{table}_data` already provides against the run
+vertex. A separate `context_entries` table would need its own run foreign key,
+its own revision ordering and its own retention rule, all of which the data
+companion enforces already.
+
+Each record is tagged by `kind` so the run's history holds both context writes
+and the conflicts detected between them (Rule 8.6):
+
+```jsonc
+// kind: "context" — one record per revision, never per key
+{"kind": "context", "key": "extracted_entities", "value": { … },
+ "written_by": "step_extract", "revision": 3, "written_at": "…"}
+
+// kind: "conflict" — Rule 8.6, recorded rather than inferred
+{"kind": "conflict", "key": "extracted_entities",
+ "previous_writer": "step_a", "writer": "step_b"}
+```
+
+**Rule 3.6** — Every revision is written, not just the final value of each key.
+Collapsing to a snapshot makes a cyclic run's second iteration
+indistinguishable from its first, which removes the only evidence available
+when a cycle produces a different answer than it did on the previous pass.
 
 ---
 
@@ -281,9 +352,13 @@ unversioned edit to a published agent: the prompt *is* the behaviour.
 ```
 content_hash = sha256(canonical_json({
     system_prompt, model, tools, input_schema, output_schema,
-    capabilities, resource_limits
+    capabilities, resource_limits, invokes_pipeline
 }))
 ```
+
+`invokes_pipeline` is in the hash because an agent that calls a pipeline
+behaves differently from one that does not (§6.3), and the hash is the record
+of what an agent version *does*.
 
 Canonical JSON: keys sorted, no insignificant whitespace, UTF-8. The hash covers
 what determines behaviour and excludes what does not (`description`,
@@ -540,19 +615,28 @@ in-flight work, never committed history.
 **Rule 8.2** — Delivery is at-least-once, so every step must be idempotent on
 `msg_id`. Processed ids are recorded per run.
 
-**Rule 8.3** — A step that cannot deliver to Redis fails the run. It does not
-fall back to in-process execution: that produces a run whose event log is
-missing steps that did happen, which is worse than a failure.
+**Rule 8.3** — A step that cannot deliver to a **configured** Redis fails the
+run. It does not fall back to publishing nothing and carrying on: that produces
+a run whose event log is missing steps that did happen, which is worse than a
+failure, because anything reading the log treats absence as "did not run".
+
+Redis being configured at all is a deployment choice. With no `REDIS_URL` the
+transport is a declared no-op, runs execute, and no event stream is published —
+a cache outage cannot stop the registry serving. The distinction matters and is
+easy to lose: **no transport** is a mode the operator chose, **a broken
+transport** is a failure, and the second must not be silently rendered as the
+first. A registry that starts with Redis configured and later cannot reach it
+fails runs; it does not quietly degrade into the no-transport mode.
 
 ### 8.2 Shared context
 
-Context is a per-run key/value store in `context_entries`, written through
-post-graph so it is durable and auditable, and cached in Redis for latency.
+Context is a per-run key/value store, written through post-graph as append-only
+records against the run vertex (§3.6) so it is durable and auditable, and cached
+in Redis for latency.
 
 ```jsonc
 {
-  "context_id": "ctx_run_01J…",
-  "run_id": "run_01J…",
+  "kind": "context",
   "scope": "run" | "branch" | "step",
   "key": "extracted_entities",
   "value": { … },
@@ -561,6 +645,10 @@ post-graph so it is durable and auditable, and cached in Redis for latency.
   "revision": 3
 }
 ```
+
+The record carries no `run_id` or `context_id` of its own: it is a data record
+*of* the run vertex, so the association is the foreign key rather than a field
+that could disagree with it.
 
 Access is declared per step in the pipeline version:
 
@@ -608,11 +696,33 @@ in a run:
    `output_schema`, or whose target is absent from the downstream `input_schema`
 8. A cross-realm `version_id` (Rule 2.2)
 9. A slug that is not unique within `(realm, space)`
+10. A `tools` entry naming a tool that is missing, unpublished, revoked, or out
+    of scope for this `(realm, space)` (Rule 3.5)
 
-**Rule 9.1** — Registration is atomic. A pipeline version, its `composes_pipeline`
-edges and its `pipeline_step_dependency` edges are written in **one
-transaction**. A partially-written pipeline is a pipeline that runs and produces
-a plausible wrong answer.
+**Rule 9.1** — A partially-written pipeline must never be **resolvable**. A
+pipeline missing some of its edges is one that runs and produces a plausible
+wrong answer, which is the failure this rule exists to prevent.
+
+One transaction would give this, but post-graph opens a transaction per public
+call, so `add_vertex` plus N x `add_edge` cannot be wrapped in one without
+re-implementing both against a raw connection. The guarantee is therefore met
+by **ordering** instead:
+
+1. upsert the identity vertex
+2. append the version record with `status: "draft"`
+3. write every edge
+4. append the same record again with `status: "published"`
+
+Version records are append-only and the newest wins, so a failure anywhere
+between 2 and 4 leaves the newest record saying `draft` — and a draft cannot be
+pinned (Rule 4.3), is not discoverable (Rule 10.1) and is not exposed over MCP
+or A2A (Rule 7.4). The half-written pipeline is inert rather than silently
+live, and its orphaned edges are unreachable for the same reason.
+
+This is a weaker guarantee than atomicity in one specific way, and it is worth
+naming: a failed registration leaves rows behind. They are unreferenceable, but
+they are there, and a garbage collector for draft records older than some
+threshold is the missing piece rather than an optimisation.
 
 **Rule 9.2** — Registration failures raise. They do not log and return the
 object. A registry that reports success for a write it did not perform is
@@ -711,6 +821,22 @@ Bytes are counted per *operation kind*, so ingestion and retrieval are separable
 in the ledger — they have very different cost profiles and are worth billing
 apart.
 
+Each kind has exactly one owning service, and the ledger is only complete when
+all three emit:
+
+| `kind` | Emitted by | Specified in |
+| :--- | :--- | :--- |
+| `llm_call` | agent registry — every model call in a step or an agent invocation | §12.3 |
+| `document_ingest` | document registry — after successful extraction | document-registry-spec §9 |
+| `rag_lookup` | document registry — after a successful query | document-registry-spec §9 |
+| `search_query` | tool registry — before dispatching a search | tool-registry-spec §11 |
+| `search_results` | tool registry — after a successful search | tool-registry-spec §11 |
+| `room_use` | backend — shared-memory room occupancy | not yet specified |
+
+**Rule 12.0** — A kind has one emitter. Two services emitting the same kind for
+the same operation double-bills, and the duplicate is undetectable in the
+ledger because both rows are individually correct.
+
 **Rule 12.1** — Compute units are `total_tokens * 4`, stored as a derived
 column at write time rather than computed at read. The multiplier will change;
 recomputing history under a new multiplier would silently restate past
@@ -790,3 +916,119 @@ out-of-memory kill; a silent drop turns it into an undetectable revenue leak.
 **Rule 12.4** — Events carry `occurred_at` from the moment of the operation, not
 the moment of the flush. Batching otherwise smears usage across period
 boundaries, and month-end is a period boundary.
+
+---
+
+## 13. Implementation status
+
+This document is a specification, and `services/agent-registry` now implements
+it. What follows records what changed, because several of these were places
+where reading the spec gave a confident and wrong answer about what the system
+did.
+
+### 13.1 Mechanisms that were specified with no implementation
+
+All now implemented:
+
+| Was missing | Now |
+| :--- | :--- |
+| Recursion (§6.3) | `invokes_pipeline` edges are written at publish, carried onto the step binding, and followed by the executor mid-run. Depth is enforced at run creation (Rule 6.5), and a nested run's compute units count against the parent's budget (§11.4). |
+| `derived_from`, `run_of`, `run_step` (§5) | Created and written. A cross-org copy points at a local origin stub carrying the origin realm, agent id, version and hash (§11.1). |
+| Discovery (§10) | `GET /discover` by vector or by capability, `GET /agents/{id}/descendants` as a bounded `traverse()` over `spawns`, `GET /agents/{id}/dependents` as one hop back along `composes_pipeline`. Embeddings are computed at registration. |
+| `prompts` / `prompts_data` (§3.2) | Written. One vertex per agent, one record per *distinct* prompt — an unchanged prompt appends nothing. |
+| Revocation and deprecation (§4.4) | `POST /agents/{id}/retire` and the pipeline equivalent. Revoking a pinned version requires a replacement or an explicit cascade (Rule 4.4). |
+| `@latest` (§4.3) | Resolved at publish time; the *resolved* id is stored, never `@latest`. |
+| `GET /.well-known/agent.json` (§7.2) | Served. |
+| `resource_limits` (§3.2.1) | `max_wall_secs` is carried onto the step binding and enforced per step. |
+| `trigger` and `input` (§3.5) | Populated on every run, from the protocol edge that started it. |
+| `execution.concurrency` (§3.4) | Honoured. Independent steps dispatch in batches, bounded by the iteration limit so a wide batch cannot overshoot. |
+| `context_policy.schemas` (§11.3) | Validated on write. A key with no schema stays unvalidated, by design. |
+
+### 13.2 Rules the code contradicted
+
+All now hold, and each has a regression test:
+
+1. **Rule 6.6** — `inherit` built an identical fresh context in both arms of its
+   branch, so declaring it changed nothing. A child now shares the parent's
+   context only when the pipeline opts in, and gets a fresh scope otherwise.
+2. **Rule 8.2** — `msg_id` was generated per envelope and never checked.
+   Processed ids are recorded per run, a redelivery is a no-op, and a retry
+   reuses the id of the message it is retrying so the dedup set can recognise
+   it. `retry_count` is incremented and counted separately from
+   `iteration_count` (§11.2).
+3. **Agents can be drafts.** The status is no longer overwritten
+   unconditionally, so the state Rule 4.3 depends on is reachable: a version can
+   be staged, reviewed, and only then published.
+4. **§9 rejections 8 and 9** — slug uniqueness within `(realm, space)` and
+   cross-realm version ids are both enforced.
+5. **§9 rejection 10** — an agent's `tools` are resolved against the tool
+   registry to `{tool_id, version, content_hash}` *before* the content hash is
+   computed (Rule 3.5). A missing, unpublished, revoked or out-of-scope tool
+   fails the registration.
+
+Two further defects were found while implementing and are fixed:
+
+- **Semver was compared lexically**, so `@latest` and unpinned resolution would
+  have started returning `1.9.0` over `1.10.0` once a minor number reached
+  double digits — silently, and only for projects that had been going long
+  enough.
+- **A nested run that failed left the parent reporting `succeeded`.** A step
+  whose invoked pipeline fails now fails the run, unless the pipeline declares
+  an `on_failure` edge from that step — in which case the author has said how to
+  handle it and control routes there.
+
+### 13.3 One agent model
+
+The two surfaces are reconciled. `services/agent-registry/legacy_shim.py`
+translates the older registration shape onto the graph: `POST /agents/register`
+keeps its exact request and response, and the frontend and `backend/main.py`
+need no change, but the data lands in `agents` and `agents_data` like everything
+else. The economic and attestation fields — `token_balance`,
+`reputation_score`, `hash_digest`, `public_key`, `uaid`, `x509_certificate` —
+live on the identity vertex, where §3.1 says they belong.
+
+Two consequences worth stating:
+
+- **Progeny is derived.** The old surface kept a `progeny_agent_ids` list and
+  appended to it in a fire-and-forget task. A list and the `spawns` edges are
+  two records of one fact; the edges are the provenance record (Rule 3.2), so
+  the list is computed from them on read and cannot drift.
+- **Auditing does not version.** Moving a reputation score or a token balance
+  patches the identity vertex. It does not produce a new version or change a
+  content hash, because it does not change what the agent does (§4.2).
+
+### 13.4 Defects found by the end-to-end suite
+
+Running the real services against a live database and a real model router
+found ten defects that every unit test passed. Four were in this registry, and
+each is a class of bug a test double cannot reach:
+
+1. **`descendants` returned nothing.** `traverse()` was called with
+   `start_vertex_table`/`start_vertex_id` — the real parameters are
+   `start_table`/`start_id` — and its result was read as vertices when it
+   returns `{id, table_name, depth, path, …}` dicts. The endpoint now hydrates
+   ids into identities and passes `relation_types` and `space` as well as
+   `max_depth` (Rule 6.4).
+2. **`run_of` and `run_step` were never written.** `link_run` existed and was
+   imported and never called, so §5's claim was false. `RunStore` now takes a
+   linker, injected rather than imported so the shared runtime does not depend
+   on the registry's schema constants.
+3. **Recursion was still unreachable.** `invokes_pipeline` had a writer at
+   publish time and no field on `AgentVersionSpec` to trigger it. The field now
+   exists and is part of the content hash (§4.2).
+4. **Metering lost whole batches.** The flush ran `CREATE TABLE` every time;
+   two services flushing to one realm raced on the system catalogue and
+   PostgreSQL rolled the batch back with `tuple concurrently updated`. The
+   ledger table is now created once per realm, and the loser of a create race
+   carries on.
+
+`tests/README.md` lists all ten, including the six in the companion services.
+
+### 13.5 What is still outstanding
+
+- **Draft garbage collection** (Rule 9.1). A failed registration leaves
+  unreferenceable draft rows behind. They are inert, and nothing collects them.
+- **`room_use` metering** (§12.1). The kind is defined and the backend does not
+  yet emit it; the other five kinds are emitted by their owning services.
+- **Prometheus counters** are exported by the meter but nothing scrapes the
+  registries in a local checkout — the annotation exists for the cluster only.
