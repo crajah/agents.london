@@ -29,6 +29,12 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 
+# Realm means schema (spec §2): physical isolation per organisation. Left off,
+# every tenant's rows land in one set of public tables separated only by a
+# column — logical isolation wearing the name of physical, which is the kind of
+# difference nobody notices until it matters.
+SCHEMA_PER_REALM = os.getenv("SCHEMA_PER_REALM", "1").lower() in ("1", "true", "yes")
+
 # Local in-memory cache synced with post-graph
 AGENT_REGISTRY: Dict[str, Dict[str, Any]] = {}
 AGENT_VERSIONS: Dict[str, List[Dict[str, Any]]] = {}
@@ -42,7 +48,7 @@ async def pg_client(org_id: str = "org_default"):
     password, which turned a misconfigured POSTGRES_URI into a silent write to
     the wrong database rather than an error.
     """
-    client = AsyncPostGraph(dsn=DB_URI)
+    client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM)
     await client.connect()
     try:
         await client.create_vertex_table("agent_registry", realm=org_id)
@@ -118,9 +124,10 @@ async def lifespan(app: FastAPI):
     # One long-lived client for the graph endpoints (§9). Opened here so a
     # database that is unreachable stops the service starting, rather than
     # surfacing as a 503 on the first registration.
-    client = AsyncPostGraph(dsn=DB_URI)
+    client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM)
     await client.connect()
     app.state.pg_client = client
+    app.state.pg_client_factory = pg_client
 
     # Metering is optional infrastructure: accounting must never be the reason
     # the registry will not start (Rule 12.2).
