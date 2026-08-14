@@ -498,9 +498,23 @@ Role & Caste: {caste_role} | System Realm: Active Project Universe
      `[ED25519 VERIFIED: sig_{agent_name.lower().replace(' ', '_')}]`"""
 
 def get_prime_system_prompt(agent_key: str, default_telos: str = "") -> str:
-    """Returns the comprehensive, production-grade system prompt for any Prime Agent key or custom agent."""
-    clean_key = agent_key.lower().replace("_", "-").split("-")[0]
-    # Check exact key or prefix match against Primes
+    """The system prompt for a founding agent, or a generated one for a custom agent.
+
+    Founders come from `founders.py`, which is where the roster lives and where
+    each prompt states the tools it may call by their exact registry ids, its
+    output schema, its stopping rule and its prohibitions. The dictionary below
+    is the earlier generation of these prompts: a page of register-setting
+    prose per agent, no tool names, no schema, no stopping rule. It is kept
+    only as a fallback for keys the roster does not know.
+    """
+    try:
+        from backend.founders import founder_prompt
+    except ImportError:                   # running from inside backend/
+        from founders import founder_prompt
+    rendered = founder_prompt(agent_key.lower())
+    if rendered:
+        return rendered
+
     for k in PRIME_AGENT_SYSTEM_PROMPTS:
         if k in agent_key.lower():
             return PRIME_AGENT_SYSTEM_PROMPTS[k]
