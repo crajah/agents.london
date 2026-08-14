@@ -1,44 +1,56 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab } from '@mui/material';
+import { api, attempt } from '../utils/api';
+import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
+import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab , Tooltip} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import MemoryIcon from '@mui/icons-material/Memory';
 import AgentDetailModal from './AgentDetailModal';
 
-export default function AgentRegistryView({ state, onOpenMaterialize }) {
+export default function AgentRegistryView({ state, onOpenMaterialize, reloadToken = 0 }) {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [agentModels, setAgentModels] = useState({});
   const [casteFilter, setCasteFilter] = useState('all');
   const [agents, setAgents] = useState([]);
 
+  const [loadError, setLoadError] = useState(null);
+
   useEffect(() => {
-    async function fetchAgents() {
-      try {
-        const res = await fetch(`/api/projects/${state.projectId}/agents?org_id=${state.orgId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.agents && data.agents.length > 0) {
-            setAgents(data.agents.map(a => ({
-              agent_id: a.agent_id || a.id,
-              name: a.name,
-              caste: a.caste,
-              cog_func: a.cog_func,
-              topo: a.topo,
-              telos: a.telos,
-              pubkey: a.pubkey,
-              tokens: a.tokens,
-              rep: a.rep,
-              assignedModel: a.assignedModel,
-              is_prime: a.is_prime,
-            })));
-          }
-        }
-      } catch (e) {
-        console.error('Error fetching agents:', e);
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await attempt(
+        api.get(`/api/projects/${state.projectId}/agents`));
+      if (cancelled) return;
+      if (error) {
+        // An empty registry and an unreachable one are different answers
+        // (F.38), so the list is not silently left as it was.
+        setLoadError(error);
+        setAgents([]);
+        return;
       }
-    }
-    fetchAgents();
-  }, [state.projectId, state.orgId]);
+      setLoadError(null);
+      setAgents((data.agents || []).map((a) => ({
+        agent_id: a.agent_id || a.id,
+        name: a.name,
+        caste: a.caste,
+        cog_func: a.cog_func,
+        topo: a.topo,
+        telos: a.telos,
+        pubkey: a.pubkey,
+        tokens: a.tokens,
+        rep: a.rep,
+        assignedModel: a.assignedModel,
+        is_prime: a.is_prime,
+        // What makes an agent reproducible, and what a pipeline pins (F.21).
+        version: a.version || null,
+        content_hash: a.content_hash || null,
+        version_status: a.version_status || null,
+        lifecycle: a.lifecycle || 'active',
+        slug: a.slug || null,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [state.projectId, state.orgId, reloadToken]);
 
   const filteredAgents = agents.filter(a => casteFilter === 'all' || a.caste === casteFilter);
 
@@ -91,7 +103,7 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
       <Grid container spacing={2.5}>
         {filteredAgents.map((a) => {
           const config = agentModels[a.agent_id] || {};
-          const assignedModel = config.modelId || 'MiniMax-M2.7';
+          const assignedModel = config.modelId || FALLBACK_DEFAULT_MODEL;
           const llmDesc = config.description || a.telos;
 
           return (
@@ -140,6 +152,39 @@ export default function AgentRegistryView({ state, onOpenMaterialize }) {
                     <Typography variant="caption" color="text.secondary" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
                       Key: {a.pubkey}
                     </Typography>
+                    {/* The version is what a pipeline pins, and the content hash
+                        is what proves the pinned definition has not moved
+                        underneath it. An agent shown without them is one you
+                        cannot reproduce (F.21). */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">Version:</Typography>
+                      {a.version ? (
+                        <Tooltip title={a.content_hash ? `content hash ${a.content_hash}` : 'no content hash recorded'}>
+                          <Typography
+                            variant="caption"
+                            sx={{ fontFamily: '"JetBrains Mono", monospace', fontWeight: 700, color: '#38bdf8' }}
+                          >
+                            v{a.version}
+                            {a.content_hash && (
+                              <span style={{ color: '#94a3b8', fontWeight: 400 }}>
+                                {' '}· {String(a.content_hash).slice(0, 12)}
+                              </span>
+                            )}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="This agent exists in the graph but has no published version in the registry, so it cannot be pinned.">
+                          <Typography variant="caption" sx={{ color: '#f59e0b', fontWeight: 700 }}>
+                            unpublished
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Box>
+                    {a.version_status && a.version_status !== 'active' && (
+                      <Typography variant="caption" sx={{ color: '#f59e0b' }}>
+                        Status: {a.version_status}
+                      </Typography>
+                    )}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="caption" color="text.secondary">Tokens:</Typography>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: '#10b981' }}>{a.tokens} CR</Typography>

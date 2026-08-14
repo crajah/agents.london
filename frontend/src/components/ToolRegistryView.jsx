@@ -1,14 +1,49 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api, attempt } from '../utils/api';
+
+/** What each declaration licenses, in the words a person needs. */
+const SIDE_EFFECT_MEANING = {
+  read: 'Reads only. Safe to retry, and may be called speculatively.',
+  write: 'Changes state. Requires an idempotency key and is never retried blindly.',
+  external: 'Leaves the cluster. Observable outside this system; needs an idempotency key.',
+};
+
 import {
   Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Grid, Card, CardContent, Stack
-} from '@mui/material';
+, Tooltip, Alert} from '@mui/material';
 import BuildIcon from '@mui/icons-material/Build';
 import AddIcon from '@mui/icons-material/Add';
 import MemoryIcon from '@mui/icons-material/Memory';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RegisterToolModal from './RegisterToolModal';
 
-export default function ToolRegistryView({ state, onAddTool }) {
+export default function ToolRegistryView({ state, onAddTool, reloadToken = 0 }) {
+  // The catalogue is the registry's, read on mount and after every
+  // registration. The shell used to hold its own array and prepend to it, so
+  // the table showed tools the server did not have (F.53).
+  const [tools, setTools] = useState([]);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await attempt(api.get('/api/mcp/v1/tools'));
+      if (cancelled) return;
+      if (error) { setLoadError(error); setTools([]); }
+      else {
+        setLoadError(null);
+        setTools((data.tools || []).filter((x) => x.registry === 'tool-registry'));
+        // A partial catalogue that looks complete is worse than one that says
+        // what is missing.
+        if (data.warning) setLoadError({ userMessage: data.warning });
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [state.orgId, state.projectId, reloadToken]);
+
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
 
   const availableModels = state.availableModels || [
@@ -78,6 +113,15 @@ export default function ToolRegistryView({ state, onAddTool }) {
       </Paper>
 
       {/* MCP Tools Table */}
+      {loadError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>{loadError.userMessage}</Alert>
+      )}
+      {!loading && tools.length === 0 && !loadError && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No MCP tools are registered for this organisation and project.
+        </Alert>
+      )}
+
       <TableContainer component={Paper}>
         <Table sx={{ minWidth: 650 }}>
           <TableHead sx={{ backgroundColor: 'rgba(9, 13, 22, 0.8)' }}>
@@ -85,22 +129,42 @@ export default function ToolRegistryView({ state, onAddTool }) {
               <TableCell sx={{ fontWeight: 700 }}>Tool ID</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Scope</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Version</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Side effects</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Endpoint URL</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Input Schema</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {state.tools.map((t) => (
-              <TableRow key={t.tool_id} hover>
-                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.85rem' }}>{t.tool_id}</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
+            {tools.map((t) => (
+              <TableRow key={t.name} hover>
+                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.85rem' }}>{t.name}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t.description?.slice(0, 60) || '—'}</TableCell>
                 <TableCell>
-                  <Chip label={t.scope_type.toUpperCase()} size="small" color={t.scope_type === 'org' ? 'primary' : 'secondary'} sx={{ fontSize: '0.65rem', fontWeight: 700 }} />
+                  <Chip label={(t.pin?.tool_id ? 'REGISTRY' : 'TOOL')} size="small" color="primary" sx={{ fontSize: '0.65rem', fontWeight: 700 }} />
                 </TableCell>
-                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8rem', color: '#60a5fa' }}>{t.endpoint_url}</TableCell>
-                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem', color: 'text.secondary' }}>
-                  {JSON.stringify(t.input_schema)}
+                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
+                  {t.pin?.version || '—'}
+                </TableCell>
+                <TableCell>
+                  {/* `read`, `write` and `external` decide whether a tool may be
+                      retried or invoked speculatively (tool-registry Rule 6.2),
+                      so a person authorising one sees which it is (F.24). */}
+                  <Tooltip title={SIDE_EFFECT_MEANING[t.side_effects] || 'Not declared'}>
+                    <Chip
+                      label={(t.side_effects || 'unknown').toUpperCase()}
+                      size="small"
+                      color={t.side_effects === 'read' ? 'success'
+                             : t.side_effects === 'write' ? 'warning' : 'error'}
+                      variant={t.side_effects ? 'filled' : 'outlined'}
+                      sx={{ fontSize: '0.65rem', fontWeight: 700 }}
+                    />
+                  </Tooltip>
+                </TableCell>
+                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8rem', color: '#60a5fa' }}>{t.endpoint_url || '—'}</TableCell>
+                <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem', color: 'text.secondary', maxWidth: 260, overflow: 'auto' }}>
+                  {JSON.stringify(t.inputSchema || t.input_schema || {})}
                 </TableCell>
                 <TableCell>
                   <Button variant="outlined" size="small" sx={{ fontSize: '0.75rem' }}>

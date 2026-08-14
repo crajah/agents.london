@@ -1,69 +1,102 @@
-import React from 'react';
-import { Box, Paper, Typography, Grid, Card, CardContent, Chip, Stack } from '@mui/material';
-import ShieldIcon from '@mui/icons-material/Shield';
+import React, { useEffect, useState } from 'react';
+import { api, attempt } from '../utils/api';
+import {
+  Box, Typography, Grid, Card, CardContent, Chip, Stack, Alert, CircularProgress,
+} from '@mui/material';
 import GavelIcon from '@mui/icons-material/Gavel';
 
+/**
+ * The constraints this project's agents actually carry.
+ *
+ * The panel used to render three rules written into this file — a destructive
+ * command block, a signature requirement, a realm isolation clause — with the
+ * project name interpolated so they read as though they had been discovered
+ * from that project's constitution. None of them came from anywhere. A safety
+ * panel that invents safety is worse than an empty one.
+ *
+ * These come from the agents themselves: a guardrail is recorded on the agent
+ * it binds, with a level and a source (a constitution, or the prompt the agent
+ * was materialised from).
+ */
 export default function GuardrailsView({ state }) {
-  const activeProject = state?.projectId || 'proj_alpha_civilization';
+  const activeProject = state?.projectId || null;
 
-  const guardrails = [
-    {
-      id: 'g1',
-      title: 'Rule 1: Destructive Command Execution Block',
-      desc: `Agents operating in project '${activeProject}' are strictly forbidden from running unverified destructive filesystem or database mutation commands.`,
-      source: `Project Constitution (${activeProject})`,
-      enforcer: 'InspectorAgent',
-      badge: 'INVIOLABLE'
-    },
-    {
-      id: 'g2',
-      title: 'Rule 2: Cryptographic Identity Signature Verification',
-      desc: `All inter-agent messages and Kagent progeny materialization requests in '${activeProject}' must be cryptographically signed via ED25519.`,
-      source: 'Civilization Core Directives',
-      enforcer: 'JudicatureNode',
-      badge: 'INVIOLABLE'
-    },
-    {
-      id: 'g3',
-      title: 'Rule 3: Multi-Tenant Realm Isolation',
-      desc: `Agents operating in project realm '${activeProject}' cannot read or modify vector embeddings or post-graph edges in any other project realm.`,
-      source: 'Multi-Tenant Security Spec',
-      enforcer: 'OntologicalRegistry',
-      badge: 'STRICT ISOLATION'
-    }
-  ];
+  const [guardrails, setGuardrails] = useState([]);
+  const [scanned, setScanned] = useState(0);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activeProject) return undefined;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data, error: err } = await attempt(
+        api.get(`/api/projects/${activeProject}/guardrails`, { scoped: false }));
+      if (cancelled) return;
+      setLoading(false);
+      if (err) { setError(err); setGuardrails([]); return; }
+      setError(null);
+      setGuardrails(data?.guardrails || []);
+      setScanned(data?.agents_scanned || 0);
+    })();
+    return () => { cancelled = true; };
+  }, [activeProject, state?.orgId]);
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
       <Box>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Constitutional Guardrails & Inspector Agent Audits ({activeProject})
+          Guardrails
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Inviolable safety rules discovered from user prompts or explicitly declared in Org/Project constitutions for realm <code>{activeProject}</code>.
+          Rules attached to the agents in <code>{activeProject || '—'}</code>
+          {scanned > 0 && <> · {scanned} agent{scanned === 1 ? '' : 's'} scanned</>}
         </Typography>
       </Box>
 
+      {loading && <CircularProgress size={22} />}
+      {error && <Alert severity="error">{error.userMessage}</Alert>}
+      {!loading && !error && guardrails.length === 0 && (
+        <Alert severity="info">
+          No agent in this project carries a guardrail. Guardrails are attached
+          when an agent is materialised, from a constitution or from the prompt
+          that created it.
+        </Alert>
+      )}
+
       <Grid container spacing={2.5}>
         {guardrails.map((g) => (
-          <Grid item xs={12} md={4} key={g.id}>
+          <Grid item xs={12} md={4} key={g.guardrail_id || g.rule}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', borderLeft: '4px solid #ef4444' }}>
               <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Chip label={g.badge} size="small" color="error" sx={{ fontWeight: 800, fontSize: '0.65rem' }} />
+                  <Chip
+                    label={(g.level || 'unscoped').toUpperCase()}
+                    size="small"
+                    color={g.level === 'org' ? 'error' : 'warning'}
+                    sx={{ fontWeight: 800, fontSize: '0.65rem' }}
+                  />
                   <GavelIcon sx={{ fontSize: 18, color: '#ef4444' }} />
                 </Stack>
 
-                <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 700 }}>
-                  {g.title}
+                <Typography variant="body1" sx={{ fontSize: '0.92rem', fontWeight: 600, flex: 1 }}>
+                  {g.rule}
                 </Typography>
 
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem', flex: 1 }}>
-                  {g.desc}
-                </Typography>
-
-                <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.08)', fontSize: '0.75rem', color: 'text.secondary' }}>
-                  <span>Source: <strong>{g.source}</strong> | Enforcer: <strong style={{ color: '#3b82f6' }}>{g.enforcer}</strong></span>
+                <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.08)', fontSize: '0.75rem', color: 'text.secondary', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  <span>Source: <strong>{g.source || 'unrecorded'}</strong></span>
+                  {/* "Blocked and audited" and "logged" are different promises.
+                      Nothing records which this is, so nothing claims it (F.34). */}
+                  <span>
+                    On violation:{' '}
+                    <strong style={{ color: g.action ? '#3b82f6' : '#f59e0b' }}>
+                      {g.action || 'not recorded'}
+                    </strong>
+                  </span>
+                  {g.bound_agents?.length > 0 && (
+                    <span>Binds: <strong>{g.bound_agents.join(', ')}</strong></span>
+                  )}
                 </Box>
               </CardContent>
             </Card>

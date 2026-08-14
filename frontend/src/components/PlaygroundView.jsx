@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { chatModels, fetchModels, FALLBACK_DEFAULT_MODEL } from '../utils/models';
+import { api, attempt } from '../utils/api';
 import {
   Box, Paper, Typography, ToggleButtonGroup, ToggleButton, TextField, Button, Chip, Stack,
   Avatar, Accordion, AccordionSummary, AccordionDetails, CircularProgress, Divider, Badge,
@@ -30,7 +32,21 @@ export default function PlaygroundView({ state }) {
 
   const [mode, setMode] = useState('workflow'); // 'solitary' or 'workflow'
   const [selectedAgent, setSelectedAgent] = useState('');
-  const [selectedModel, setSelectedModel] = useState('DeepSeek-V3.2');
+  const [selectedModel, setSelectedModel] = useState(FALLBACK_DEFAULT_MODEL);
+  // The router's real catalogue, not a list that drifts from it.
+  const [availableModels, setAvailableModels] = useState([]);
+  const [defaultModel, setDefaultModel] = useState(FALLBACK_DEFAULT_MODEL);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchModels().then((catalogue) => {
+      if (cancelled) return;
+      setAvailableModels(chatModels(catalogue));
+      setDefaultModel(catalogue.defaultModel);
+      setSelectedModel(catalogue.defaultModel);
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [availableAgents, setAvailableAgents] = useState([]);
@@ -63,18 +79,16 @@ export default function PlaygroundView({ state }) {
       title: `${projectId} - Primary Session`,
       createdAt: new Date().toLocaleTimeString(),
       mode: 'workflow',
-      selectedModel: 'DeepSeek-V3.2',
+      selectedModel: FALLBACK_DEFAULT_MODEL,
       messages: [
         {
           id: 1,
           sender: 'agent',
           agentName: 'ConductorAgent',
-          modelUsed: 'DeepSeek-V3.2',
+          modelUsed: selectedModel,
           role: 'architect',
           content: `Welcome to project universe '${projectId}'! Select an execution topology, choose an LLM model, and execute multi-agent pipelines scoped to this project's graph database.`,
           thinking: `Civilization engine standing by in project realm '${projectId}'. Recovered agents from post-graph database. Ready for project-scoped workflow execution.`,
-          signature: 'ed25519:conductor_init_99a',
-          tokens: 150,
           timestamp: new Date().toLocaleTimeString()
         }
       ],
@@ -111,17 +125,13 @@ export default function PlaygroundView({ state }) {
   // Fetch agents for project
   useEffect(() => {
     async function fetchProjectAgents() {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/agents?org_id=${orgId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.agents && data.agents.length > 0) {
-            setAvailableAgents(data.agents);
-            setSelectedAgent(data.agents[0].agent_id || data.agents[0].id);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch project agents:", err);
+      const { data, error } = await attempt(
+        api.get(`/api/projects/${projectId}/agents`));
+      if (error) {
+        console.warn('Could not fetch project agents:', error.userMessage);
+      } else if (data.agents?.length) {
+        setAvailableAgents(data.agents);
+        setSelectedAgent(data.agents[0].agent_id || data.agents[0].id);
       }
     }
     fetchProjectAgents();
@@ -150,8 +160,9 @@ export default function PlaygroundView({ state }) {
           role: 'genesis',
           content: `New chat session initiated. Send a goal directive to start the multi-agent pipeline.`,
           thinking: `Initialized fresh conversation thread for project ${projectId}.`,
-          signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
-          tokens: 50,
+          // No signature and no token count on a greeting: nothing was signed
+          // and nothing was spent. A random `ed25519:` string reads as an
+          // attestation that a real audit produced (F.13).
           timestamp: new Date().toLocaleTimeString()
         }
       ],
@@ -192,116 +203,80 @@ export default function PlaygroundView({ state }) {
       timestamp: nowStr
     };
 
-    // Client-side math calculator fallback
-    let calculatedAnswer = null;
-    const cleanPrompt = userPrompt.trim().toLowerCase();
-    const mathMatch = cleanPrompt.match(/(?:what\s+is\s+)?([\d\s\+\-\*\/\(\)\.]+)\??$/i);
-    if (mathMatch && mathMatch[1]) {
-      const expr = mathMatch[1].trim();
-      if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(expr) && expr.length <= 50) {
-        try {
-          // Indirect eval — safe here because the regex strictly limits input
-          // to digits, spaces, and arithmetic operators only
-          const evaluated = (0, eval)(expr);
-          if (typeof evaluated === 'number' && isFinite(evaluated)) {
-            calculatedAnswer = `Calculated Result: **${evaluated}**`;
-          }
-        } catch (e) { }
-      }
-    }
+    // Everything below renders what the backend reported and nothing else.
+    // This block used to invent three process steps with fixed latencies, a
+    // random `ed25519:` signature, a token count of 320, and a closing line
+    // claiming a pipeline had executed — all of it appended regardless of what
+    // actually happened, so a failed run displayed as three green successes
+    // (F.13, F.14, F.15).
+    const { data, error } = await attempt(api.post('/api/playground/chat', {
+      prompt: userPrompt,
+      mode,
+      agent_id: selectedAgent,
+      model_name: selectedModel,
+    }));
 
-    // Process step 1
-    const newStep1 = {
-      id: Date.now() + 1,
+    const failed = Boolean(error);
+    const serverAnswer = failed ? null : (data.final_answer || data.answer || null);
+    const detectedMode = failed
+      ? 'FAILED'
+      : (data.mode || (mode === 'solitary' ? 'SOLITARY_AGENT' : 'MULTI_AGENT_WORKFLOW'));
+    const routerReasoning = failed ? error.userMessage : (data.execution_summary || '');
+
+    // Steps come from the run. None are synthesised, so a turn that produced
+    // no trace shows no trace.
+    const reportedSteps = (failed ? [] : (data.steps || [])).map((s, i) => ({
+      id: `${Date.now()}-${i}`,
+      stepNumber: (currentSession?.processSteps?.length || 0) + i + 1,
+      label: s.name,
+      agent: s.agent || activeAgentObj.name,
+      tool: s.tool || null,
+      // Measured or absent — never invented (F.14).
+      latency: s.duration_ms != null ? `${s.duration_ms}ms` : null,
+      status: s.status || 'succeeded',
+      detail: s.detail || '',
+    }));
+
+    const failureStep = failed ? [{
+      id: `${Date.now()}-err`,
       stepNumber: (currentSession?.processSteps?.length || 0) + 1,
-      label: mode === 'solitary' ? '1. SOLITARY_AGENT_DISPATCH' : '1. GUILD_ORCHESTRATION',
+      label: 'EXECUTION_FAILED',
       agent: activeAgentObj.name,
-      tool: mode === 'solitary' ? 'direct-agent-sdk' : 'mcp-pgvector-search',
-      latency: '32ms',
-      status: 'running',
-      detail: mode === 'solitary'
-        ? `Routing solitary chat query directly to agent '${activeAgentObj.name}' using model '${selectedModel}'.`
-        : `Orchestrating multi-agent guild across post-graph RAG in project '${projectId}'.`
-    };
-
-    let serverAnswer = null;
-    let detectedMode = mode === 'solitary' ? 'SOLITARY_AGENT' : 'MULTI_AGENT_WORKFLOW';
-    let routerReasoning = `Executed goal using model '${selectedModel}'.`;
-
-    try {
-      const res = await fetch('/api/playground/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: orgId,
-          project_id: projectId,
-          prompt: userPrompt,
-          mode: mode,
-          agent_id: selectedAgent,
-          model_name: selectedModel
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.mode) detectedMode = data.mode;
-        if (data.execution_summary) routerReasoning = data.execution_summary;
-        serverAnswer = data.final_answer || data.answer;
-      } else {
-        console.warn(`Backend returned ${res.status}:`, await res.text());
-        serverAnswer = `⚠️ **System Error:** Backend API request failed (HTTP ${res.status}). Ensure the FastAPI backend is running on port 8000.`;
-      }
-    } catch (err) {
-      console.warn("Backend execution API call fallback:", err);
-      serverAnswer = `⚠️ **System Error:** Failed to connect to the backend API. Please ensure the backend server is running.`;
-    }
-
-    const finalAnswer = serverAnswer || calculatedAnswer || `Executed multi-agent pipeline for directive '${userPrompt}' in project realm '${projectId}'.`;
-
-    const newStep2 = {
-      id: Date.now() + 2,
-      stepNumber: (currentSession?.processSteps?.length || 0) + 2,
-      label: '2. KAGENT_EXECUTION',
-      agent: activeAgentObj.name,
-      tool: 'kagent-operator',
-      latency: '64ms',
-      status: 'success',
-      detail: `Synthesized solution using LLM '${selectedModel}'.`
-    };
-
-    const newStep3 = {
-      id: Date.now() + 3,
-      stepNumber: (currentSession?.processSteps?.length || 0) + 3,
-      label: '3. VERIFICATION_AUDIT',
-      agent: 'The Grand Critic',
-      tool: 'mcp-sql-query',
-      latency: '28ms',
-      status: 'success',
-      detail: `Verified ED25519 signature compliance & generated final pipeline output.`
-    };
+      tool: null,
+      latency: null,
+      status: 'failed',
+      detail: error.userMessage,
+    }] : [];
 
     const agentMsg = {
-      id: Date.now() + 4,
+      id: Date.now() + 1,
       sender: 'agent',
       agentName: mode === 'solitary' ? activeAgentObj.name : 'The Prime Orchestrator',
       modelUsed: selectedModel,
       role: mode === 'solitary' ? (activeAgentObj.caste || 'progeny') : 'genesis',
-      content: finalAnswer,
-      thinking: `[EXECUTION TRACE LOG]\n• Mode: ${detectedMode.toUpperCase()}\n• Target Agent: ${activeAgentObj.name}\n• Model: ${selectedModel}\n• Rationale: ${routerReasoning}\n• Project Realm: ${projectId}\n• Signature Audit: ED25519 Verified.`,
-      signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`,
-      tokens: 320,
-      timestamp: new Date().toLocaleTimeString()
+      // No manufactured completion sentence. A failure says it failed (F.15).
+      content: serverAnswer || `⚠️ **Execution failed.** ${routerReasoning}`,
+      failed,
+      thinking: [
+        '[EXECUTION TRACE]',
+        `• Mode: ${String(detectedMode).toUpperCase()}`,
+        `• Target Agent: ${activeAgentObj.name}`,
+        `• Model: ${selectedModel}`,
+        `• Project Realm: ${projectId}`,
+        routerReasoning ? `• Summary: ${routerReasoning}` : null,
+      ].filter(Boolean).join('\n'),
+      timestamp: new Date().toLocaleTimeString(),
     };
 
-    // Construct Final Pipeline Synthesis Document
-    const finalPipelineSynthesis = {
+    const finalPipelineSynthesis = failed ? null : {
       timestamp: new Date().toLocaleTimeString(),
       prompt: userPrompt,
       model: selectedModel,
       agent: mode === 'solitary' ? activeAgentObj.name : 'Multi-Agent Guild',
-      answer: finalAnswer,
+      answer: serverAnswer,
       reasoning: routerReasoning,
-      tokensUsed: 320,
-      signature: `ed25519:sig_${Math.random().toString(36).substring(7)}`
+      status: data.status || 'succeeded',
+      pipelineId: data.registered_pipeline_id || data.reused_pipeline_id || null,
     };
 
     // Update active session in state
@@ -311,8 +286,8 @@ export default function PlaygroundView({ state }) {
           ...s,
           title: s.messages.length <= 1 ? userPrompt.substring(0, 30) + '...' : s.title,
           messages: [...s.messages, userMsg, agentMsg],
-          processSteps: [...(s.processSteps || []), newStep1, newStep2, newStep3],
-          finalOutput: finalPipelineSynthesis
+          processSteps: [...(s.processSteps || []), ...reportedSteps, ...failureStep],
+          finalOutput: finalPipelineSynthesis ?? s.finalOutput
         };
       }
       return s;
@@ -427,11 +402,11 @@ export default function PlaygroundView({ state }) {
                 label="LLM Model"
                 onChange={(e) => setSelectedModel(e.target.value)}
               >
-                <MenuItem value="DeepSeek-V3.2">DeepSeek V3.2</MenuItem>
-                <MenuItem value="Meta-Llama-3.3-70B-Instruct">Meta Llama 3.3 70B</MenuItem>
-                <MenuItem value="gpt-oss-120b">GPT-OSS 120B</MenuItem>
-                <MenuItem value="gemma-4-31B-it">Gemma 4 31B</MenuItem>
-                <MenuItem value="MiniMax-M2.7">MiniMax M2.7</MenuItem>
+                {availableModels.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name}{m.id === defaultModel ? ' — default' : ''}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Stack>
@@ -521,15 +496,19 @@ export default function PlaygroundView({ state }) {
 
                       {msg.sender === 'agent' && (
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5, pt: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', fontSize: '0.72rem', color: 'text.secondary' }}>
-                          <Stack direction="row" spacing={0.5} alignItems="center">
-                            <VerifiedUserIcon sx={{ fontSize: 13, color: '#10b981' }} />
-                            <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                              {msg.signature}
+                          {msg.signature ? (
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <VerifiedUserIcon sx={{ fontSize: 13, color: '#10b981' }} />
+                              <Typography variant="caption" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                                {msg.signature}
+                              </Typography>
+                            </Stack>
+                          ) : <span />}
+                          {msg.tokens != null && (
+                            <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 600 }}>
+                              {msg.tokens} CR
                             </Typography>
-                          </Stack>
-                          <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 600 }}>
-                            {msg.tokens} CR
-                          </Typography>
+                          )}
                         </Box>
                       )}
                     </Paper>
@@ -631,12 +610,16 @@ export default function PlaygroundView({ state }) {
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#818cf8' }}>{currentSession.finalOutput.model}</Typography>
                     </Grid>
                     <Grid item xs={6} sm={3}>
-                      <Typography variant="caption" color="text.secondary">Token Budget</Typography>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#10b981' }}>{currentSession.finalOutput.tokensUsed} CR</Typography>
+                      <Typography variant="caption" color="text.secondary">Run Status</Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: currentSession.finalOutput.status === 'succeeded' ? '#10b981' : '#f87171' }}>
+                        {currentSession.finalOutput.status || 'unknown'}
+                      </Typography>
                     </Grid>
                     <Grid item xs={6} sm={3}>
-                      <Typography variant="caption" color="text.secondary">Signature Hash</Typography>
-                      <Typography variant="subtitle2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#94a3b8' }}>{currentSession.finalOutput.signature}</Typography>
+                      <Typography variant="caption" color="text.secondary">Pipeline</Typography>
+                      <Typography variant="subtitle2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        {currentSession.finalOutput.pipelineId || '—'}
+                      </Typography>
                     </Grid>
                   </Grid>
                 </Paper>

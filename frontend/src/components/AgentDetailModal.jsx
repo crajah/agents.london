@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api, attempt } from '../utils/api';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Chip, Stack,
   FormControl, InputLabel, Select, MenuItem, TextField, Divider, Alert, Paper
@@ -8,19 +9,17 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import MemoryIcon from '@mui/icons-material/Memory';
 import DataUsageIcon from '@mui/icons-material/DataUsage';
 import GroupIcon from '@mui/icons-material/Group';
+import { chatModels, fetchModels, FALLBACK_DEFAULT_MODEL } from '../utils/models';
 
-const AVAILABLE_MODELS = [
-  { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', provider: 'MiniMax AI', context: '128K tokens' },
-  { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', provider: 'OpenAI / OSS', context: '128K tokens' },
-  { id: 'Meta-Llama-3.3-70B-Instruct', name: 'Meta Llama 3.3 70B Instruct', provider: 'Meta AI', context: '128K tokens' },
-  { id: 'gemma-4-31B-it', name: 'Gemma 4 31B Instruct', provider: 'Google DeepMind', context: '131K tokens' },
-  { id: 'DeepSeek-V3.1', name: 'DeepSeek V3.1', provider: 'DeepSeek AI', context: '128K tokens' },
-  { id: 'DeepSeek-V3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek AI', context: '128K tokens' },
-  { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', provider: 'OpenAI / Embeddings', context: '8K tokens' }
-];
 
 export default function AgentDetailModal({ open, onClose, agent, onSaveModel, state }) {
-  const [selectedModel, setSelectedModel] = useState(agent?.assignedModel || 'MiniMax-M2.7');
+  // The catalogue comes from the router via the backend. A hardcoded list here
+  // offered models the router had stopped serving, so an agent could be
+  // assigned one that no run could call.
+  const [availableModels, setAvailableModels] = useState([]);
+  const [defaultModel, setDefaultModel] = useState(FALLBACK_DEFAULT_MODEL);
+  const [selectedModel, setSelectedModel] = useState(
+    agent?.assignedModel || FALLBACK_DEFAULT_MODEL);
   const [description, setDescription] = useState(agent?.llmDescription || agent?.telos || '');
   const [synthesizing, setSynthesizing] = useState(false);
   const [agentMetrics, setAgentMetrics] = useState({
@@ -33,25 +32,29 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
   });
 
   useEffect(() => {
+    let cancelled = false;
+    fetchModels().then((catalogue) => {
+      if (cancelled) return;
+      setAvailableModels(chatModels(catalogue));
+      setDefaultModel(catalogue.defaultModel);
+      // Only move the selection if the agent has not stated its own model.
+      setSelectedModel((current) => current || catalogue.defaultModel);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (agent) {
-      setSelectedModel(agent.assignedModel || 'MiniMax-M2.7');
+      setSelectedModel(agent.assignedModel || defaultModel);
       setDescription(agent.llmDescription || agent.telos || '');
     }
-  }, [agent]);
+  }, [agent, defaultModel]);
 
   useEffect(() => {
     async function fetchAgentMetrics() {
-      try {
-        const res = await fetch(`/api/metrics/agent/${agent.agent_id || agent.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.executions !== undefined) {
-            setAgentMetrics(data);
-          }
-        }
-      } catch (e) {
-        console.error('Error fetching agent metrics:', e);
-      }
+      const { data } = await attempt(
+        api.get(`/api/metrics/agent/${agent.agent_id || agent.id}`, { scoped: false }));
+      if (data && data.executions !== undefined) setAgentMetrics(data);
     }
     if (open && agent) fetchAgentMetrics();
   }, [open, agent]);
@@ -61,18 +64,14 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
   const handleSynthesizeDescription = async () => {
     setSynthesizing(true);
     try {
-      const res = await fetch('/api/agents/synthesize-description', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await api.post('/api/agents/synthesize-description', {
           org_id: state?.orgId || 'org_london_meta',
           agent_id: agent.agent_id || agent.id,
           agent_name: agent.name,
           caste: agent.caste
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
+        });
+      {
+        const data = res;
         if (data.llm_description) {
           setDescription(data.llm_description);
         }
@@ -213,9 +212,21 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
               label="Select Model"
               onChange={(e) => setSelectedModel(e.target.value)}
             >
-              {AVAILABLE_MODELS.map((m) => (
+              {/* An agent assigned a model the router no longer serves still
+                  has to render — dropping it silently would show the wrong
+                  model as selected. It is listed, and marked. */}
+              {selectedModel && !availableModels.some((m) => m.id === selectedModel) && (
+                <MenuItem key={selectedModel} value={selectedModel}>
+                  {selectedModel} (not currently served by the router)
+                </MenuItem>
+              )}
+              {availableModels.map((m) => (
                 <MenuItem key={m.id} value={m.id}>
-                  {m.name} ({m.provider} • {m.context})
+                  {m.name}
+                  {m.provider ? ` (${m.provider}` : ''}
+                  {m.context_window ? ` • ${Math.round(m.context_window / 1000)}K ctx` : ''}
+                  {m.provider ? ')' : ''}
+                  {m.id === defaultModel ? ' — default' : ''}
                 </MenuItem>
               ))}
             </Select>

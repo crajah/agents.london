@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { api, attempt } from '../utils/api';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Chip, OutlinedInput, CircularProgress, Stack, Paper
+, Alert
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
@@ -22,29 +24,25 @@ export default function MaterializeAgentModal({ open, onClose, state, onSubmit }
   const [selectedTools, setSelectedTools] = useState(['mcp-pgvector-search', 'mcp-redis-queue']);
   const [generating, setGenerating] = useState(false);
 
+  const [generateError, setGenerateError] = useState(null);
+
   const handleGenerateSystemPrompt = async () => {
     if (!userGoal.trim()) return;
     setGenerating(true);
-    try {
-      const res = await fetch('/api/generate-system-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_prompt: userGoal,
-          target_role: name || 'Specialized Worker Agent'
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSystemPrompt(data.system_prompt || '');
-      } else {
-        setSystemPrompt(`You are '${name || 'CustomWorker'}' in realm '${state.orgId}'. Goal: ${userGoal}`);
-      }
-    } catch (e) {
-      setSystemPrompt(`You are '${name || 'CustomWorker'}' in realm '${state.orgId}'. Goal: ${userGoal}`);
-    } finally {
-      setGenerating(false);
+    setGenerateError(null);
+    const { data, error } = await attempt(api.post('/api/generate-system-prompt', {
+      user_prompt: userGoal,
+      target_role: name || 'Specialized Worker Agent',
+    }));
+    if (error) {
+      // The fallback used to quietly substitute a one-line prompt of its own,
+      // so a user could materialise an agent believing the model had written
+      // its instructions. The failure is shown; the field is left alone.
+      setGenerateError(error);
+    } else {
+      setSystemPrompt(data.system_prompt || '');
     }
+    setGenerating(false);
   };
 
   const handleSubmit = () => {
@@ -157,7 +155,12 @@ export default function MaterializeAgentModal({ open, onClose, state, onSubmit }
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      {generateError && (
+          <Alert severity="error" sx={{ mx: 3, mb: 1 }} onClose={() => setGenerateError(null)}>
+            {generateError.userMessage}
+          </Alert>
+        )}
+        <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} color="inherit">Cancel</Button>
         <Button onClick={handleSubmit} variant="contained" color="primary">
           Materialize Agent via Kagent

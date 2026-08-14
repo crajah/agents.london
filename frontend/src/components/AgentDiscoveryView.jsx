@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
+import { api, attempt } from '../utils/api';
 import {
   Box, Paper, Typography, TextField, Button, Chip, Stack, Card, CardContent, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
-} from '@mui/material';
+, Alert, Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AgentDetailModal from './AgentDetailModal';
@@ -15,154 +16,119 @@ import AgentDetailModal from './AgentDetailModal';
 export default function AgentDiscoveryView({ state }) {
   const [goalQuery, setGoalQuery] = useState('Ingest real-time financial metrics, scan for anomalies, forecast quarterly scenarios, and publish verified report');
   const [searching, setSearching] = useState(false);
-  const [executing, setExecuting] = useState(false);
+
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [dagModalOpen, setDagModalOpen] = useState(false);
 
-  const [discoveredAgents, setDiscoveredAgents] = useState([
-    {
-      agent_id: `master-strategist-${state.projectId}`,
-      name: 'The Master Strategist',
-      caste: 'architect',
-      similarity: 0.96,
-      reason: 'Matched strategic scenario forecasting and multi-step goal decomposition in post-graph.',
-      pubkey: 'ed25519:mst_str_55o',
-      tokens: 3200,
-      rep: 99,
-      assignedModel: 'DeepSeek-V3.2',
-      systemPrompt: 'You are The Master Strategist. Formulate long-term plans and decompose massive problems.'
-    },
-    {
-      agent_id: `anomaly-detector-${state.projectId}`,
-      name: 'The Anomaly Detector',
-      caste: 'archivist',
-      similarity: 0.93,
-      reason: 'Matched real-time metric scanning and systemic anomaly identification in post-graph.',
-      pubkey: 'ed25519:anom_det_88l',
-      tokens: 2600,
-      rep: 99,
-      assignedModel: 'DeepSeek-V3.1',
-      systemPrompt: 'You are The Anomaly Detector. Scan for systemic irregularities.'
-    },
-    {
-      agent_id: `sensorium-prime-${state.projectId}`,
-      name: 'The Sensorium Prime',
-      caste: 'archivist',
-      similarity: 0.91,
-      reason: 'Matched high-throughput environmental metric stream ingestion in post-graph.',
-      pubkey: 'ed25519:sens_prm_00j',
-      tokens: 2800,
-      rep: 96,
-      assignedModel: 'gemma-4-31B-it',
-      systemPrompt: 'You are The Sensorium Prime. Process environmental streams.'
-    },
-    {
-      agent_id: `grand-critic-${state.projectId}`,
-      name: 'The Grand Critic',
-      caste: 'auditor',
-      similarity: 0.89,
-      reason: 'Matched quality assurance, output validation, and constitutional verification.',
-      pubkey: 'ed25519:grd_crt_77w',
-      tokens: 2400,
-      rep: 100,
-      assignedModel: 'Meta-Llama-3.3-70B-Instruct',
-      systemPrompt: 'You are The Grand Critic. Audit quality and constitutional compliance.'
-    }
-  ]);
+  // No seeded agents and no seeded pipeline. A sample the server did not
+  // return is indistinguishable from one it did unless it is marked, and the
+  // surest way to mark it is not to have any (F.18).
+  const [discoveredAgents, setDiscoveredAgents] = useState([]);
+  const [discoverySource, setDiscoverySource] = useState(null);
+  const [discoverError, setDiscoverError] = useState(null);
 
-  const [composedPipeline, setComposedPipeline] = useState([
-    { id: 'node_1', step: 1, name: 'Metric Ingestion & Matching', agent_id: `sensorium-prime-${state.projectId}`, agent: 'The Sensorium Prime', tool: 'mcp-http-fetcher', status: 'success', output: 'Ingested 10,000 raw metric events from stream in post-graph database.', latency: '34ms', dependencies: [] },
-    { id: 'node_2', step: 2, "name": "Anomaly Scanning", agent_id: `anomaly-detector-${state.projectId}`, agent: 'The Anomaly Detector', tool: 'mcp-pgvector-search', status: 'success', output: 'Detected 0 systemic anomalies in current realm payload.', latency: '112ms', dependencies: ['node_1'] },
-    { id: 'node_3', step: 3, "name": "Strategic Forecasting", agent_id: `master-strategist-${state.projectId}`, agent: 'The Master Strategist', tool: 'mcp-redis-queue', status: 'success', output: 'Synthesized 3 quarterly growth scenarios with 95% confidence.', latency: '85ms', dependencies: ['node_2'] },
-    { id: 'node_4', step: 4, "name": "Quality & Signature Audit", agent_id: `grand-critic-${state.projectId}`, agent: 'The Grand Critic', tool: 'kagent-operator', status: 'success', output: 'Verified ED25519 signature compliance. Quality score: 0.98/1.00.', latency: '42ms', dependencies: ['node_3'] }
-  ]);
+  const [composition, setComposition] = useState(null);
+  const [composing, setComposing] = useState(false);
+  const [composeError, setComposeError] = useState(null);
 
-  // Dynamic RAG Discovery and DAG Composition from PostGraph Backend
-  const handleDiscoverAndCompose = async (queryToUse) => {
-    const q = queryToUse || goalQuery;
-    if (!q.trim()) return;
+  const [runTarget, setRunTarget] = useState(null);
+  const [runResult, setRunResult] = useState(null);
+  const [runError, setRunError] = useState(null);
+
+  // Discovery is cheap and runs as you type. Composition is not — it calls a
+  // planner model and publishes a pipeline — so it is an explicit action (F.50).
+  const handleDiscover = async (queryToUse) => {
+    const q = (queryToUse || goalQuery).trim();
+    if (!q) return;
     setSearching(true);
-
-    try {
-      const [discRes, compRes] = await Promise.all([
-        fetch('/api/agents/discover', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: state.orgId, project_id: state.projectId, query: q })
-        }),
-        fetch('/api/conductor/compose', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: state.orgId, project_id: state.projectId, query: q })
-        })
-      ]);
-
-      if (discRes.ok) {
-        const discData = await discRes.json();
-        if (discData.discovered_agents && discData.discovered_agents.length > 0) {
-          setDiscoveredAgents(discData.discovered_agents);
-        }
-      }
-
-      if (compRes.ok) {
-        const compData = await compRes.json();
-        if (compData.dag_nodes && compData.dag_nodes.length > 0) {
-          setComposedPipeline(compData.dag_nodes);
-        }
-      }
-    } catch (e) {
-      console.error('Error performing dynamic RAG discovery & DAG composition:', e);
-    } finally {
-      setSearching(false);
+    setDiscoverError(null);
+    const { data, error } = await attempt(
+      api.post('/api/agents/discover', { query: q }));
+    if (error) {
+      setDiscoverError(error);
+      setDiscoveredAgents([]);
+    } else {
+      // The tier is named, because only `agent-registry` returns agents with a
+      // version and a hash that can be pinned and called (F.16).
+      setDiscoverySource(data.source);
+      setDiscoveredAgents(data.discovered_agents || []);
     }
+    setSearching(false);
   };
+
+  const composedPipeline = (composition?.stages || []).map((s, index) => ({
+    id: s.step,
+    step: s.step,
+    name: s.need,
+    agent: s.agent_name || s.agent_id,
+    agent_id: s.agent_id,
+    // The resolved pin — what will actually run (F.51).
+    version: s.version,
+    content_hash: s.content_hash,
+    status: 'published',
+    output: null,
+    dependencies: index > 0 ? [composition.stages[index - 1].step] : [],
+  }));
 
   const debounceRef = useRef(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      handleDiscoverAndCompose(goalQuery);
-    }, 600);
+    debounceRef.current = setTimeout(() => handleDiscover(goalQuery), 600);
     return () => clearTimeout(debounceRef.current);
-  }, [state.projectId, goalQuery]);
+  }, [state.projectId, state.orgId, goalQuery]);
 
-  const handleExecutePipeline = async () => {
-    setExecuting(true);
-    try {
-      const res = await fetch('/api/conductor/orchestrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: state.orgId,
-          project_id: state.projectId,
-          prompt: goalQuery
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.final_answer) {
-          setComposedPipeline(prev => prev.map((n, i) =>
-            i === prev.length - 1 ? { ...n, output: data.final_answer, status: 'success' } : n
-          ));
-        }
-      }
-    } catch (e) {
-      console.error('Pipeline execution error:', e);
-    } finally {
-      setExecuting(false);
-      setDagModalOpen(true);
-    }
+  /**
+   * One goal in, one published pipeline out (F.50).
+   *
+   * The stages, the agent chosen for each and the resolved pins all come back
+   * from the server, which really composed and published it. The previous
+   * version rendered four hardcoded nodes with invented latencies that
+   * composed nothing.
+   */
+  const handleCompose = async () => {
+    const q = goalQuery.trim();
+    if (!q) return;
+    setComposing(true);
+    setComposeError(null);
+    setComposition(null);
+    const { data, error } = await attempt(
+      api.post('/api/conductor/compose', { query: q }, { timeoutMs: 300000 }));
+    if (error) setComposeError(error);
+    else setComposition(data);
+    setComposing(false);
   };
 
-  const getCasteColor = (caste) => {
-    switch ((caste || '').toLowerCase()) {
-      case 'genesis': return 'error';
-      case 'archivist': return 'info';
-      case 'architect': return 'secondary';
-      case 'auditor': return 'success';
-      default: return 'primary';
-    }
+  /** Run an agent by the name discovery handed back (F.17). */
+  const handleRunAgent = async (agent) => {
+    const toolName = agent.mcp_tool;
+    if (!toolName) return;
+    setRunTarget(toolName);
+    setRunResult(null);
+    setRunError(null);
+    const { data, error } = await attempt(api.post(
+      `/api/mcp/v1/tools/call`,
+      { tool_name: toolName, arguments: { prompt: goalQuery || 'Introduce yourself.' } },
+      { headers: {}, timeoutMs: 300000 }));
+    if (error) setRunError(error);
+    else setRunResult({ tool: toolName, ...data });
+    setRunTarget(null);
   };
+
+  /** Run the pipeline this goal composed, by its published name (F.51). */
+  const handleRunComposition = async () => {
+    if (!composition?.mcp_tool) return;
+    setRunTarget(composition.mcp_tool);
+    setRunResult(null);
+    setRunError(null);
+    const { data, error } = await attempt(api.post(
+      `/api/mcp/v1/tools/call`,
+      { tool_name: composition.mcp_tool, arguments: { prompt: goalQuery } },
+      { timeoutMs: 600000 }));
+    if (error) setRunError(error);
+    else setRunResult({ tool: composition.mcp_tool, ...data });
+    setRunTarget(null);
+  };
+
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
@@ -180,11 +146,11 @@ export default function AgentDiscoveryView({ state }) {
         <Button
           variant="contained"
           color="secondary"
-          startIcon={executing ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
-          onClick={handleExecutePipeline}
-          disabled={executing || searching}
+          startIcon={runTarget ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
+          onClick={handleRunComposition}
+          disabled={Boolean(runTarget) || !composition}
         >
-          {executing ? 'Executing Pipeline...' : '▶️ Execute Composed Pipeline'}
+          {runTarget ? 'Running…' : composition ? `▶️ Run ${composition.mcp_tool}` : 'Compose a pipeline first'}
         </Button>
       </Box>
 
@@ -203,16 +169,57 @@ export default function AgentDiscoveryView({ state }) {
             placeholder="Describe a goal requiring multi-agent collaboration..."
           />
           <Button
-            variant="contained"
+            variant="outlined"
             color="primary"
-            startIcon={searching ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-            onClick={handleDiscoverAndCompose}
+            startIcon={searching ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
+            onClick={() => handleDiscover()}
             disabled={searching}
             sx={{ px: 3, whiteSpace: 'nowrap' }}
           >
-            {searching ? 'Discovering...' : '🪄 Discover & Compose'}
+            {searching ? 'Discovering…' : 'Discover'}
+          </Button>
+          {/* Composition calls a planner and publishes a pipeline, so it is an
+              explicit action rather than something that happens as you type. */}
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={composing ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+            onClick={handleCompose}
+            disabled={composing || !goalQuery.trim()}
+            sx={{ px: 3, whiteSpace: 'nowrap' }}
+          >
+            {composing ? 'Composing…' : '🪄 Compose pipeline'}
           </Button>
         </Box>
+
+        {discoverError && (
+          <Alert severity="error" onClose={() => setDiscoverError(null)}>
+            {discoverError.userMessage}
+          </Alert>
+        )}
+        {composeError && (
+          <Alert severity="error" onClose={() => setComposeError(null)}>
+            {composeError.userMessage}
+          </Alert>
+        )}
+        {runError && (
+          <Alert severity="error" onClose={() => setRunError(null)}>
+            {runError.userMessage}
+          </Alert>
+        )}
+        {runResult && (
+          <Alert
+            severity={runResult.isError ? 'error' : 'success'}
+            onClose={() => setRunResult(null)}
+            sx={{ maxHeight: 260, overflow: 'auto' }}
+          >
+            <strong>{runResult.tool}</strong>
+            {runResult.status ? ` — ${runResult.status}` : ''}
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
+              {runResult.content?.[0]?.text || JSON.stringify(runResult.result ?? runResult, null, 2)}
+            </Typography>
+          </Alert>
+        )}
       </Paper>
 
       {/* Main Showcase Layout: Left (Clickable Discovered Agents), Right (Clickable Composed Pipeline DAG) */}
@@ -223,8 +230,22 @@ export default function AgentDiscoveryView({ state }) {
             🔍 RAG Vector Discovery Results (post-graph-rag)
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Live post-graph database capability match in project <code>{state.projectId}</code>. Click any agent card to inspect full details, prompts & telemetry.
+            Project <code>{state.projectId}</code>
+            {discoverySource && <> · source: <strong>{discoverySource}</strong></>}
           </Typography>
+          {discoverySource && discoverySource !== 'agent-registry' && (
+            <Alert severity="info" sx={{ fontSize: '0.72rem' }}>
+              These came from the {discoverySource === 'post-graph-rag'
+                ? 'archetype index' : 'keyword index'}, not the agent registry —
+              they have no published version, so they cannot be pinned or run
+              from here.
+            </Alert>
+          )}
+          {!searching && discoveredAgents.length === 0 && !discoverError && (
+            <Alert severity="info" sx={{ fontSize: '0.75rem' }}>
+              No agents matched this goal in {state.projectId}.
+            </Alert>
+          )}
           <Divider sx={{ my: 0.5 }} />
 
           <Stack spacing={2}>
@@ -279,6 +300,32 @@ export default function AgentDiscoveryView({ state }) {
                     Click for details ➔
                   </Typography>
                 </Stack>
+                {/* Discovery hands back the name this agent is invoked
+                    by, so it can be run from where it was found (F.17). */}
+                {agent.mcp_tool ? (
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                    <Tooltip title={`Runs ${agent.mcp_tool}`}>
+                      <span>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disabled={Boolean(runTarget)}
+                          onClick={(e) => { e.stopPropagation(); handleRunAgent(agent); }}
+                          sx={{ fontSize: '0.7rem' }}
+                        >
+                          {runTarget === agent.mcp_tool ? 'Running…' : '▶ Run'}
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#94a3b8' }}>
+                      {agent.mcp_tool}
+                    </Typography>
+                  </Stack>
+                ) : (
+                  <Typography variant="caption" sx={{ color: '#94a3b8', mt: 1, display: 'block' }}>
+                    Not published — cannot be run from here.
+                  </Typography>
+                )}
               </Paper>
             ))}
           </Stack>
@@ -295,8 +342,16 @@ export default function AgentDiscoveryView({ state }) {
             </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary">
-            Synthesized multi-stage execution DAG composed by Conductor Agent. Click any step or button to visualize DAG topology.
+            {composition
+              ? `Published as ${composition.mcp_tool} — ${composition.stages.length} stages, pins resolved.`
+              : 'No pipeline composed yet for this goal.'}
           </Typography>
+          {composition?.unmatched_stages?.length > 0 && (
+            <Alert severity="warning" sx={{ fontSize: '0.75rem' }}>
+              {composition.unmatched_stages.length} stage(s) had no registered agent
+              and were left out: {composition.unmatched_stages.map((s) => s.need).join('; ')}
+            </Alert>
+          )}
           <Divider sx={{ my: 0.5 }} />
 
           <Stack spacing={2}>
@@ -322,26 +377,38 @@ export default function AgentDiscoveryView({ state }) {
                   <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                     STEP {step.step}: {(step.name || 'STAGE').toUpperCase()}
                   </Typography>
+                  {/* A composed pipeline is published, not executed. It has no
+                      status, no output and no latency until it is run — the
+                      previous version showed all three (F.13, F.51). */}
                   <Chip
-                    icon={<CheckCircleIcon sx={{ fontSize: 12 }} />}
-                    label={(step.status || 'success').toUpperCase()}
+                    label="PUBLISHED"
                     size="small"
-                    color="success"
+                    color="info"
+                    variant="outlined"
                     sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700 }}
                   />
                 </Stack>
 
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#60a5fa', my: 0.5 }}>
-                  Assigned Agent: {step.agent}
+                  {step.agent}
                 </Typography>
 
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mb: 1 }}>
-                  {step.output}
-                </Typography>
-
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'text.secondary', fontFamily: '"JetBrains Mono", monospace' }}>
-                  <span>Attached Tool: <strong style={{ color: '#a78bfa' }}>{step.tool}</strong></span>
-                  <span>Latency: <strong style={{ color: '#10b981' }}>{step.latency || '28ms'}</strong></span>
+                {/* The pin: exactly which definition this stage will run
+                    (agent-graph Rule 5.2). Without it the plan is a suggestion
+                    rather than something reproducible (F.51). */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, fontSize: '0.72rem', color: 'text.secondary', fontFamily: '"JetBrains Mono", monospace' }}>
+                  <span>
+                    Pinned: <strong style={{ color: '#a78bfa' }}>
+                      {step.version ? `v${step.version}` : 'unpinned'}
+                    </strong>
+                  </span>
+                  {step.content_hash && (
+                    <Tooltip title={step.content_hash}>
+                      <span>hash <strong style={{ color: '#38bdf8' }}>
+                        {String(step.content_hash).slice(0, 12)}
+                      </strong></span>
+                    </Tooltip>
+                  )}
                 </Box>
               </Paper>
             ))}
@@ -417,20 +484,26 @@ export default function AgentDiscoveryView({ state }) {
 
             <Divider sx={{ my: 1 }} />
 
-            {/* Pipeline Execution Telemetry Table */}
+            {/* Resolved pins, not telemetry: this pipeline has been published,
+                not run, so there are no latencies and no step signatures to
+                audit. The earlier table showed both, invented (F.13, F.51). */}
             <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#10b981' }}>
-              📊 Pipeline Execution Telemetry & Signature Audit
+              Resolved pins
             </Typography>
 
             <Stack spacing={1}>
               {composedPipeline.map((node) => (
-                <Paper key={node.step} elevation={0} sx={{ p: 1.2, backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                <Paper key={node.step} elevation={0} sx={{ p: 1.2, backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', fontSize: '0.78rem' }}>
                   <Box>
                     <strong style={{ color: '#60a5fa' }}>Step {node.step}: {node.name}</strong> ({node.agent})
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1.5, fontFamily: '"JetBrains Mono", monospace' }}>
-                    <span>Latency: <strong style={{ color: '#10b981' }}>{node.latency || '28ms'}</strong></span>
-                    <span>Sig: <strong style={{ color: '#a78bfa' }}>ed25519:node_{node.step}_valid</strong></span>
+                    <span>{node.version ? `v${node.version}` : 'unpinned'}</span>
+                    {node.content_hash && (
+                      <span style={{ color: '#a78bfa' }}>
+                        {String(node.content_hash).slice(0, 16)}
+                      </span>
+                    )}
                   </Box>
                 </Paper>
               ))}
