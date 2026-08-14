@@ -50,6 +50,9 @@ def content_hash(fields: Dict[str, Any]) -> str:
     material = {k: fields.get(k) for k in (
         "system_prompt", "model", "tools", "input_schema", "output_schema",
         "capabilities", "resource_limits",
+        # An agent that invokes a pipeline behaves differently from one that
+        # does not, so the declaration is part of what the hash certifies.
+        "invokes_pipeline",
     )}
     return "sha256:" + hashlib.sha256(canonical_json(material).encode("utf-8")).hexdigest()
 
@@ -73,9 +76,16 @@ class AgentVersionSpec(BaseModel):
     # mechanical and let pipeline edges be checked at publish rather than at run.
     input_schema: Dict[str, Any]
     output_schema: Dict[str, Any]
-    tools: List[str] = Field(default_factory=list)
+    # Bare strings are accepted from authors and resolved to pins against the
+    # tool registry before the hash is computed (Rule 3.5, Rule 4.3).
+    tools: List[Any] = Field(default_factory=list)
     capabilities: List[str] = Field(default_factory=list)
     resource_limits: Dict[str, Any] = Field(default_factory=dict)
+    # §6.3 — a pipeline this agent calls. Declared here because it is a property
+    # of the agent's behaviour, and it is what the `invokes_pipeline` edge is
+    # written from at publish time. Without a field to declare it, the edge had
+    # a writer that nothing could ever trigger.
+    invokes_pipeline: Optional[Dict[str, Any]] = None
     status: str = DRAFT
     changelog: str = ""
 
@@ -84,6 +94,13 @@ class AgentVersionSpec(BaseModel):
     def _semver(cls, v: str) -> str:
         if not SEMVER.match(v):
             raise ValueError(f"version {v!r} is not semver MAJOR.MINOR.PATCH")
+        return v
+
+    @field_validator("invokes_pipeline")
+    @classmethod
+    def _names_a_pipeline(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if v is not None and not v.get("pipeline_id"):
+            raise ValueError("invokes_pipeline requires a pipeline_id")
         return v
 
     @field_validator("input_schema", "output_schema")
@@ -115,9 +132,29 @@ class AgentVersionSpec(BaseModel):
         return {"agent_version": self.version, "content_hash": self.hash()}
 
 
+class ToolPin(BaseModel):
+    """A resolved tool reference (Rule 3.5).
+
+    Stored resolved, and inside the agent's content hash. A bare `tool_id` is a
+    reference to whatever that tool currently is, so an agent's hash would
+    certify a behaviour that changes when someone edits a tool's endpoint or
+    input schema.
+    """
+    tool_id: str
+    version: str
+    content_hash: str
+
+
 class StepBinding(BaseModel):
     version_id: str
     alias: Optional[str] = None
+    # Copied from the pinned agent version at publish time so the executor can
+    # enforce it without a second resolution per step (§3.2.1).
+    resource_limits: Dict[str, Any] = Field(default_factory=dict)
+    # Set when the pinned agent version declares an `invokes_pipeline` target
+    # (§6.3). Carried onto the binding for the same reason: the executor must be
+    # able to see it without resolving the agent version again mid-run.
+    invokes_pipeline: Optional[Dict[str, Any]] = None
 
 
 class StepDependency(BaseModel):
@@ -133,6 +170,10 @@ class ExecutionPolicy(BaseModel):
     max_recursion_depth: int = 1
     on_limit: str = "fail"
     concurrency: int = 1
+    # Retries are bounded and counted separately from iterations (§11.2): a
+    # retried step and a one-node cycle are not the same event, and conflating
+    # them let transport retries exhaust a cycle allowance.
+    max_retries: int = 0
     # Whole-run budget including recursive children (spec §11.4). None means
     # unbounded, which is only safe for an acyclic, non-recursive pipeline.
     max_compute_units: Optional[int] = None
@@ -176,6 +217,113 @@ class PipelineVersionSpec(BaseModel):
 
 
 # ------------------------------------------------------------ graph analysis
+
+class AgentIdentity(BaseModel):
+    """The stable identity vertex (§3.1).
+
+    Carries the economic and attestation fields the older registration surface
+    owned, so there is one place an agent is described rather than two that can
+    disagree (§13.3).
+    """
+    agent_id: str
+    name: str
+    slug: str
+    telos: str = ""
+    description: str = ""
+    caste: str = "task_workforce"
+    role: str = "worker"
+    owner: Optional[str] = None
+    lifecycle: str = "active"
+    # Economic and attestation state, from the legacy surface.
+    token_balance: float = 0.0
+    reputation_score: float = 100.0
+    hash_digest: Optional[str] = None
+    public_key: Optional[str] = None
+    signature: Optional[str] = None
+    uaid: Optional[str] = None
+    x509_certificate: Dict[str, Any] = Field(default_factory=dict)
+    entra_agent365_principal_id: Optional[str] = None
+    codebase_hash_attestation: Optional[str] = None
+    lifecycle_status: Optional[str] = None
+    memory_policy: Dict[str, Any] = Field(default_factory=dict)
+    guardrails: List[Dict[str, Any]] = Field(default_factory=list)
+    replicas: int = 1
+
+    @field_validator("slug")
+    @classmethod
+    def _slug(cls, v: str) -> str:
+        if not SLUG.match(v):
+            raise ValueError(
+                f"slug {v!r} is not URL and MCP safe; it appears in MCP tool "
+                f"names and A2A card URLs")
+        return v
+
+
+def resolve_tool_pins(tools: List[Any],
+                      catalogue: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:
+    """Turn a `tools` list into resolved pins, or raise (Rule 3.5, §9 rejection 10).
+
+    `catalogue` maps tool_id -> {"version": …, "content_hash": …} for tools that
+    are published and in scope for this agent's realm and space. A tool absent
+    from it is absent for this agent, whatever exists elsewhere.
+
+    Bare strings are resolved to the current version. An already-resolved pin is
+    checked against the catalogue rather than trusted: a pin whose hash no longer
+    matches names a version that has been altered, which is exactly what the
+    hash is for.
+    """
+    resolved: List[Dict[str, str]] = []
+    for tool in tools or []:
+        if isinstance(tool, str):
+            entry = catalogue.get(tool)
+            if entry is None:
+                raise RegistrationError(
+                    f"Rule 3.5: tool {tool!r} is not a published, in-scope tool in "
+                    f"this realm and project; an agent cannot pin what it cannot call")
+            resolved.append({"tool_id": tool, "version": entry["version"],
+                             "content_hash": entry["content_hash"]})
+            continue
+
+        pin = tool if isinstance(tool, dict) else tool.model_dump(mode="json")
+        tool_id = pin.get("tool_id")
+        if not tool_id:
+            raise RegistrationError(f"malformed tool entry {tool!r}: no tool_id")
+        entry = catalogue.get(tool_id)
+        if entry is None:
+            raise RegistrationError(
+                f"Rule 3.5: tool {tool_id!r} is not a published, in-scope tool in "
+                f"this realm and project")
+        version = pin.get("version") or entry["version"]
+        digest = pin.get("content_hash")
+        if digest and version == entry["version"] and digest != entry["content_hash"]:
+            raise RegistrationError(
+                f"Rule 3.5: tool {tool_id}@{version} has content_hash "
+                f"{entry['content_hash']}, but the pin claims {digest}. The tool "
+                f"was altered, or the pin was copied from another realm.")
+        resolved.append({"tool_id": tool_id, "version": version,
+                         "content_hash": digest or entry["content_hash"]})
+    # Sorted so two agents naming the same tools in different orders hash alike:
+    # ordering is not behaviour, and letting it change the hash would produce
+    # spurious Rule 4.2 collisions and pointless version bumps.
+    return sorted(resolved, key=lambda p: p["tool_id"])
+
+
+def check_cross_realm(version_id: str, realm: str) -> None:
+    """Reject a version id carrying another realm's prefix (§9 rejection 8).
+
+    A realm is a PostgreSQL schema, so a cross-realm reference cannot carry a
+    foreign key — it would resolve to nothing at run time, in a place far from
+    the registration that created it.
+    """
+    if "::" not in version_id:
+        return
+    origin, _, _ = version_id.partition("::")
+    if origin != realm:
+        raise RegistrationError(
+            f"Rule 2.2: {version_id!r} names realm {origin!r} from within {realm!r}; "
+            f"cross-realm references cannot carry a foreign key. Publish a copy "
+            f"and record its origin in derived_from.")
+
 
 def find_back_edges(
     steps: Set[str], deps: List[StepDependency], entry_steps: List[str]
@@ -252,6 +400,7 @@ def validate_pipeline_version(
     spec: PipelineVersionSpec,
     resolve_version_status: Dict[str, str],
     resolve_schemas: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]],
+    realm: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Apply every publish-time rule, or raise naming the one that failed (§9).
 
@@ -281,6 +430,8 @@ def validate_pipeline_version(
 
     # Rule 4.3 — every pinned version must exist and be published.
     for step_id, binding in spec.steps.items():
+        if realm:
+            check_cross_realm(binding.version_id, realm)
         status = resolve_version_status.get(binding.version_id)
         if status is None:
             raise RegistrationError(

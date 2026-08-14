@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from registry_model import PUBLISHED
-from registry_store import AGENTS, PIPELINES, _latest_versions, resolve_vertex
+from registry_store import AGENTS, _latest_versions, _newest, resolve_vertex
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ MODEL_ROUTER_URL = os.getenv("OPENAI_API_BASE",
                              os.getenv("LITELLM_URL", "http://localhost:4000/v1"))
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 CALL_TIMEOUT = float(os.getenv("AGENT_CALL_TIMEOUT", "120"))
+
+# The model an agent version gets when it declares none. Set once for the
+# whole system via DEFAULT_LLM_MODEL; the literal is only the fallback.
+DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gemini-3.5-flash-lite")
 
 
 class ExecutionError(RuntimeError):
@@ -50,7 +54,10 @@ async def resolve_version(client, realm: str, table: str, business_id: str,
         published = {v: b for v, b in versions.items() if b.get("status") == PUBLISHED}
         if not published:
             raise ExecutionError(f"{business_id} has no published version")
-        body = published[max(published)]
+        # Ordered by semver, not lexically: `max()` over strings puts "1.9.0"
+        # above "1.10.0", so an unpinned call would silently start resolving to
+        # an older version once a minor number reached double digits.
+        body = published[_newest(published)]
     if body.get("status") != PUBLISHED:
         raise ExecutionError(
             f"{business_id}@{body.get('version')} is {body.get('status')}, not published")
@@ -65,7 +72,7 @@ async def call_model(record: Dict[str, Any], prompt: str) -> Dict[str, Any]:
     that looks authoritative and is not.
     """
     model = (record.get("model") or {})
-    name = model.get("name") or "DeepSeek-V3.2"
+    name = model.get("name") or DEFAULT_MODEL
     base = model.get("api_base") or MODEL_ROUTER_URL
     body = {
         "model": name,
@@ -130,18 +137,25 @@ async def run_agent(client, realm: str, agent_id: str, payload: Dict[str, Any],
     return output
 
 
-def step_runner_for(client, realm: str, space: Optional[str] = None, meter=None):
+def step_runner_for(client, realm: str, space: Optional[str] = None):
     """A step_runner for PipelineExecutor, bound to one realm.
 
     Each step resolves its pinned version and calls it. The pin travels on the
     composes_pipeline edge, so a run executes exactly the versions the pipeline
     was published against — not whatever is current.
+
+    No meter here on purpose. `PipelineExecutor._meter_step` accounts every step
+    from the `usage` this function returns, and a second emitter for the same
+    operation would double-bill in a way the ledger cannot detect, because both
+    rows would be individually correct (AG Rule 12.0).
     """
     async def _run(step_id: str, version_id: str, payload: Dict[str, Any], context):
         agent_id, version = _split(version_id)
         record = await resolve_version(client, realm, AGENTS, agent_id, version, space)
         out = await call_model(record, prompt_from_payload(payload))
         out["step_id"] = step_id
+        out["agent_id"] = agent_id
+        out["agent_version"] = version
         return out
     return _run
 
