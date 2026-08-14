@@ -13,7 +13,6 @@ import AutoFormatDetectorRenderer from './AutoFormatDetectorRenderer';
 
 export default function ChatbotView({ state }) {
   const projectId = state?.projectId || 'proj_alpha_civilization';
-  const orgId = state?.orgId || 'org_london_meta';
   
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);

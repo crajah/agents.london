@@ -49,7 +49,7 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
         if (pRes.status === 'fulfilled' && pRes.value) {
           setProjectMetrics(pRes.value);
         }
-      } catch (e) {
+      } catch {
         // Silent catch during backend proxy reload
       }
     }

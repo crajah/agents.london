@@ -114,7 +114,7 @@ export default function App() {
     function connect() {
       try {
         ws = new WebSocket(wsUrl);
-      } catch (e) {
+      } catch {
         return; // WebSocket constructor failed (e.g., invalid URL)
       }
       ws.onopen = () => {
@@ -146,7 +146,7 @@ export default function App() {
               ? (prev.populationVersion || 0) + 1
               : (prev.populationVersion || 0),
           }));
-        } catch (e) { /* ignore non-JSON */ }
+        } catch { /* ignore non-JSON */ }
       };
     }
     connect();

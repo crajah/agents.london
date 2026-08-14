@@ -50,7 +50,7 @@ export default function SharedMemoryView({ state }) {
     });
   };
 
-  useEffect(() => { loadRuns(); /* eslint-disable-next-line */ }, [activeProject, state?.orgId]);
+  useEffect(() => { loadRuns(); }, [activeProject, state?.orgId]);
 
   useEffect(() => {
     if (selectedRun == null) { setContext(null); return; }
@@ -210,7 +210,7 @@ export default function SharedMemoryView({ state }) {
         {queryError && <Alert severity="error">{queryError.userMessage}</Alert>}
         {!queryError && !querying && results.length === 0 && query === '' && (
           <Typography variant="caption" color="text.secondary">
-            Retrieval runs against this project's documents via post-graph-rag.
+            Retrieval runs against this project’s documents via post-graph-rag.
           </Typography>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>

@@ -291,7 +291,7 @@ function _openOAuthPopup(authUrl, provider, redirectUri, onSuccess, onError, cod
           }
         }, 1000);
       }
-    } catch (e) {
+    } catch {
       // Cross-Origin-Opener-Policy blocks popup.closed access on some providers.
       // Auth still works via postMessage — this check is just a fallback.
     }

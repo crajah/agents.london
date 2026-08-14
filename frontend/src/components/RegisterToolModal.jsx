@@ -16,7 +16,7 @@ export default function RegisterToolModal({ open, onClose, onRegisterTool }) {
     let parsedSchema = { payload: "str" };
     try {
       parsedSchema = JSON.parse(schema);
-    } catch (e) {
+    } catch {
       console.log('Invalid JSON schema, using default.');
     }
 

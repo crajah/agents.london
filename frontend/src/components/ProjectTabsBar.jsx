@@ -45,7 +45,7 @@ export default function ProjectTabsBar({ state, setState }) {
       }));
     })();
     return () => { cancelled = true; };
-  }, [orgId, userId]);
+  }, [orgId, userId, setState]);
 
   useEffect(() => {
     let cancelled = false;

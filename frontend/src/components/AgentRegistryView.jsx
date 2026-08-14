@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api, attempt } from '../utils/api';
 import { casteColor } from '../utils/caste';
 import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
-import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab , Tooltip} from '@mui/material';
+import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab , Tooltip, Alert} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -61,6 +61,12 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%', overflowY: 'auto' }}>
+      {/* The list either loaded or it did not. This error was captured and
+          never rendered, so an unreachable registry looked like an empty
+          civilisation (F.38). */}
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 1 }}>{loadError.userMessage}</Alert>
+      )}
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>

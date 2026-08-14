@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api, attempt } from '../utils/api';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Chip, OutlinedInput, CircularProgress, Stack, Paper
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Chip, CircularProgress, Stack
 , Alert
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';

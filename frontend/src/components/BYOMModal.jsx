@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api, attempt } from '../utils/api';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Typography, Alert, Stack, Chip
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Alert
 } from '@mui/material';
 import KeyIcon from '@mui/icons-material/Key';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -14,9 +14,11 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
   const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async () => {
     if (!customModelId.trim() || !apiKey.trim()) return;
+    setErrorMsg('');
     setLoading(true);
 
     const payload = {
@@ -30,26 +32,32 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
       api_key: apiKey.trim()
     };
 
-    try {
-      const res = await api.post('/api/models/custom', payload);
+    // The save either happened or it did not. This used to announce
+    // "Successfully saved ... to post-graph DB" without looking at the
+    // response, log any failure to the console, and then add the model to the
+    // picker regardless — so a model the backend rejected appeared as
+    // available, and the first agent assigned to it failed much later, far
+    // from the cause.
+    const { data, error } = await attempt(api.post('/api/models/custom', payload));
+    setLoading(false);
 
-      {
-        setSuccessMsg(`Successfully saved BYOM & BYOK model '${customModelId}' to post-graph DB at '${scope}' scope!`);
-      }
-    } catch (e) {
-      console.log('Error saving to post-graph backend:', e);
+    if (error) {
+      setErrorMsg(error.userMessage);
+      return;
     }
 
+    setSuccessMsg(`Saved ${customModelId.trim()} at ${scope} scope.`);
     onAddCustomModel({
-      id: customModelId.trim(),
+      id: data?.model_id || customModelId.trim(),
       name: `${customModelId.trim()} (${provider} • ${scope.toUpperCase()})`,
-      provider: provider,
-      context_window: 128000,
-      status: 'active',
-      scope: scope
+      provider,
+      // Whatever the backend recorded. A context window this modal invented
+      // was a number an orchestrator would later plan against.
+      context_window: data?.context_window ?? null,
+      status: data?.status || 'active',
+      scope,
     });
 
-    setLoading(false);
     setTimeout(() => {
       setSuccessMsg('');
       setCustomModelId('');
@@ -69,6 +77,7 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
         </Alert>
 
         {successMsg && <Alert severity="success">{successMsg}</Alert>}
+        {errorMsg && <Alert severity="error" onClose={() => setErrorMsg('')}>{errorMsg}</Alert>}
 
         {/* Scope Selection */}
         <FormControl size="small" fullWidth>

@@ -135,10 +135,74 @@ function withTenancyBody(body, { scoped }) {
   return merged;
 }
 
+/**
+ * A server-sent-event stream, with the tenancy attached like any other call.
+ *
+ * `EventSource` cannot POST and cannot carry a body, and a goal does not
+ * belong in a query string, so this reads the response body itself and parses
+ * the event framing. `onEvent(name, data)` is called as each event arrives —
+ * which is the whole point: a trace delivered at the end is a log, not a live
+ * view of work happening.
+ *
+ * Returns when the stream closes. Aborting the returned controller stops it.
+ */
+export async function stream(path, body, onEvent, { scoped = true, signal } = {}) {
+  const url = buildUrl(path, withTenancy({}, { scoped }));
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(withTenancyBody(body, { scoped })),
+      signal,
+    });
+  } catch (err) {
+    throw new ApiError(err.message, { url, reachable: false });
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try { detail = JSON.parse(text).detail ?? text; } catch { /* plain text */ }
+    throw new ApiError(`HTTP ${res.status}`, { status: res.status, url, detail });
+  }
+  if (!res.body) {
+    throw new ApiError('This browser cannot read a streamed response.', { url });
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  // Events are separated by a blank line; a event may arrive split across
+  // reads, so only complete blocks are parsed.
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let split;
+    while ((split = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      let name = 'message';
+      const data = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith(':')) continue;             // keepalive comment
+        if (line.startsWith('event:')) name = line.slice(6).trim();
+        else if (line.startsWith('data:')) data.push(line.slice(5).trim());
+      }
+      if (!data.length) continue;
+      let payload = data.join('\n');
+      try { payload = JSON.parse(payload); } catch { /* leave as text */ }
+      onEvent(name, payload);
+    }
+  }
+}
+
 export const api = {
   get: (path, options) => send(path, { ...options, method: 'GET' }),
   post: (path, body, options) => send(path, { ...options, method: 'POST', body }),
   del: (path, options) => send(path, { ...options, method: 'DELETE' }),
+  stream,
 
   /**
    * A multipart upload. `fields` are appended alongside the files, and the

@@ -25,6 +25,10 @@ export default function GraphRAGExplorer({ projectId, orgId, spaceName }) {
   const [selectedEdge, setSelectedEdge] = useState(null);
   const [simNodes, setSimNodes] = useState([]);
   const dragRef = useRef(null);
+  // The cursor has to be state, not the ref: changing a ref does not
+  // re-render, so reading it during render showed whichever value happened
+  // to be current at the last unrelated render.
+  const [dragging, setDragging] = useState(false);
   const animRef = useRef(null);
 
   // Fetch a subgraph centered on a query and merge into existing graph
@@ -246,7 +250,7 @@ export default function GraphRAGExplorer({ projectId, orgId, spaceName }) {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     for (const n of simNodes) {
-      if ((mx - n.x) ** 2 + (my - n.y) ** 2 < 200) { dragRef.current = n; return; }
+      if ((mx - n.x) ** 2 + (my - n.y) ** 2 < 200) { dragRef.current = n; setDragging(true); return; }
     }
   }, [simNodes]);
 
@@ -257,7 +261,10 @@ export default function GraphRAGExplorer({ projectId, orgId, spaceName }) {
     dragRef.current.y = e.clientY - rect.top;
   }, []);
 
-  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+  const handleMouseUp = useCallback(() => {
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
 
   const connectedEdges = selectedNode
     ? allEdges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id)
@@ -296,7 +303,7 @@ export default function GraphRAGExplorer({ projectId, orgId, spaceName }) {
           <canvas ref={canvasRef} onClick={handleCanvasClick}
             onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-            style={{ width: '100%', height: '100%', cursor: dragRef.current ? 'grabbing' : 'grab' }}
+            style={{ width: '100%', height: '100%', cursor: dragging ? 'grabbing' : 'grab' }}
           />
         )}
       </Paper>

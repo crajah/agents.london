@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, attempt } from '../utils/api';
 import {
   Box,
@@ -10,7 +10,6 @@ import {
   Grid,
   Card,
   CardContent,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -21,7 +20,7 @@ import {
   Tab,
   Tabs,
   Alert
-} from '@mui/material';
+, LinearProgress} from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -59,30 +58,37 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
   const [documents, setDocuments] = useState([]);
   const [viewMode, setViewMode] = useState('documents'); // 'documents' | 'graph'
 
-  useEffect(() => {
-    fetchSpaces();
-    fetchDocuments();
-  }, [projectId, selectedSpace]);
-
   // Every call goes through the API module, which attaches the organisation
   // and the project. This panel used to send neither, so uploads, listings and
   // queries all landed in whichever realm the backend defaults to rather than
   // the signed-in user's (F.28).
-  const fetchSpaces = async () => {
+  //
+  // Both loaders are declared before the effect that runs them and memoised on
+  // what they actually read. They used to be plain functions declared below it,
+  // which worked only because an effect runs after the whole body has been
+  // evaluated — and left the effect's dependency list lying about what it
+  // depends on, so a project switch could serve the previous project's
+  // documents.
+  const fetchSpaces = useCallback(async () => {
     setLoading(true);
     const { data, error } = await attempt(api.get(`/api/projects/${projectId}/spaces`));
     if (error) { setLoadError(error); setSpaces([]); }
     else { setLoadError(null); setSpaces(data.spaces || []); }
     setLoading(false);
-  };
+  }, [projectId]);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     const { data, error } = await attempt(api.get(
       `/api/projects/${projectId}/documents`,
       { params: selectedSpace === 'all' ? {} : { space_name: selectedSpace } }));
     if (error) { setLoadError(error); setDocuments([]); }
     else { setDocuments(data.documents || []); }
-  };
+  }, [projectId, selectedSpace]);
+
+  useEffect(() => {
+    fetchSpaces();
+    fetchDocuments();
+  }, [fetchSpaces, fetchDocuments]);
 
   const handleCreateSpace = async () => {
     if (!newSpaceName.trim()) return;
@@ -187,6 +193,9 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, p: 3 }}>
+      {/* Set on every load and rendered nowhere, so a slow project looked
+          like an empty one. */}
+      {loading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
       {loadError && (
         <Alert severity="error" onClose={() => setLoadError(null)}>
           {loadError.userMessage}
@@ -422,7 +431,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
               </Typography>
               {documents.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
-                  No documents persisted in space '{selectedSpace}' yet. Upload files or text above.
+                  No documents persisted in space ‘{selectedSpace}’ yet. Upload files or text above.
                 </Typography>
               ) : (
                 <Stack spacing={1} sx={{ maxHeight: 220, overflowY: 'auto' }}>
