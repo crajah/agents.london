@@ -141,6 +141,13 @@ class Meter:
         self._flush_interval = flush_interval
         self._task: Optional[asyncio.Task] = None
         self._prom = PrometheusSink()
+        # Realms whose ledger table is known to exist. DDL is not free and, more
+        # importantly, it is not concurrency-safe: two services flushing to one
+        # realm at the same moment both ran CREATE TABLE and PostgreSQL raised
+        # `tuple concurrently updated` on the system catalogue, losing both
+        # batches. Rule 12.3 says overflow is counted and logged, not that a
+        # write may be silently lost to a race we caused ourselves.
+        self._ready: set = set()
         self.dropped = 0
         self.written = 0
 
@@ -230,7 +237,7 @@ class Meter:
         for org_id, events in by_realm.items():
             try:
                 async with self._client_factory(org_id) as client:
-                    await client.create_vertex_table(USAGE_TABLE, realm=org_id)
+                    await self._ensure_ledger(client, org_id)
                     for e in events:
                         await client.add_vertex(
                             USAGE_TABLE, realm=org_id, space=e.project_id,
@@ -238,9 +245,32 @@ class Meter:
                 self.written += len(events)
             except Exception:
                 self.dropped += len(events)
+                # A failed create leaves the realm out of `_ready`, so the next
+                # flush tries again rather than assuming a table that is not there.
+                self._ready.discard(org_id)
                 logger.exception(
                     "failed to write %d usage events for org '%s'; accounting for "
                     "this period is now incomplete", len(events), org_id)
+
+    async def _ensure_ledger(self, client, org_id: str) -> None:
+        """Create the ledger table for one realm, once, tolerating a race.
+
+        Two processes creating the same table concurrently is not an error in
+        this system — it is the normal startup of a second replica — but
+        PostgreSQL reports it as one, on the system catalogue, in a way that
+        rolls back the batch riding along behind it. So the loser of the race
+        checks whether the table now exists and carries on if it does.
+        """
+        if org_id in self._ready:
+            return
+        try:
+            await client.create_vertex_table(USAGE_TABLE, realm=org_id)
+        except Exception:
+            if not await client._table_exists(USAGE_TABLE, realm=org_id):
+                raise
+            logger.debug("lost the race to create %s in realm %r; it exists",
+                         USAGE_TABLE, org_id)
+        self._ready.add(org_id)
 
 
 # A module-level meter so call sites do not thread one through every signature.

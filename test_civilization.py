@@ -13,9 +13,24 @@ import sys
 import httpx
 
 # Ensure local dev defaults — avoid 30s timeouts to unreachable K8s cluster URLs
-os.environ.setdefault("OPENAI_API_BASE", "http://localhost:4000/v1")
+# `.env` names the database and the router as the *containers* see them —
+# `postgres:5432` and `host.docker.internal:4000` — and neither resolves from a
+# checkout. These are the host-visible addresses, overridable, and set before
+# the engine is imported.
+#
+# They are set unconditionally rather than with setdefault: python-dotenv has
+# already loaded the container values by the time the engine imports, so a
+# default would lose to them. The engine no longer guesses a working DSN when
+# the configured one fails (it silently wrote to whichever local database
+# answered), so naming the right one here is now required rather than optional.
+os.environ["POSTGRES_URI"] = os.getenv(
+    "TEST_POSTGRES_URI",
+    "postgresql://crajah:postgrespassword@localhost:5432/postgres")
+os.environ["OPENAI_API_BASE"] = os.getenv("TEST_OPENAI_API_BASE",
+                                          "http://localhost:4000/v1")
+os.environ["LITELLM_URL"] = os.environ["OPENAI_API_BASE"]
 os.environ.setdefault("CIVILIZATION_ENGINE_TYPE", "NATIVE")
-os.environ.setdefault("RAG_EMBEDDING_MODEL", "text-embedding-3-small")
+os.environ.setdefault("RAG_EMBEDDING_MODEL", "gemini-embedding-001")
 os.environ.setdefault("RAG_EMBEDDING_DIM", "1536")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
@@ -116,7 +131,11 @@ async def main():
                 "agent_id": worker_res.get("agent_id", "test"),
                 "public_key": worker_res.get("public_key", "ed25519:test"),
                 "signature": worker_res.get("signature", "ed25519:test_sig"),
-                "payload_text": "test_payload"
+                "payload_text": "test_payload",
+                # The realm. A registry keeps each organisation in its own
+                # schema, so a lookup that omits it reads an empty one and
+                # reports a registered agent as missing.
+                "org_id": org_id
             })
             report("verify_signature", v_res.status_code == 200, f"status={v_res.status_code}")
         except Exception as e:
@@ -128,7 +147,9 @@ async def main():
                 "auditor_id": f"inspector-{project_id}",
                 "reputation_delta": 5.0,
                 "audit_notes": "Passed JSON compliance check",
-                "passed_compliance": True
+                "passed_compliance": True,
+                "org_id": org_id,
+                "project_id": project_id
             })
             report("audit_agent", a_res.status_code == 200, f"status={a_res.status_code}")
         except Exception as e:

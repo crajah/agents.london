@@ -25,9 +25,17 @@ except (ImportError, ModuleNotFoundError):
 from backend.registry_contract import to_registration
 from backend.civilization_interface import AbstractCivilizationEngine
 try:
-    from backend.env_config import require_env
+    from backend.env_config import (
+        DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
+        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
+        RAG_MODEL, require_env,
+    )
 except ImportError:  # started with backend/ as the working directory
-    from env_config import require_env
+    from env_config import (
+        DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
+        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
+        RAG_MODEL, require_env,
+    )
 try:
     from backend.redis_bus import redis_bus
 except (ImportError, ModuleNotFoundError):
@@ -53,6 +61,56 @@ def record_execution_telemetry(
 
 logger = logging.getLogger(__name__)
 
+try:
+    from backend.founders import roster, founder_prompt, NO_FABRICATION
+    from backend.platform_tools import ensure_platform_tools
+except ImportError:                       # running from inside backend/
+    from founders import roster, founder_prompt, NO_FABRICATION
+    from platform_tools import ensure_platform_tools
+
+
+def _first_json_object(text: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The first JSON object in a model's reply, or None.
+
+    Models fence their JSON, preface it, or follow it with a sentence. Parsing
+    only a bare body throws away decisions that were correctly made, and
+    falling back to a default route because of a code fence is a routing
+    failure caused by punctuation.
+    """
+    if not text:
+        return None
+    body = text.strip()
+    if body.startswith("```"):
+        body = body.split("```")[1] if "```" in body[3:] else body[3:]
+        if body.lstrip().startswith("json"):
+            body = body.lstrip()[4:]
+    start = body.find("{")
+    if start < 0:
+        return None
+    depth, in_string, escape = 0, False, False
+    for i, ch in enumerate(body[start:], start):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(body[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "crajah")
@@ -60,61 +118,75 @@ POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 
 DEFAULT_DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+# Realm means schema (AG §2), matching the registries and the native
+# engine. A single process disagreeing about this writes half its graph
+# to `public` and half to `org_x`, and neither half can see the other.
+SCHEMA_PER_REALM = os.getenv("SCHEMA_PER_REALM", "1").lower() in ("1", "true", "yes")
+
+# asyncpg pools default to ten connections each, and this process opens a fresh
+# client per operation — twenty-eight agent registrations exhausted a hundred
+# server connections and every later write failed with "sorry, too many clients
+# already". A small pool per client keeps the arithmetic survivable; the real
+# fix is one long-lived client per realm, which is a larger change than this.
+POSTGRES_POOL_KWARGS = {"min_size": 1,
+                        "max_size": int(os.getenv("POSTGRES_POOL_MAX", "3"))}
 DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 LITELLM_URL = os.getenv("OPENAI_API_BASE", os.getenv("LITELLM_URL", "http://litellm-service.default.svc.cluster.local:80/v1"))
 API_KEY = require_env("OPENAI_API_KEY")
 
 
-AGENT_REGISTRY_CANDIDATE_URLS = [
-    os.getenv("AGENT_REGISTRY_URL"),
-    "http://agent-registry-service.default.svc.cluster.local:8001",
-    "http://agent-registry-service:8001",
-    "http://localhost:8001"
-]
+# One registry, from configuration. The list of four candidates this replaced
+# meant an unreachable registry silently became a different one — and, in a
+# test or a laptop, localhost. Configuration is the authority.
+AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
+TOOL_REGISTRY_URL = os.getenv("TOOL_REGISTRY_URL", "http://localhost:8002")
 
 async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Registers agent with agent-registry microservice and persists into post-graph table agent_registry."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    
     registered_http = False
     org_id = payload.get("org_id", "org_default")
     project_id = payload.get("project_id", "proj_alpha_civilization")
     body = to_registration(payload, org_id, project_id)
-    for base in unique_urls:
-        try:
-            # POST /agents is the versioned contract (spec §3.2). The old
-            # /agents/register took an untyped blob with no schemas and no
-            # version, so nothing downstream could pin what it registered.
-            url = f"{base.rstrip('/')}/agents"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(url, json=body)
-                if res.status_code == 200:
-                    registered_http = True
-                    break
-                # A 400 is the registry rejecting the payload by rule, and
-                # trying the next host would just repeat it.
-                if res.status_code == 400:
-                    logger.error("Agent registry rejected %s: %s",
-                                 payload.get("agent_id"), res.text[:300])
-                    break
-        except Exception as e:
-            logger.warning("Agent Registry registration to %s failed: %s", base, e)
+    # POST /agents is the versioned contract (spec §3.2). The old
+    # /agents/register took an untyped blob with no schemas and no version, so
+    # nothing downstream could pin what it registered.
+    url = f"{AGENT_REGISTRY_URL.rstrip('/')}/agents"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.post(url, json=body)
+        if res.status_code == 200:
+            registered_http = True
+        else:
+            # The body matters: a 400 is a rule the registry enforces and a 422
+            # is a contract this caller is not meeting. Logging only the code
+            # is how a registration that never worked stays unnoticed.
+            logger.error("Agent registry returned %s registering %s: %s",
+                         res.status_code, payload.get("agent_id"), res.text[:500])
+        registration_error = None if registered_http else res.text[:300]
+    except Exception as e:
+        logger.warning("Agent Registry registration to %s failed: %s", url, e)
+        registration_error = str(e)
 
-    # Always persist into post-graph table agent_registry using project realm
+    # And into post-graph directly. The realm is the organisation and the space
+    # is the project — the same tenancy the registry uses. Writing with the
+    # project as the realm put these rows in a schema nothing else reads, so
+    # they were invisible to every later query (AG §2.3).
     project_id = payload.get("project_id", "proj_alpha_civilization")
     try:
-        pg_client = AsyncPostGraph(dsn=DB_URI)
+        pg_client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM,
+                                    **POSTGRES_POOL_KWARGS)
         await pg_client.connect()
-        await pg_client.create_vertex_table("agent_registry", realm=project_id)
+        await pg_client.create_vertex_table("agent_registry", realm=org_id)
         # If payload is a multi-agent execution pipeline graph, persist explicit post-graph graph edges!
         if payload.get("caste") == "pipeline" or payload.get("role") == "multi_agent_execution_pipeline":
             try:
-                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
-                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=project_id)
+                await pg_client.create_edge_table("composes_pipeline", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
+                await pg_client.create_edge_table("pipeline_step_dependency", from_vertex_table="agent_registry", to_vertex_table="agent_registry", realm=org_id)
 
                 assigned = payload.get("assigned_agents", [])
                 for target_agent_id in assigned:
-                    await pg_client.add_edge("composes_pipeline", realm=project_id, from_id=payload["agent_id"], to_id=target_agent_id, relation_type="contains_agent", payload={"relation": "contains_agent", "pipeline_id": payload["agent_id"]})
+                    await pg_client.add_edge("composes_pipeline", realm=org_id, space=project_id, from_id=payload["agent_id"], to_id=target_agent_id, relation_type="contains_agent", payload={"relation": "contains_agent", "pipeline_id": payload["agent_id"]})
 
                 graph_data = payload.get("graph", {})
                 edges = graph_data.get("edges", [])
@@ -125,20 +197,28 @@ async def register_agent_in_agent_registry(payload: Dict[str, Any]) -> Dict[str,
                     src_agent = nodes.get(src_node_id, {}).get("agent_id", src_node_id)
                     dst_agent = nodes.get(dst_node_id, {}).get("agent_id", dst_node_id)
                     if src_agent and dst_agent:
-                        await pg_client.add_edge("pipeline_step_dependency", realm=project_id, from_id=src_agent, to_id=dst_agent, relation_type=edge.get("relationship", "depends_on"), payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": payload["agent_id"], "from_step": src_node_id, "to_step": dst_node_id})
+                        await pg_client.add_edge("pipeline_step_dependency", realm=org_id, space=project_id, from_id=src_agent, to_id=dst_agent, relation_type=edge.get("relationship", "depends_on"), payload={"relationship": edge.get("relationship", "depends_on"), "pipeline_id": payload["agent_id"], "from_step": src_node_id, "to_step": dst_node_id})
             except Exception as edge_err:
                 logger.debug(f"Post-graph edge table creation note for ADK pipeline: {edge_err}")
         await pg_client.close()
     except Exception as e:
         logger.debug(f"Post-graph agent registry fallback write note: {e}")
 
+    # The caller needs to know whether this agent exists in the registry: an
+    # agent that is only in post-graph has no version, no content hash and no
+    # MCP name, so nothing can pin it or call it. Returning the payload
+    # unconditionally is what made that failure invisible.
+    payload["registered_in_registry"] = registered_http
+    if registration_error:
+        payload["registration_error"] = registration_error
     return payload
 
 
 async def get_persisted_custom_model_config(project_id: str, org_id: str = "org_london_meta") -> Optional[Dict[str, str]]:
     """Checks post-graph custom_model_configs table for a user/project persisted custom model & key exception."""
     try:
-        pg_client = AsyncPostGraph(dsn=DB_URI)
+        pg_client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM,
+                                    **POSTGRES_POOL_KWARGS)
         await pg_client.connect()
         vertex = await pg_client.get_vertex("custom_model_configs", realm=org_id, vertex_id=f"custom_model_{project_id}")
         if vertex and hasattr(vertex, "payload") and isinstance(vertex.payload, dict):
@@ -179,7 +259,7 @@ class ADKAgentNode:
 
         target_api_base = custom_api_base or (persisted and persisted.get("api_base")) or os.getenv("OPENAI_API_BASE") or os.getenv("LITELLM_URL") or "http://litellm-service.default.svc.cluster.local:80/v1"
         target_api_key = custom_api_key or (persisted and persisted.get("api_key")) or API_KEY
-        target_model = custom_model or (persisted and persisted.get("model")) or os.getenv("RAG_MODEL", "DeepSeek-V3.2")
+        target_model = custom_model or (persisted and persisted.get("model")) or RAG_MODEL
 
         # 1. Primary: Execute via in-cluster LiteLLM service (or user custom model endpoint)
         try:
@@ -291,7 +371,8 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         if not session_id:
             return []
         try:
-            pg_client = AsyncPostGraph(dsn=self.db_uri)
+            pg_client = AsyncPostGraph(dsn=self.db_uri, schema_per_realm=SCHEMA_PER_REALM,
+                                    **POSTGRES_POOL_KWARGS)
             await pg_client.connect()
             session_vertex = await pg_client.get_vertex("sessions", realm=org_id, vertex_id=session_id)
             if session_vertex and hasattr(session_vertex, "payload") and isinstance(session_vertex.payload, dict):
@@ -313,7 +394,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         """Indexes user turn into post-graph-rag vector memory for long-term semantic retrieval."""
         try:
             rag_realm = f"{org_id}_{project_id}_chat_memory"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             meta = DocumentMetadata(document=f"ChatTurn_{datetime.utcnow().isoformat()}", category="chat_history")
@@ -334,7 +415,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             config = RAGConfig(
                 api_base=LITELLM_URL,
                 api_key=API_KEY,
-                model="DeepSeek-V3.2",
+                model=DEFAULT_LLM_MODEL,
                 db_uri=self.db_uri,
                 realm=project_id,
                 space="default"
@@ -370,7 +451,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         try:
             async def _get_chat_rag():
                 rag_realm = f"{org_id}_{project_id}_chat_memory"
-                config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+                config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
                 rag = GraphRAG(config)
                 await rag.initialize()
                 query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=2))
@@ -406,53 +487,114 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
 
         augmented_prompt = f"{context_prefix}Current User Directive: {user_prompt}" if context_prefix else user_prompt
 
-        # Check for explicit RAG memory query intent
-        if any(k in clean for k in ["search", "find document", "rag", "knowledge", "lookup"]):
-            rag_realm = f"{org_id}_{project_id}_agents_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
-            rag = GraphRAG(config)
-            await rag.initialize()
-            rag_docs = []
-            try:
-                query_res = await rag.query_data(user_prompt, param=QueryParam(mode="mix", top_k=3))
-                rag_docs = [c["content"] for c in query_res.get("data", {}).get("chunks", [])]
-            except Exception as _e:
-                logger.warning("%s: recoverable Exception in process_user_prompt_with_llm, continuing", type(_e).__name__, exc_info=_e)
-            await rag.close()
+        # ── The Intake Praetor decides what happens to this prompt ──────────
+        #
+        # This used to be substring matching on the raw text: a prompt
+        # containing "audit" went to the ReAct loop, one containing "plan" went
+        # to the conductor, and "How do I stop the auditor?" went to both by
+        # accident. Routing is a judgement about what is being asked, so it is
+        # made by the founder whose telos is making it — with the project's
+        # retrieved context in front of it, and its reasoning recorded.
+        decision = await self._intake_decision(org_id, project_id, user_prompt,
+                                               augmented_prompt)
+        route = decision.get("route", "SIMPLE_CHAT")
+        reasoning = decision.get("reasoning", "")
 
-            answer = await self.context_weaver.execute(f"Document Context: {rag_docs}\n\n{augmented_prompt}", project_id=project_id, org_id=org_id)
-            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, answer))
-            return {
-                "mode": "RAG_QUERY",
-                "engine_type": "GOOGLE_ADK",
-                "reasoning": "Executed via Google ADK Context Weaver Node with combined chat history & post-graph-rag.",
-                "retrieved_chunks": rag_docs,
-                "chat_history_used": len(short_term_history),
-                "answer": answer,
-                "final_answer": answer
-            }
+        redis_bus.publish_event(org_id, project_id, {
+            "event": "intake_routed", "route": route, "reasoning": reasoning,
+            "by": "intake-praetor", "user_prompt": user_prompt[:400],
+        })
 
-        elif any(k in clean for k in ["gtm", "strategy", "orchestrate", "build", "workflow", "plan"]):
+        common = {"engine_type": "GOOGLE_ADK", "route": route,
+                  "reasoning": reasoning, "decided_by": "The Intake Praetor",
+                  "chat_history_used": len(short_term_history),
+                  "intake_confidence": decision.get("confidence")}
+
+        if route == "REFUSE":
+            # A refusal is an outcome, not an error, and it says which rule
+            # refuses it rather than answering anyway.
+            refusal = decision.get("refusal_reason") or "This request was refused at intake."
+            return {**common, "mode": "REFUSED", "answer": refusal,
+                    "final_answer": refusal}
+
+        if route == "PIPELINE":
             res = await self.run_conductor_orchestration(org_id, project_id, augmented_prompt)
-            res["engine_type"] = "GOOGLE_ADK"
-            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, res.get("final_answer", "")))
+            res.update(common)
+            res["mode"] = "PIPELINE"
+            res["stages_requested"] = decision.get("stages", [])
+            asyncio.create_task(self.index_chat_turn_to_rag(
+                org_id, project_id, user_prompt, res.get("final_answer", "")))
             return res
-        elif any(k in clean for k in ["tool", "query", "audit"]):
+
+        if route == "COMMISSION":
+            # Nothing published covers this. The Progenitor's job — here, the
+            # engine's materialisation path — and then the work is done by the
+            # agent that now exists rather than by a generic model call.
+            commission = decision.get("commission") or {}
+            name = commission.get("name") or "Commissioned Specialist"
+            purpose = commission.get("purpose") or user_prompt
+            created = await self.materialize_worker_agent(
+                org_id=org_id, project_id=project_id, user_id="intake-praetor",
+                agent_name=name,
+                system_prompt=(f"You are {name}. {purpose}\n\n"
+                               f"{NO_FABRICATION}"),
+            )
+            answer = await self.conductor.execute(augmented_prompt,
+                                                  project_id=project_id, org_id=org_id)
+            asyncio.create_task(self.index_chat_turn_to_rag(
+                org_id, project_id, user_prompt, answer))
+            return {**common, "mode": "MATERIALIZE",
+                    "commissioned_agent": created.get("agent_id"),
+                    "registered": created.get("registered_in_registry", False),
+                    "answer": answer, "final_answer": answer}
+
+        if route == "DIRECT_AGENT":
             res = await self.run_react_loop(org_id, project_id, augmented_prompt)
-            res["engine_type"] = "GOOGLE_ADK"
-            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, res.get("final_answer", "")))
+            res.update(common)
+            res["mode"] = "DIRECT_AGENT"
+            res["agent_requested"] = decision.get("agent")
+            asyncio.create_task(self.index_chat_turn_to_rag(
+                org_id, project_id, user_prompt, res.get("final_answer", "")))
             return res
-        else:
-            answer = await self.conductor.execute(augmented_prompt, project_id=project_id, org_id=org_id)
-            asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id, user_prompt, answer))
-            return {
-                "mode": "SIMPLE_CHAT",
-                "engine_type": "GOOGLE_ADK",
-                "reasoning": "Executed via Google ADK Prime Orchestrator Node with chat memory.",
-                "chat_history_used": len(short_term_history),
-                "answer": answer,
-                "final_answer": answer
-            }
+
+        # SIMPLE_CHAT. The Praetor may already have written the answer, in
+        # which case using it saves a second model call for a greeting.
+        answer = decision.get("answer") or await self.conductor.execute(
+            augmented_prompt, project_id=project_id, org_id=org_id)
+        asyncio.create_task(self.index_chat_turn_to_rag(org_id, project_id,
+                                                        user_prompt, answer))
+        return {**common, "mode": "SIMPLE_CHAT", "answer": answer,
+                "final_answer": answer}
+
+    async def _intake_decision(self, org_id: str, project_id: str,
+                               user_prompt: str, augmented_prompt: str) -> Dict[str, Any]:
+        """Ask the Intake Praetor what to do with this prompt.
+
+        Returns its decision, or an explicitly labelled fallback. The fallback
+        is SIMPLE_CHAT and says so — a router that cannot be reached must not
+        silently invent a route, because every later stage inherits it.
+        """
+        praetor = ADKAgentNode(
+            name="The Intake Praetor", role="intake",
+            system_prompt=founder_prompt("intake-praetor") or "",
+            tools=["mcp-pgvector-search", "mcp-agent-discovery", "mcp-tool-discovery"],
+        )
+        raw = await praetor.execute(
+            f"Project: {project_id} | Organisation: {org_id}\n\n"
+            f"{augmented_prompt}\n\n"
+            "Respond with your JSON object only.",
+            project_id=project_id, org_id=org_id)
+
+        decision = _first_json_object(raw)
+        if not decision or "route" not in decision:
+            logger.warning("intake decision unparseable in %s/%s; defaulting to "
+                           "SIMPLE_CHAT", org_id, project_id)
+            return {"route": "SIMPLE_CHAT",
+                    "reasoning": "The Intake Praetor could not be reached or did "
+                                 "not answer in the required form; this was "
+                                 "answered directly rather than routed.",
+                    "confidence": "low"}
+        return decision
 
     async def register_pipeline_in_registry(
         self,
@@ -499,7 +641,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         )
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             meta = DocumentMetadata(document=f"Pipeline_{pipeline_id}", category="pipeline_specification")
@@ -546,7 +688,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                     f"{LITELLM_URL}/chat/completions",
                     headers={"Authorization": f"Bearer {API_KEY}"},
                     json={
-                        "model": "DeepSeek-V3.2",
+                        "model": DEFAULT_LLM_MODEL,
                         "messages": [
                             {"role": "system", "content": "You analyze agent and pipeline registry matches for task execution."},
                             {"role": "user", "content": prompt}
@@ -645,7 +787,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                 agent_name=agent_name,
                 telos=telos,
                 system_prompt=sys_prompt,
-                tools=matched_tool_ids or ["mcp-google-search", "mcp-pgvector-search", "mcp-redis-queue"]
+                tools=matched_tool_ids or ["mcp-pgvector-search", "mcp-agent-discovery"]
             )
             materialized_agent_id = new_agent.get("agent_id")
 
@@ -805,7 +947,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             llm_response = None
             try:
                 payload = {
-                    "model": "DeepSeek-V3.2",
+                    "model": DEFAULT_LLM_MODEL,
                     "messages": messages,
                     "max_tokens": 1000
                 }
@@ -918,33 +1060,48 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         project_name: str,
         constitution_rules: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Creates project universe and auto-registers Prime Caste agents in Agent Registry microservice & post-graph."""
-        project_id = f"proj_{hashlib.md5(project_name.encode()).hexdigest()[:8]}"
-        perm_agents = {
-            "genesis": f"genesis-{project_id}",
-            "archivist": f"archivist-{project_id}",
-            "architect": f"architect-{project_id}",
-            "auditor": f"auditor-{project_id}"
-        }
+        """Found a project: publish its toolbelt, then its founding agents.
 
-        # Auto-register 4 Prime Caste Scaffold Agents into Agent Registry microservice & post-graph
-        scaffold_nodes = [
-            ("genesis", perm_agents["genesis"], "Governor of Civilizational Preservation & Evolution", "genesis"),
-            ("archivist", perm_agents["archivist"], "Signal Router & Vector Memory Indexer", "archivist"),
-            ("architect", perm_agents["architect"], "Progeny Worker Creator & Tool Master", "architect"),
-            ("auditor", perm_agents["auditor"], "Reputation Inspector & Economic Token Arbiter", "auditor")
+        Two things changed here. The toolbelt is published first, because the
+        agent registry refuses to register an agent whose tools are not
+        published in the same realm (Rule 3.5) — so without it every
+        registration below failed with a 400 that nobody saw.
+
+        And the roster comes from `founders.py` rather than from four scaffold
+        entries defined here. This engine used to found a civilisation with
+        four agents whose entire system prompt was "You are the Genesis Prime
+        Agent in Google ADK civilization.", while the other engine founded one
+        with twenty-eight. One roster now, for both.
+        """
+        project_id = f"proj_{hashlib.md5(project_name.encode()).hexdigest()[:8]}"
+
+        seeded = await ensure_platform_tools(org_id, project_id)
+        if seeded["failed"]:
+            logger.error(
+                "the platform toolbelt did not publish in realm %r: %s. Agent "
+                "registration will refuse to pin these tools.",
+                org_id, seeded["failed"])
+
+        guardrails = [
+            {"guardrail_id": f"g-{idx}", "source": "constitution",
+             "level": "project", "rule": rule}
+            for idx, rule in enumerate(constitution_rules or [])
         ]
 
-        for caste, agent_id, telos, role in scaffold_nodes:
+        provisioned, failed = [], []
+        for member in roster(project_id):
+            agent_id = member["agent_id"]
             payload = {
                 "agent_id": agent_id,
                 "uaid": f"uaid:london:adk:{project_id}:{agent_id}:v1.0.0",
-                "entra_agent365_principal_id": f"spn:agent365:{agent_id}@{project_id}.entra.agent.london",
-                "codebase_hash_attestation": f"sha256:{hashlib.sha256((agent_id + telos).encode()).hexdigest()}",
+                "entra_agent365_principal_id":
+                    f"spn:agent365:{agent_id}@{project_id}.entra.agent.london",
+                "codebase_hash_attestation":
+                    f"sha256:{hashlib.sha256((agent_id + member['telos']).encode()).hexdigest()}",
                 "x509_certificate": {
                     "serial_number": f"CA-{hashlib.md5(agent_id.encode()).hexdigest()[:16].upper()}",
                     "issuer": "CN=Federated Root CA, O=agent.london Federation, C=UK",
-                    "subject": f"CN={agent_id}, OU=ADK Prime Caste",
+                    "subject": f"CN={agent_id}, OU=ADK Founding Agent",
                     "valid_from": datetime.utcnow().isoformat(),
                     "valid_to": "2030-01-01T00:00:00Z",
                     "digital_passport_status": "VALIDATED_BY_FEDERATED_ROOT_CA"
@@ -953,29 +1110,54 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                 "org_id": org_id,
                 "user_id": user_id,
                 "project_id": project_id,
-                "name": f"{caste.title()} Prime Agent (ADK)",
-                "caste": caste,
-                "role": f"permanent_{role}",
-                "telos": telos,
-                "version": "v1.0.0",
-                "system_prompt": f"You are the {caste.title()} Prime Agent in Google ADK civilization.",
-                "tools": ["mcp-pgvector-search", "mcp-redis-queue"],
-                "memory_policy": {"policy_type": "shared_session", "session_segregation": True, "read_access": True, "write_access": True},
-                "guardrails": [{"guardrail_id": f"g-{idx}", "source": "constitution", "level": "project", "rule": rule} for idx, rule in enumerate(constitution_rules or [])],
-                "token_balance": 10000000.0,
-                "reputation_score": 100.0,
+                "name": member["name"],
+                "caste": member["caste"],
+                "cog_func": member["cog_func"],
+                "topo": member["topo"],
+                "role": member["role"],
+                "telos": member["telos"],
+                "version": "1.0.0",
+                "system_prompt": member["system_prompt"],
+                "tools": member["tools"],
+                "capabilities": member["capabilities"],
+                "autonomous": member["autonomous"],
+                "duty": member["duty"],
+                "memory_policy": {"policy_type": "shared_session",
+                                  "session_segregation": True,
+                                  "read_access": True, "write_access": True},
+                "guardrails": guardrails,
+                "token_balance": member["token_balance"],
+                "reputation_score": member["reputation_score"],
                 "public_key": f"ed25519:adk_pub_{agent_id}",
-                "hash_digest": hashlib.sha256(f"{agent_id}:{telos}:ADK".encode()).hexdigest(),
+                "hash_digest": hashlib.sha256(
+                    f"{agent_id}:{member['telos']}:ADK".encode()).hexdigest(),
                 "signature": f"ed25519:adk_sig_root_{agent_id}"
             }
-            await register_agent_in_agent_registry(payload)
+            result = await register_agent_in_agent_registry(payload)
+            if result.get("registered_in_registry"):
+                provisioned.append(agent_id)
+            else:
+                failed.append({"agent_id": agent_id,
+                               "reason": result.get("registration_error")})
+
+        if failed:
+            logger.error("%d of %d founding agents did not register in realm %r: %s",
+                         len(failed), len(provisioned) + len(failed), org_id, failed[:3])
 
         return {
             "project_id": project_id,
             "project_name": project_name,
             "org_id": org_id,
-            "permanent_agents": perm_agents,
-            "status": "created"
+            "constitution": constitution_rules or [],
+            "tools_seeded": [t.get("tool_id") for t in seeded["registered"]],
+            "founding_agents": provisioned,
+            "founding_agent_count": len(provisioned),
+            "failed_registrations": failed,
+            # Kept for callers that read it; now the whole roster by caste
+            # rather than one agent per caste.
+            "permanent_agents": {m["founder_id"]: m["agent_id"]
+                                 for m in roster(project_id)},
+            "status": "created" if not failed else "created_with_failures",
         }
 
     async def materialize_worker_agent(
@@ -992,7 +1174,12 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         **kwargs
     ) -> Dict[str, Any]:
         """Materializes an ADK progeny worker node and registers it in the Agent Registry."""
-        parent_id = parent_agent_id or f"architect-{project_id}"
+        # The Progenitor is the founder whose mandate is authoring agents, so
+        # an agent created without a named parent descends from it. The old
+        # default named `architect-{project_id}`, a scaffold agent that no
+        # longer exists — and the registry rightly refused to write a
+        # provenance edge to an agent that was never registered.
+        parent_id = parent_agent_id or f"progenitor-{project_id}"
         agent_id = f"adk-worker-{hashlib.md5(agent_name.encode()).hexdigest()[:8]}"
         pub_key = f"ed25519:adk_pub_{agent_id}"
         sig = f"ed25519:adk_sig_{parent_id}_{agent_id}"
@@ -1025,7 +1212,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             "telos": telos,
             "version": "v1.0.0",
             "system_prompt": system_prompt,
-            "tools": tools or ["mcp-pgvector-search", "mcp-redis-queue"],
+            "tools": tools or ["mcp-pgvector-search"],
             "memory_policy": {"policy_type": "shared_session", "session_segregation": True, "read_access": True, "write_access": True},
             "guardrails": guardrails_payload,
             "token_balance": 10000000.0,
@@ -1077,26 +1264,33 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         )
 
     async def get_all_project_agents(self, org_id: str, project_id: str) -> List[Dict[str, Any]]:
-        """Queries Agent Registry microservice (or post-graph agent_registry) for all registered project agents."""
-        unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-        for base in unique_urls:
-            try:
-                url = f"{base.rstrip('/')}/agents?project_id={project_id}"
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    res = await client.get(url)
-                    if res.status_code == 200:
-                        agents = res.json().get("agents", [])
-                        if agents:
-                            return agents
-            except Exception as e:
-                logger.debug(f"HTTP call to Agent Registry on {base} note: {e}")
+        """Every registered agent in this project, from the registry.
 
-        # Post-graph direct query fallback
+        The realm travels with the query. Without it the registry answers from
+        whichever schema it defaults to, so a project id that exists in two
+        organisations returned one organisation's agents to the other — and,
+        more often, returned nothing at all and read as an empty project.
+        """
+        url = f"{AGENT_REGISTRY_URL.rstrip('/')}/agents"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, params={"org_id": org_id,
+                                                    "project_id": project_id})
+            if res.status_code == 200:
+                agents = res.json().get("agents", [])
+                if agents:
+                    return agents
+        except Exception as e:
+            logger.debug(f"HTTP call to Agent Registry on {url} note: {e}")
+
+        # Post-graph direct read, for agents written before the registry existed.
         agents = []
         try:
-            pg_client = AsyncPostGraph(dsn=DB_URI)
+            pg_client = AsyncPostGraph(dsn=DB_URI, schema_per_realm=SCHEMA_PER_REALM,
+                                    **POSTGRES_POOL_KWARGS)
             await pg_client.connect()
-            vertices = await pg_client.get_vertices(table_name="agent_registry", realm=project_id)
+            vertices = await pg_client.get_vertices(table_name="agent_registry",
+                                                    realm=org_id, space=project_id)
             await pg_client.close()
             for v in vertices:
                 payload = v.payload if hasattr(v, "payload") else v
@@ -1110,19 +1304,15 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
     async def index_agent_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
         """Fetches agent documents from Agent Registry microservice and indexes specifications into post-graph-rag under agent_registry_rag."""
         agent_docs = []
-        unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-        
-        for base in unique_urls:
-            try:
-                url = f"{base.rstrip('/')}/agents/rag-documents?project_id={project_id}"
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    res = await client.get(url)
-                    if res.status_code == 200:
-                        agent_docs = res.json().get("documents", [])
-                        if agent_docs:
-                            break
-            except Exception as e:
-                logger.debug(f"Fetch agent RAG documents note for {base}: {e}")
+        url = f"{AGENT_REGISTRY_URL.rstrip('/')}/agents/rag-documents"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, params={"org_id": org_id,
+                                                    "project_id": project_id})
+            if res.status_code == 200:
+                agent_docs = res.json().get("documents", [])
+        except Exception as e:
+            logger.debug(f"Fetch agent RAG documents note for {url}: {e}")
 
         if not agent_docs:
             all_agents = await self.get_all_project_agents(org_id, project_id)
@@ -1137,7 +1327,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -1174,7 +1364,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         """Searches post-graph-rag for candidate agents, workflows, or pipelines matching the query prompt."""
         try:
             rag_realm = f"{org_id}_{project_id}_agent_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))
@@ -1196,68 +1386,30 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         return matched
 
     async def get_all_registered_tools(self, org_id: str, project_id: str) -> List[Dict[str, Any]]:
-        """Retrieves all registered MCP tools from the Tool Registry microservice & post-graph."""
-        tools = []
-        unique_urls = [
-            os.getenv("TOOL_REGISTRY_URL"),
-            "http://tool-registry-service.default.svc.cluster.local:8002",
-            "http://tool-registry-service:8002",
-            "http://localhost:8002"
-        ]
-        unique_urls = [u for u in unique_urls if u]
-        
-        for base in unique_urls:
-            try:
-                url = f"{base.rstrip('/')}/tools?project_id={project_id}&org_id={org_id}"
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    res = await client.get(url)
-                    if res.status_code == 200:
-                        tools = res.json().get("tools", [])
-                        if tools:
-                            break
-            except Exception as e:
-                logger.debug(f"Fetch tool registry note for {base}: {e}")
+        """The tools actually published in this realm.
 
-        if not tools:
-            tools = [
-                {
-                    "tool_id": "mcp-google-search",
-                    "name": "Google Search (GCP API)",
-                    "description": "Performs web and Google searches from within Kubernetes cluster via GCP Custom Search API.",
-                    "endpoint_url": "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
-                    "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
-                },
-                {
-                    "tool_id": "mcp-pgvector-search",
-                    "name": "PostGraph Vector Memory Search",
-                    "description": "Queries post-graph-rag shared vector memory for semantic document chunks.",
-                    "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-                    "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
-                },
-                {
-                    "tool_id": "mcp-redis-queue",
-                    "name": "Redis Cluster Event Bus & Task Queue",
-                    "description": "Publishes event streams or queues background sub-tasks on Redis pub-sub channels.",
-                    "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-                    "input_schema": {"type": "object", "properties": {"channel": {"type": "string"}, "payload": {"type": "object"}}, "required": ["channel", "payload"]}
-                },
-                {
-                    "tool_id": "mcp-sql-query",
-                    "name": "PostgreSQL Relational DB Executor",
-                    "description": "Executes parameterized SQL queries against post-graph database tables.",
-                    "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-                    "input_schema": {"type": "object", "properties": {"sql_query": {"type": "string"}}, "required": ["sql_query"]}
-                },
-                {
-                    "tool_id": "kagent-operator",
-                    "name": "Kubernetes Agent Cluster Operator",
-                    "description": "Interacts with Kubernetes API server to inspect pods, deployments, and cluster rollouts.",
-                    "endpoint_url": "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call",
-                    "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}
-                }
-            ]
-        return tools
+        This used to try four hosts and then, if none answered, return a
+        hardcoded catalogue of five tools — Google search, a SQL executor, a
+        Kubernetes operator — none of which was registered anywhere. An agent
+        offered a tool that does not exist plans around it and fails at the
+        moment it calls it, which is the most expensive moment to find out.
 
+        An unreachable registry now returns nothing and says so.
+        """
+        url = f"{TOOL_REGISTRY_URL.rstrip('/')}/tools"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, params={"org_id": org_id,
+                                                    "project_id": project_id})
+        except Exception as e:
+            logger.error("tool registry unreachable at %s: %s; no tools will be "
+                         "offered to agents in %s/%s", url, e, org_id, project_id)
+            return []
+        if res.status_code != 200:
+            logger.error("tool registry returned %s listing tools for %s/%s",
+                         res.status_code, org_id, project_id)
+            return []
+        return res.json().get("tools", [])
     async def index_tool_registry_for_rag(self, org_id: str, project_id: str) -> Dict[str, Any]:
         """Indexes MCP tool specifications into post-graph-rag under tool_registry_rag."""
         tool_docs = []
@@ -1294,7 +1446,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         indexed_count = 0
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
 
@@ -1333,7 +1485,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
 
         try:
             rag_realm = f"{org_id}_{project_id}_tool_registry_rag"
-            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model="DeepSeek-V3.2", db_uri=self.db_uri, realm=rag_realm)
+            config = RAGConfig(api_base=LITELLM_URL, api_key=API_KEY, model=DEFAULT_LLM_MODEL, db_uri=self.db_uri, realm=rag_realm)
             rag = GraphRAG(config)
             await rag.initialize()
             query_res = await rag.query_data(query_prompt, param=QueryParam(mode="mix", top_k=top_k))

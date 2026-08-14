@@ -11,6 +11,11 @@ import logging
 import re
 from typing import Any, Dict
 
+try:
+    from backend.env_config import DEFAULT_LLM_MODEL
+except ImportError:  # started with backend/ as the working directory
+    from env_config import DEFAULT_LLM_MODEL
+
 logger = logging.getLogger(__name__)
 
 # A default contract for agents the engine spawns without declaring one. It is
@@ -45,7 +50,26 @@ def to_identity(payload: Dict[str, Any]) -> Dict[str, Any]:
         "description": payload.get("description") or payload.get("telos", ""),
         "owner": payload.get("owner") or payload.get("parent_agent_id"),
         "lifecycle": "active",
+        # The rules this agent is bound by travel with it. They were dropped
+        # here, so an agent materialised with guardrails arrived at the registry
+        # with none — and the interface that asks "what constrains this agent?"
+        # could only answer by making something up.
+        "guardrails": payload.get("guardrails") or [],
+        "memory_policy": payload.get("memory_policy") or {},
     }
+
+
+def _semver(value: str) -> str:
+    """`v1.0.0` is what the engine calls a version; `1.0.0` is what semver is.
+
+    The engine stamped every agent `v1.0.0`, the registry rejected it as
+    non-semver, and the rejection was logged at debug level inside a loop that
+    tried four hosts — so every agent the civilization created failed to
+    register, silently, and appeared in the interface with no version, no
+    content hash and no way to be pinned or invoked.
+    """
+    text = str(value or "").strip()
+    return text[1:] if text[:1].lower() == "v" and text[1:2].isdigit() else text
 
 
 def to_version(payload: Dict[str, Any], version: str = "1.0.0") -> Dict[str, Any]:
@@ -55,10 +79,10 @@ def to_version(payload: Dict[str, Any], version: str = "1.0.0") -> Dict[str, Any
     a prompt edit at least a patch bump, which only works if the prompt is
     inside the hashed material.
     """
-    model_name = payload.get("model") or payload.get("model_name") or "DeepSeek-V3.2"
+    model_name = payload.get("model") or payload.get("model_name") or DEFAULT_LLM_MODEL
     return {
         "agent_id": payload["agent_id"],
-        "version": payload.get("version", version),
+        "version": _semver(payload.get("version") or version),
         "system_prompt": payload.get("system_prompt", ""),
         "model": {
             "name": model_name,

@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 import httpx
 from typing import List, Dict, Any, Optional
@@ -16,9 +17,17 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Quer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 try:
-    from backend.env_config import require_env
+    from backend.env_config import (
+        DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
+        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
+        RAG_MODEL, require_env,
+    )
 except ImportError:  # started with backend/ as the working directory
-    from env_config import require_env
+    from env_config import (
+        DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
+        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
+        RAG_MODEL, require_env,
+    )
 try:
     from backend.civilization import civilization_engine, get_real_telemetry, record_execution_telemetry, generate_dynamic_task_document
     from backend.redis_bus import redis_bus
@@ -47,6 +56,30 @@ tags_metadata = [
     {"name": "System & Telemetry", "description": "Health checks, live cluster metrics, and Redis bus events."}
 ]
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start the duty cycles with the app, and stop them with it.
+
+    The founders that run without being asked need somewhere to look: the
+    scheduler works from a watchlist that project creation adds to. A backend
+    that has just started and has seen no projects runs no cycles, which is
+    correct — there is nothing yet to evaluate.
+    """
+    try:
+        from backend.autonomy import scheduler as _sched
+    except ImportError:                   # running from inside backend/
+        from autonomy import scheduler as _sched
+    _sched._client_factory = _autonomy_client
+    await _sched.start()
+    try:
+        yield
+    finally:
+        await _sched.stop()
+
+
 app = FastAPI(
     title="agent.london Backend API",
     description="""
@@ -62,7 +95,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    openapi_tags=tags_metadata
+    openapi_tags=tags_metadata,
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -74,6 +108,7 @@ app.add_middleware(
 )
 
 ACTIVE_CONNECTIONS: List[WebSocket] = []
+
 
 class CreateUserRequest(BaseModel):
     org_id: str
@@ -125,6 +160,29 @@ GENERIC_EMAIL_DOMAINS = {
     "comcast.net", "sbcglobal.net", "verizon.net", "att.net"
 }
 
+# The realm every unscoped registry read falls back to. One constant rather than
+# nine literals: the registry keeps each organisation in its own PostgreSQL
+# schema, so disagreeing about the default means reading an empty schema and
+# reporting "not found" for an agent that exists.
+DEFAULT_ORG_ID = os.getenv("DEFAULT_ORG_ID", "org_london_meta")
+
+try:
+    from backend.founders import roster as founder_roster, AUTONOMOUS, founder
+except ImportError:                       # running from inside backend/
+    from founders import roster as founder_roster, AUTONOMOUS, founder
+
+
+# The registries this backend fronts. One constant each, read from the
+# environment, so a deployment moves a service by setting a variable rather
+# than by finding every hardcoded cluster URL.
+TOOL_REGISTRY_URL = os.getenv(
+    "TOOL_REGISTRY_URL",
+    "http://tool-registry-service.default.svc.cluster.local:8002")
+AGENT_REGISTRY_URL = os.getenv(
+    "AGENT_REGISTRY_URL",
+    "http://agent-registry-service.default.svc.cluster.local:8001")
+
+
 def resolve_tenancy_from_email(email: str) -> dict:
     clean_email = email.strip().lower()
     if "@" not in clean_email:
@@ -154,6 +212,49 @@ class VerifyGoogleTokenRequest(BaseModel):
     code: Optional[str] = None
     redirect_uri: Optional[str] = None
     code_verifier: Optional[str] = None
+
+class EmailSessionRequest(BaseModel):
+    email: str
+
+
+@app.post("/api/auth/email/session")
+async def create_email_session(req: EmailSessionRequest):
+    """Resolve an email address to a tenancy, and say plainly that nothing was verified.
+
+    **This does not authenticate anyone.** No password, no mail round trip, no
+    proof the address belongs to whoever typed it. It exists for two reasons:
+
+    1. The organisation is derived **here**, by the same function the Google and
+       Microsoft routes use, so all three doors put a person in the same realm.
+       The rule used to be written twice more in the browser, and two copies of
+       a tenancy rule that can disagree is a way to land in a different
+       organisation depending on which door you came through (F.5).
+    2. The response states `verified: false` and names the method, so the
+       client is not left to assume it — an interface can only label what it is
+       told (F.7).
+
+    Replacing this with real verification means issuing a one-time link or code
+    to the address and returning a session only after it comes back. The shape
+    of this response does not change when that happens; `verified` becomes true.
+    """
+    email = (req.email or "").strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400,
+                            detail="That does not look like an email address.")
+
+    tenancy = resolve_tenancy_from_email(email)
+    return {
+        "status": "unverified",
+        "verified": False,
+        "method": "email",
+        "email": email,
+        "org_id": tenancy["org_id"],
+        "user_id": tenancy["user_id"],
+        "is_generic": tenancy["is_generic"],
+        "notice": ("This address was not verified. Anyone can enter any "
+                   "address and reach this organisation."),
+    }
+
 
 @app.post("/api/auth/google/verify")
 async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
@@ -197,6 +298,8 @@ async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
         tenancy = resolve_tenancy_from_email(email)
         return {
             "status": "verified",
+            "verified": True,
+            "method": "google",
             "email": email,
             "org_id": tenancy["org_id"],
             "user_id": tenancy["user_id"],
@@ -255,6 +358,8 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
         tenancy = resolve_tenancy_from_email(email)
         return {
             "status": "verified",
+            "verified": True,
+            "method": "google",
             "email": email,
             "org_id": tenancy["org_id"],
             "user_id": tenancy["user_id"],
@@ -304,7 +409,7 @@ async def _ensure_agents_indexed_in_rag(org_id: str, project_id: str, agents_lis
                 f"Topology: {agent['topo']}\n"
                 f"Telos: {agent['telos']}\n"
                 f"Keywords: {', '.join(agent.get('keywords', []))}\n"
-                f"Assigned Model: {agent.get('assignedModel', 'DeepSeek-V3.2')}\n"
+                f"Assigned Model: {agent.get('assignedModel', DEFAULT_LLM_MODEL)}\n"
             )
             meta = DocumentMetadata(
                 source="prime_agent_registry",
@@ -450,23 +555,43 @@ async def list_available_models():
                         "source": "litellm_router"
                     })
                 if parsed_models:
-                    return {"models": parsed_models, "source": "litellm_router", "router_url": models_url}
+                    # The configured defaults travel with the list so the UI
+                    # preselects what this deployment actually runs, instead of
+                    # each view hardcoding a favourite that drifts from it.
+                    return {"models": parsed_models, "source": "litellm_router",
+                            "router_url": models_url,
+                            "default_model": DEFAULT_LLM_MODEL,
+                            "embedding_model": EMBEDDING_MODEL,
+                            "embedding_dim": EMBEDDING_DIM}
     except Exception as e:
         logger.warning(f"Could not reach LiteLLM Model Router at {models_url}: {e}")
 
-    # Actual models configured in marty/model-router (models.txt & embedding_models.txt)
+    # The router is unreachable. What comes back is the configured pair and
+    # nothing else — deliberately not a remembered catalogue.
+    #
+    # A hardcoded list of "the models we usually have" goes stale silently: it
+    # offered DeepSeek V3.1 and V3.2 long after that provider stopped answering,
+    # so the UI presented models a user could select and no agent could call.
+    # The two names below are the two this deployment is actually configured
+    # for, and `status: unverified` says the router was not reached.
     return {
-        "source": "model_router_config",
+        "source": "configured_defaults",
         "router_url": models_url,
+        "default_model": DEFAULT_LLM_MODEL,
+        "embedding_model": EMBEDDING_MODEL,
+        "embedding_dim": EMBEDDING_DIM,
+        "warning": (f"The model router at {models_url} could not be reached. "
+                    f"These are this deployment's configured defaults, not a "
+                    f"live list of what the router serves."),
         "models": [
-            {"id": "MiniMax-M2.7", "name": "MiniMax M2.7", "provider": "MiniMax AI", "context_window": 128000, "status": "active"},
-            {"id": "gpt-oss-120b", "name": "GPT-OSS 120B", "provider": "OpenAI / OSS", "context_window": 128000, "status": "active"},
-            {"id": "Meta-Llama-3.3-70B-Instruct", "name": "Meta Llama 3.3 70B Instruct", "provider": "Meta AI", "context_window": 128000, "status": "active"},
-            {"id": "gemma-4-31B-it", "name": "Gemma 4 31B Instruct", "provider": "Google DeepMind", "context_window": 131072, "status": "active"},
-            {"id": "DeepSeek-V3.1", "name": "DeepSeek V3.1", "provider": "DeepSeek AI", "context_window": 128000, "status": "active"},
-            {"id": "DeepSeek-V3.2", "name": "DeepSeek V3.2", "provider": "DeepSeek AI", "context_window": 128000, "status": "active"},
-            {"id": "text-embedding-3-small", "name": "Text Embedding 3 Small", "provider": "OpenAI / Embeddings", "context_window": 8191, "status": "active"}
-        ]
+            {"id": DEFAULT_LLM_MODEL, "name": DEFAULT_LLM_MODEL,
+             "provider": "configured default", "context_window": 128000,
+             "status": "unverified", "role": "chat"},
+            {"id": EMBEDDING_MODEL, "name": EMBEDDING_MODEL,
+             "provider": "configured default", "context_window": 2048,
+             "status": "unverified", "role": "embedding",
+             "dimensions": EMBEDDING_DIM},
+        ],
     }
 
 class CustomModelRequest(BaseModel):
@@ -587,6 +712,10 @@ async def create_project(req: CreateProjectRequest):
         project_name=req.project_name,
         constitution_rules=req.constitution_rules
     )
+    # A new project is watched from the moment it exists: its founders' duty
+    # cycles are part of it, not something a human has to switch on.
+    if res.get("project_id"):
+        autonomy_scheduler.watch(req.org_id, res["project_id"])
     await broadcast_ws_event({
         "type": "project_created",
         "data": res
@@ -611,8 +740,47 @@ async def materialize_agent(req: MaterializeAgentRequest):
     })
     return res
 
+@app.get("/api/runs")
+async def list_pipeline_runs(project_id: Optional[str] = Query(None),
+                             org_id: str = Query(DEFAULT_ORG_ID),
+                             limit: int = Query(25, ge=1, le=200)):
+    """Recent pipeline runs, from the registry that recorded them."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            res = await client.get(f"{AGENT_REGISTRY_URL.rstrip('/')}/runs",
+                                   params={"org_id": org_id, "project_id": project_id,
+                                           "limit": limit})
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"Agent registry unreachable: {e}") from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
+
+
+@app.get("/api/runs/{run_pk}/context")
+async def get_run_context(run_pk: int, org_id: str = Query(DEFAULT_ORG_ID)):
+    """Every context revision a run wrote, in order (AG §3.6).
+
+    Revisions rather than a final snapshot: the registry keeps each one so a
+    cyclic run can be read back afterwards, and collapsing them discards the
+    reason they are kept (F.33).
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            res = await client.get(
+                f"{AGENT_REGISTRY_URL.rstrip('/')}/runs/{run_pk}/context",
+                params={"org_id": org_id})
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"Agent registry unreachable: {e}") from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
+
+
 @app.get("/api/projects/{project_id}/agents")
-async def get_project_agents(project_id: str, org_id: str = Query("org_london_meta")):
+async def get_project_agents(project_id: str, org_id: str = Query(DEFAULT_ORG_ID)):
     """Returns all Prime Agents + all persisted custom/progeny agents recovered for a given project."""
     persisted_custom = await civilization_engine.get_all_project_agents(org_id, project_id)
     
@@ -631,7 +799,7 @@ async def get_project_agents(project_id: str, org_id: str = Query("org_london_me
             "topo": agent["topo"],
             "telos": agent["telos"],
             "pubkey": agent["pubkey"],
-            "assignedModel": agent.get("assignedModel", "DeepSeek-V3.2"),
+            "assignedModel": agent.get("assignedModel", DEFAULT_LLM_MODEL),
             "is_prime": True
         })
 
@@ -643,14 +811,169 @@ async def get_project_agents(project_id: str, org_id: str = Query("org_london_me
             ca["is_prime"] = False
             all_agents.append(ca)
 
-    return {"project_id": project_id, "count": len(all_agents), "agents": all_agents}
+    # The registry's own view of these agents, merged in: version, content hash
+    # and slug. They are what make an agent reproducible (AG §4.2) and what a
+    # pipeline pins, and the difference between "the summariser" and "the
+    # summariser as it was when this run cited it" (F.21).
+    registered = {}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(f"{AGENT_REGISTRY_URL.rstrip('/')}/agents",
+                                   params={"org_id": org_id, "project_id": project_id})
+            if res.status_code == 200:
+                for row in res.json().get("agents", []):
+                    if row.get("agent_id"):
+                        registered[row["agent_id"]] = row
+    except Exception as e:
+        # The list still renders; it simply cannot show pins for agents whose
+        # registry entry could not be read.
+        logger.warning("could not merge registry detail into the agent list: %s", e)
 
-AGENT_REGISTRY_CANDIDATE_URLS = [
-    os.getenv("AGENT_REGISTRY_URL"),
-    "http://agent-registry-service.default.svc.cluster.local:8001",
-    "http://agent-registry-service:8001",
-    "http://localhost:8001"
-]
+    for agent in all_agents:
+        detail = registered.get(agent["agent_id"])
+        if not detail:
+            continue
+        agent.update({
+            "version": detail.get("version"),
+            "content_hash": detail.get("content_hash"),
+            "version_status": detail.get("version_status"),
+            "slug": detail.get("slug"),
+            "lifecycle": detail.get("lifecycle", "active"),
+            "reputation_score": detail.get("reputation_score", agent.get("rep")),
+            "token_balance": detail.get("token_balance", agent.get("tokens")),
+            # What a caller invokes it by, if it is published (F.17).
+            "mcp_tool": (f"agent:{detail['slug']}@{detail['version']}"
+                         if detail.get("slug") and detail.get("version") else None),
+        })
+
+    return {"project_id": project_id, "org_id": org_id,
+            "count": len(all_agents), "agents": all_agents,
+            "registered_count": len(registered)}
+
+
+
+
+@app.get("/api/projects/{project_id}/guardrails")
+async def get_project_guardrails(project_id: str, org_id: str = Query(DEFAULT_ORG_ID)):
+    """The guardrails actually attached to this project's agents.
+
+    Guardrails are not a separate registry: they are recorded on the agents
+    that carry them, with a level and a source (constitution, or discovered
+    from the prompt that materialised the agent). This aggregates them and
+    names the agents bound by each, so the panel shows the project's real
+    constraints rather than a fixed list written in the browser.
+
+    There is no "action on violation" field in the record. Rather than assert
+    one, `action` is returned as null and the interface says it is not
+    recorded — a guardrail whose consequence is unknown is a different promise
+    from one that blocks and audits (F.34).
+    """
+    agents = await civilization_engine.get_all_project_agents(org_id, project_id)
+
+    by_rule: Dict[str, Dict[str, Any]] = {}
+    for agent in agents:
+        for guardrail in agent.get("guardrails") or []:
+            rule = (guardrail.get("rule") or "").strip()
+            if not rule:
+                continue
+            entry = by_rule.setdefault(rule, {
+                "rule": rule,
+                "level": guardrail.get("level"),
+                "source": guardrail.get("source"),
+                "guardrail_id": guardrail.get("guardrail_id"),
+                "action": guardrail.get("action"),   # not recorded today
+                "bound_agents": [],
+            })
+            name = agent.get("name") or agent.get("agent_id")
+            if name and name not in entry["bound_agents"]:
+                entry["bound_agents"].append(name)
+
+    guardrails = sorted(by_rule.values(), key=lambda g: (g.get("level") or "", g["rule"]))
+    return {"project_id": project_id, "org_id": org_id,
+            "count": len(guardrails), "guardrails": guardrails,
+            "agents_scanned": len(agents)}
+
+
+async def _registry_call(method: str, path: str, *, params: Optional[Dict[str, Any]] = None,
+                         json_body: Optional[Dict[str, Any]] = None,
+                         timeout: float = 15.0) -> httpx.Response:
+    """One call to the one configured agent registry.
+
+    Every one of these proxies used to try four URLs in turn — the configured
+    one, two Kubernetes service names and localhost — and take whichever
+    answered. That is not a fallback, it is a different deployment: a backend
+    pointed at a staging registry would quietly serve production agents from
+    localhost when staging was slow, and nothing in the response said which one
+    replied. Configuration is the only authority; if it is unreachable that is
+    a 502, not a silent substitution.
+    """
+    url = f"{AGENT_REGISTRY_URL.rstrip('/')}{path}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            return await client.request(method, url, params=params, json=json_body)
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"Agent registry unreachable at {url}: {e}") from e
+
+
+# --------------------------------------------------------------- autonomy
+
+try:
+    from backend.autonomy import scheduler as autonomy_scheduler
+except ImportError:                       # running from inside backend/
+    from autonomy import scheduler as autonomy_scheduler
+
+
+async def _autonomy_client(org_id: str):
+    """A post-graph client for the scheduler to write its cycle records with."""
+    return await civilization_engine._get_pg_client(org_id)
+
+
+@app.get("/api/autonomy/status", tags=["Autonomy"])
+async def autonomy_status():
+    """What runs without being asked, how often, and what it may change."""
+    return autonomy_scheduler.status()
+
+
+@app.get("/api/autonomy/cycles", tags=["Autonomy"])
+async def autonomy_cycles(limit: int = Query(50, ge=1, le=200)):
+    """Recent duty cycles, newest first — including the quiet ones.
+
+    Quiet cycles are shown rather than filtered: "the Adversary ran four times
+    and found nothing" and "the Adversary has not run" are different states of
+    the world, and only one of them is reassuring.
+    """
+    cycles = autonomy_scheduler.cycles[:limit]
+    return {"cycles": cycles, "count": len(cycles),
+            "quiet": sum(1 for c in cycles if c.get("quiet"))}
+
+
+class AutonomyRunRequest(BaseModel):
+    org_id: str = Field(default=DEFAULT_ORG_ID)
+    project_id: str
+    founder_id: str = Field(description="quarantine-warden | anomaly-detector | "
+                                        "proving-ground | adversary")
+
+
+@app.post("/api/autonomy/run", tags=["Autonomy"])
+async def autonomy_run_now(req: AutonomyRunRequest):
+    """Run one duty cycle immediately, and return what it actually did."""
+    autonomy_scheduler.watch(req.org_id, req.project_id)
+    result = await autonomy_scheduler.run_once(req.org_id, req.project_id,
+                                               req.founder_id)
+    if result.get("error") and "not a duty-bearing founder" in result["error"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    await broadcast_ws_event({"type": "autonomy_cycle", "data": result})
+    return result
+
+
+@app.post("/api/autonomy/watch", tags=["Autonomy"])
+async def autonomy_watch(org_id: str = Query(DEFAULT_ORG_ID),
+                         project_id: str = Query(...)):
+    """Put a project under continuous watch."""
+    autonomy_scheduler.watch(org_id, project_id)
+    return autonomy_scheduler.status()
+
 
 @app.get("/api/agents")
 async def list_registered_agents(
@@ -659,125 +982,87 @@ async def list_registered_agents(
     caste: Optional[str] = Query(None),
     role: Optional[str] = Query(None)
 ):
-    """Proxies Agent Registry microservice to list versioned, registered agent entities."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    params = {}
-    if org_id: params["org_id"] = org_id
+    """The registry's list of versioned, registered agents."""
+    params = {"org_id": org_id or DEFAULT_ORG_ID}
     if project_id: params["project_id"] = project_id
     if caste: params["caste"] = caste
     if role: params["role"] = role
 
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.get(url, params=params)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Agent Registry proxy call to {base} note: {e}")
-
-    # Fallback to civilization engine
-    pid = project_id or "proj_alpha_civilization"
-    oid = org_id or "org_london_meta"
-    agents = await civilization_engine.get_all_project_agents(oid, pid)
-    return {"agents": agents, "count": len(agents), "source": "post-graph-fallback"}
+    res = await _registry_call("GET", "/agents", params=params)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.get("/api/agents/{agent_id}")
-async def get_registered_agent_detail(agent_id: str):
-    """Proxies Agent Registry microservice to fetch full agent details and immutable version history."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/{agent_id}"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Agent Detail proxy call to {base} note: {e}")
+async def get_registered_agent_detail(agent_id: str, org_id: Optional[str] = Query(None)):
+    """Proxies Agent Registry microservice to fetch full agent details and immutable version history.
 
-    raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found in registry.")
+    The realm is named explicitly. The registry stores each organisation in its
+    own PostgreSQL schema, so a lookup that does not say which one is a lookup
+    in whichever realm the service happens to default to — and it silently 404s
+    for agents that exist somewhere else.
+    """
+    res = await _registry_call("GET", f"/agents/{agent_id}",
+                               params={"org_id": org_id or DEFAULT_ORG_ID})
+    if res.status_code == 404:
+        raise HTTPException(status_code=404,
+                            detail=f"Agent '{agent_id}' not found in realm "
+                                   f"'{org_id or DEFAULT_ORG_ID}'.")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.get("/api/agents/{agent_id}/progeny")
 async def get_agent_progeny_tree(agent_id: str):
-    """Proxies Agent Registry microservice to retrieve spawned progeny lineage tree."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/{agent_id}/progeny"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Progeny tree proxy call to {base} note: {e}")
+    """The lineage tree this agent spawned.
 
-    return {"agent_id": agent_id, "progeny_count": 0, "progeny": []}
+    An unreachable registry is not an agent with no descendants — the empty
+    tree this used to return is a claim about lineage that was never checked.
+    """
+    res = await _registry_call("GET", f"/agents/{agent_id}/progeny")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.get("/api/agents/{agent_id}/kagent-manifest")
 async def get_kagent_crd_manifest(agent_id: str):
-    """Proxies Agent Registry microservice to generate Kubernetes KAgent CRD manifest."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/{agent_id}/kagent-manifest"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"KAgent manifest proxy call to {base} note: {e}")
-
-    raise HTTPException(status_code=404, detail=f"Manifest for agent '{agent_id}' not available.")
+    """The Kubernetes KAgent CRD manifest the registry generates for this agent."""
+    res = await _registry_call("GET", f"/agents/{agent_id}/kagent-manifest")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.post("/api/agents/verify")
 async def verify_agent_signature(payload: Dict[str, Any]):
-    """Proxies Agent Registry microservice for ED25519 signature verification."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/verify"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(url, json=payload)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Signature verify proxy call to {base} note: {e}")
+    """ED25519 signature verification, by the registry that holds the key.
 
-    return {"agent_id": payload.get("agent_id"), "verified": True, "note": "Offline verification fallback"}
+    The previous fallback answered `verified: true` when the registry could not
+    be reached, describing it as "offline verification". Nothing was verified.
+    A signature check that cannot run must fail loudly — an unchecked signature
+    reported as valid is the one failure mode this whole mechanism exists to
+    prevent.
+    """
+    res = await _registry_call("POST", "/agents/verify", json_body=payload)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.post("/api/agents/{agent_id}/audit")
 async def audit_agent(agent_id: str, payload: Dict[str, Any]):
-    """Proxies Agent Registry microservice to record oversight audits and update reputation scores."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/{agent_id}/audit"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(url, json=payload)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Audit proxy call to {base} note: {e}")
-
-    return {"status": "unavailable", "agent_id": agent_id, "note": "Agent registry service offline"}
+    """Record an oversight audit and let it move the reputation score."""
+    res = await _registry_call("POST", f"/agents/{agent_id}/audit", json_body=payload)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.post("/api/agents/{agent_id}/allocate-tokens")
 async def allocate_agent_tokens(agent_id: str, payload: Dict[str, Any]):
-    """Proxies Agent Registry microservice to allocate compute token balances."""
-    unique_urls = [u for u in AGENT_REGISTRY_CANDIDATE_URLS if u]
-    for base in unique_urls:
-        try:
-            url = f"{base.rstrip('/')}/agents/{agent_id}/allocate-tokens"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                res = await client.post(url, json=payload)
-                if res.status_code == 200:
-                    return res.json()
-        except Exception as e:
-            logger.debug(f"Token allocation proxy call to {base} note: {e}")
-
-    return {"status": "unavailable", "agent_id": agent_id, "note": "Agent registry service offline"}
+    """Allocate compute tokens. An allocation that did not happen is an error."""
+    res = await _registry_call("POST", f"/agents/{agent_id}/allocate-tokens",
+                               json_body=payload)
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 class EnhancedPlaygroundChatRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")
@@ -785,21 +1070,53 @@ class EnhancedPlaygroundChatRequest(BaseModel):
     prompt: str
     mode: Optional[str] = Field("workflow", description="'solitary' or 'workflow' / 'conductor'")
     agent_id: Optional[str] = None
-    model_name: Optional[str] = "DeepSeek-V3.2"
+    model_name: Optional[str] = DEFAULT_LLM_MODEL
     session_id: Optional[str] = None
 
 @app.post("/api/playground/chat")
 async def playground_chat(req: EnhancedPlaygroundChatRequest):
-    """Interactive ChatGPT-like Playground Endpoint supporting Solitary Agent and Multi-Agent Workflow modes."""
+    """Playground execution, returning a trace of what actually ran.
+
+    `steps` describes work that happened, and only that. The client used to
+    invent its own — a `KAGENT_EXECUTION` at "64ms" and a `VERIFICATION_AUDIT`
+    at "28ms", both marked success, appended after every turn including failed
+    ones (F.13). Anything the interface shows has to come from here, so here is
+    where it has to be true.
+
+    Every step carries a real `started_at` and `ended_at`; nothing carries a
+    latency this endpoint did not measure (F.14).
+    """
+    started = datetime.now(timezone.utc)
+
+    def step(name: str, detail: str, status: str, begin, agent=None, tool=None):
+        finished = datetime.now(timezone.utc)
+        return {
+            "name": name, "detail": detail, "status": status,
+            "agent": agent, "tool": tool,
+            "started_at": begin.isoformat(), "ended_at": finished.isoformat(),
+            "duration_ms": int((finished - begin).total_seconds() * 1000),
+        }
+
     if req.mode == "solitary" and req.agent_id:
         target_agent_id = req.agent_id
-        # Solitary Agent Execution Mode
         solitary_prompt = (
             f"You are the solitary agent '{target_agent_id}' in project '{req.project_id}' of the agent.london civilization.\n"
             f"User Prompt: {req.prompt}\n\n"
             f"Execute this request strictly as '{target_agent_id}'. Provide a complete, thorough, authoritative response in Markdown."
         )
-        answer = await generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
+        try:
+            answer = await generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
+            steps = [step("AGENT_DISPATCH",
+                          f"Called '{target_agent_id}' with model '{req.model_name}'.",
+                          "succeeded", started, agent=target_agent_id)]
+        except Exception as e:
+            logger.exception("solitary playground turn failed")
+            steps = [step("AGENT_DISPATCH",
+                          f"Call to '{target_agent_id}' failed: {e}",
+                          "failed", started, agent=target_agent_id)]
+            raise HTTPException(status_code=502,
+                                detail=f"Agent execution failed: {e}") from e
+
         res = {
             "mode": "solitary",
             "agent_id": target_agent_id,
@@ -807,16 +1124,51 @@ async def playground_chat(req: EnhancedPlaygroundChatRequest):
             "prompt": req.prompt,
             "answer": answer,
             "final_answer": answer,
-            "execution_summary": f"Executed solitary agent interaction with '{target_agent_id}' using model '{req.model_name}'."
+            "status": "succeeded",
+            "steps": steps,
+            "execution_summary": f"Executed solitary agent interaction with '{target_agent_id}' using model '{req.model_name}'.",
         }
         await broadcast_ws_event({"type": "solitary_chat_completed", "data": res})
         return res
-    else:
-        # Multi-Agent Workflow / Conductor Execution Mode
-        res = await civilization_engine.run_conductor_orchestration(req.org_id, req.project_id, req.prompt)
-        res["mode"] = "workflow"
-        await broadcast_ws_event({"type": "workflow_completed", "data": res})
-        return res
+
+    # Multi-agent workflow. The conductor builds and registers a real pipeline;
+    # its nodes are the steps, so they are reported rather than re-imagined.
+    try:
+        res = await civilization_engine.run_conductor_orchestration(
+            req.org_id, req.project_id, req.prompt)
+    except Exception as e:
+        logger.exception("conductor orchestration failed")
+        raise HTTPException(status_code=502,
+                            detail=f"Orchestration failed: {e}") from e
+
+    res["mode"] = "workflow"
+    res.setdefault("status", "succeeded")
+    if not res.get("steps"):
+        finished = datetime.now(timezone.utc)
+        res["steps"] = [{
+            "name": "CONDUCTOR_ORCHESTRATION",
+            "detail": (f"source={res.get('execution_source')} "
+                       f"pipeline={res.get('registered_pipeline_id') or res.get('reused_pipeline_id')}"),
+            "status": res.get("status", "succeeded"),
+            "agent": res.get("conductor_id"),
+            "tool": None,
+            "started_at": started.isoformat(),
+            "ended_at": finished.isoformat(),
+            "duration_ms": int((finished - started).total_seconds() * 1000),
+        }]
+        for task in (res.get("sub_tasks_orchestrated") or []):
+            if isinstance(task, dict):
+                res["steps"].append({
+                    "name": task.get("name") or task.get("id") or "SUB_TASK",
+                    "detail": task.get("assigned_task", ""),
+                    "status": task.get("status", "succeeded"),
+                    "agent": task.get("agent_id"),
+                    "tool": None,
+                    "started_at": None, "ended_at": None, "duration_ms": None,
+                })
+    await broadcast_ws_event({"type": "workflow_completed", "data": res})
+    return res
+
 
 class AgentInteractRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")
@@ -895,48 +1247,94 @@ class DiscoveryRequest(BaseModel):
     project_id: str = Field(default="proj_alpha_civilization")
     query: str
 
+# The archetypes discovery searches when the registry has nothing to offer.
+# This was a fourth hand-written copy of the roster, with its own model
+# assignments and its own drift: it advertised agents the running engine never
+# created, and models the router stopped serving. It is derived now, so an
+# archetype cannot describe an agent that no project would contain.
 PRIME_AGENTS = [
-    # Genesis Nodes (6)
-    {"id_prefix": "prime-orchestrator", "name": "The Prime Orchestrator", "caste": "genesis", "cog_func": "Governance", "topo": "Orchestrate", "telos": "Manages the overarching flow of the civilization goals.", "pubkey": "ed25519:prime_orch_99a", "tokens": 5000, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["orchestration", "goal", "flow", "governance", "manage", "master", "pipeline"]},
-    {"id_prefix": "high-arbiter", "name": "The High Arbiter", "caste": "genesis", "cog_func": "Governance", "topo": "Hierarchy", "telos": "The ultimate authority in dispute resolution and constitutional interpretation.", "pubkey": "ed25519:high_arb_88b", "tokens": 4500, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["dispute", "constitutional", "authority", "resolution", "law", "rule", "policy"]},
-    {"id_prefix": "protocol-architect", "name": "The Protocol Architect", "caste": "genesis", "cog_func": "Governance", "topo": "Chain", "telos": "Designs the sequential rules of interaction between all other agents.", "pubkey": "ed25519:proto_arch_77c", "tokens": 4000, "rep": 100, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["protocol", "design", "architecture", "sequential", "rules", "system", "spec"]},
-    {"id_prefix": "boundary-warden", "name": "The Boundary Warden", "caste": "genesis", "cog_func": "Governance", "topo": "Route", "telos": "Regulates interactions with external systems and the outside world.", "pubkey": "ed25519:bound_ward_66d", "tokens": 3500, "rep": 99, "assignedModel": "gemma-4-31B-it", "keywords": ["boundary", "external", "ingress", "egress", "security", "firewall", "api"]},
-    {"id_prefix": "resource-sovereign", "name": "The Resource Sovereign", "caste": "genesis", "cog_func": "Governance", "topo": "Parallel", "telos": "Oversees macro-level resource allocation across the civilization.", "pubkey": "ed25519:res_sov_55e", "tokens": 10000, "rep": 100, "assignedModel": "DeepSeek-V3.2", "keywords": ["resource", "token", "compute", "allocation", "budget", "cost", "gpu"]},
-    {"id_prefix": "evolution-driver", "name": "The Evolution Driver", "caste": "genesis", "cog_func": "Governance", "topo": "Loop", "telos": "Governs the iterative improvement of the civilization core protocols.", "pubkey": "ed25519:evo_drv_44f", "tokens": 3000, "rep": 98, "assignedModel": "MiniMax-M2.7", "keywords": ["evolution", "improvement", "iteration", "learning", "adaptation", "upgrade"]},
-
-    # Ontological Registry (8)
-    {"id_prefix": "grand-ledger", "name": "The Grand Ledger", "caste": "archivist", "cog_func": "Memory", "topo": "Hierarchy", "telos": "Maintains the foundational database of all agent identities and lineages.", "pubkey": "ed25519:grand_ldg_33g", "tokens": 3000, "rep": 100, "assignedModel": "DeepSeek-V3.1", "keywords": ["database", "ledger", "identity", "lineage", "provenance", "records", "post-graph"]},
-    {"id_prefix": "pattern-seer", "name": "The Pattern Seer", "caste": "archivist", "cog_func": "Perception", "topo": "Orchestrate", "telos": "Analyzes macro-trends and emergent behaviors across the population.", "pubkey": "ed25519:pat_seer_22h", "tokens": 2500, "rep": 97, "assignedModel": "DeepSeek-V3.2", "keywords": ["pattern", "trend", "analytics", "insight", "emergent", "behavior", "forecast"]},
-    {"id_prefix": "state-chronicler", "name": "The State Chronicler", "caste": "archivist", "cog_func": "Memory", "topo": "Chain", "telos": "Records the sequential history and major events of the civilization.", "pubkey": "ed25519:state_chr_11i", "tokens": 2200, "rep": 98, "assignedModel": "GPT-OSS-120B", "keywords": ["history", "events", "timeline", "audit log", "chronicle", "state"]},
-    {"id_prefix": "sensorium-prime", "name": "The Sensorium Prime", "caste": "archivist", "cog_func": "Perception", "topo": "Parallel", "telos": "Processes vast streams of raw environmental and systemic data.", "pubkey": "ed25519:sens_prm_00j", "tokens": 2800, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["ingest", "stream", "metric", "data", "sensor", "raw", "real-time", "fetch"]},
-    {"id_prefix": "context-weaver", "name": "The Context Weaver", "caste": "archivist", "cog_func": "Memory", "topo": "Route", "telos": "Directs specialized memory access based on contextual queries.", "pubkey": "ed25519:ctx_wvr_99k", "tokens": 2400, "rep": 97, "assignedModel": "text-embedding-3-small", "keywords": ["vector", "rag", "embedding", "context", "search", "post-graph-rag", "retrieval"]},
-    {"id_prefix": "anomaly-detector", "name": "The Anomaly Detector", "caste": "archivist", "cog_func": "Perception", "topo": "Loop", "telos": "Continuously scans for systemic irregularities or deviations.", "pubkey": "ed25519:anom_det_88l", "tokens": 2600, "rep": 99, "assignedModel": "DeepSeek-V3.1", "keywords": ["anomaly", "scan", "fraud", "irregularity", "detection", "outlier", "risk"]},
-    {"id_prefix": "archive-cycler", "name": "The Archive Cycler", "caste": "archivist", "cog_func": "Memory", "topo": "Loop", "telos": "Manages data retention, compression, and archival pruning.", "pubkey": "ed25519:arch_cyc_77m", "tokens": 2100, "rep": 95, "assignedModel": "DeepSeek-V3.1", "keywords": ["archive", "compression", "retention", "cleanup", "pruning", "storage"]},
-    {"id_prefix": "signal-router", "name": "The Signal Router", "caste": "archivist", "cog_func": "Perception", "topo": "Route", "telos": "Directs incoming data streams to the appropriate processing nodes.", "pubkey": "ed25519:sig_rtr_66n", "tokens": 2300, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["router", "signal", "dispatch", "event", "pubsub", "redis"]},
-
-    # Logic Engines (8)
-    {"id_prefix": "master-strategist", "name": "The Master Strategist", "caste": "architect", "cog_func": "Reasoning", "topo": "Hierarchy", "telos": "Formulates long-term plans and decomposes massive problems.", "pubkey": "ed25519:mst_str_55o", "tokens": 3200, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["strategy", "plan", "decompose", "scenario", "financial", "growth", "roadmap"]},
-    {"id_prefix": "prime-executor", "name": "The Prime Executor", "caste": "architect", "cog_func": "Action", "topo": "Orchestrate", "telos": "Translates high-level strategies into actionable commands.", "pubkey": "ed25519:prm_exe_44p", "tokens": 3500, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["execute", "command", "action", "run", "deploy", "task", "operation"]},
-    {"id_prefix": "inference-chain", "name": "The Inference Chain", "caste": "architect", "cog_func": "Reasoning", "topo": "Chain", "telos": "Handles deep, sequential logical deductions.", "pubkey": "ed25519:inf_chn_33q", "tokens": 2900, "rep": 97, "assignedModel": "DeepSeek-V3.2", "keywords": ["inference", "logic", "deduction", "math", "reasoning", "proof", "chain"]},
-    {"id_prefix": "action-sequencer", "name": "The Action Sequencer", "caste": "architect", "cog_func": "Action", "topo": "Chain", "telos": "Ensures complex multi-step actions are executed in precise required order.", "pubkey": "ed25519:act_seq_22r", "tokens": 2700, "rep": 96, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["sequence", "order", "step", "workflow", "stage", "dependency"]},
-    {"id_prefix": "polymath-node", "name": "The Polymath Node", "caste": "architect", "cog_func": "Reasoning", "topo": "Parallel", "telos": "Evaluates multiple hypothetical scenarios concurrently.", "pubkey": "ed25519:poly_nd_11s", "tokens": 3100, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["parallel", "hypothetical", "scenarios", "eval", "simulation", "concurrent"]},
-    {"id_prefix": "swarm-commander", "name": "The Swarm Commander", "caste": "architect", "cog_func": "Action", "topo": "Parallel", "telos": "Directs massive numbers of temporary worker agents in tasks.", "pubkey": "ed25519:swm_cmd_00t", "tokens": 5000, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["swarm", "worker", "mass", "kagent", "parallel worker", "spawn"]},
-    {"id_prefix": "decision-router", "name": "The Decision Router", "caste": "architect", "cog_func": "Reasoning", "topo": "Route", "telos": "Classifies problems and routes them to specialized reasoning engines.", "pubkey": "ed25519:dec_rtr_99u", "tokens": 2800, "rep": 97, "assignedModel": "DeepSeek-V3.1", "keywords": ["classify", "decide", "route", "branch", "choice", "decision"]},
-    {"id_prefix": "tool-master", "name": "The Tool Master", "caste": "architect", "cog_func": "Action", "topo": "Route", "telos": "Maintains registry of all available external tools and APIs.", "pubkey": "ed25519:tool_mst_88v", "tokens": 3300, "rep": 98, "assignedModel": "gemma-4-31B-it", "keywords": ["mcp", "tool", "api", "integration", "plugin", "fetcher", "call"]},
-
-    # Evaluators (6)
-    {"id_prefix": "grand-critic", "name": "The Grand Critic", "caste": "auditor", "cog_func": "Reflection", "topo": "Hierarchy", "telos": "Establishes ultimate standards for success and quality across all tasks.", "pubkey": "ed25519:grd_crt_77w", "tokens": 2400, "rep": 100, "assignedModel": "Meta-Llama-3.3-70B-Instruct", "keywords": ["critic", "audit", "quality", "review", "verification", "check", "signature"]},
-    {"id_prefix": "nexus-coordinator", "name": "The Nexus Coordinator", "caste": "auditor", "cog_func": "Collaboration", "topo": "Orchestrate", "telos": "Manages formation and dissolution of complex agent alliances (guilds).", "pubkey": "ed25519:nex_crd_66x", "tokens": 2600, "rep": 97, "assignedModel": "DeepSeek-V3.1", "keywords": ["alliance", "guild", "collaborate", "team", "coalition", "group"]},
-    {"id_prefix": "feedback-loop", "name": "The Feedback Loop", "caste": "auditor", "cog_func": "Reflection", "topo": "Loop", "telos": "Continuously analyzes outcomes against predictions to improve performance.", "pubkey": "ed25519:fbk_lop_55y", "tokens": 2200, "rep": 98, "assignedModel": "DeepSeek-V3.1", "keywords": ["feedback", "outcome", "reflection", "tune", "metrics", "learning"]},
-    {"id_prefix": "protocol-translator", "name": "The Protocol Translator", "caste": "auditor", "cog_func": "Collaboration", "topo": "Route", "telos": "Ensures disparate agent factions communicate seamlessly.", "pubkey": "ed25519:prt_trn_44z", "tokens": 2100, "rep": 96, "assignedModel": "gemma-4-31B-it", "keywords": ["translate", "bridge", "format", "json", "convert", "encoding"]},
-    {"id_prefix": "self-corrector", "name": "The Self Corrector", "caste": "auditor", "cog_func": "Reflection", "topo": "Chain", "telos": "Analyzes specific failures and dictates immediate sequential steps for recovery.", "pubkey": "ed25519:slf_crt_331", "tokens": 2500, "rep": 99, "assignedModel": "DeepSeek-V3.2", "keywords": ["error", "recovery", "retry", "correction", "fix", "self-correct"]},
-    {"id_prefix": "synchronicity-engine", "name": "The Synchronicity Engine", "caste": "auditor", "cog_func": "Collaboration", "topo": "Parallel", "telos": "Ensures parallel workstreams remain aligned toward shared goal.", "pubkey": "ed25519:syn_eng_222", "tokens": 2900, "rep": 98, "assignedModel": "DeepSeek-V3.2", "keywords": ["sync", "align", "parallel", "concurrency", "lock", "coordination"]}
+    {
+        "id_prefix": member["founder_id"],
+        "name": member["name"],
+        "caste": member["caste"],
+        "cog_func": member["cog_func"],
+        "topo": member["topo"],
+        "telos": member["telos"],
+        "pubkey": f"ed25519:{member['founder_id'].replace('-', '_')}",
+        "tokens": int(member["token_balance"]),
+        "rep": member["reputation_score"],
+        "assignedModel": DEFAULT_LLM_MODEL,
+        "keywords": member["keywords"],
+        "autonomous": member["autonomous"],
+    }
+    for member in founder_roster("archetype")
 ]
+
+async def _registry_discover_agents(org_id: str, project_id: str, query: str,
+                                    top_k: int = 6) -> List[Dict[str, Any]]:
+    """Vector discovery over the agents that are actually registered (AG §10).
+
+    The tiers below this one search `PRIME_AGENTS` — a seed list of archetypes
+    that exists in this process. That answers "which archetype fits" and cannot
+    answer "which registered agent can I call", because an archetype has no
+    published version to pin or invoke. The registry can, so it is asked first.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.get(
+                f"{AGENT_REGISTRY_URL.rstrip('/')}/discover",
+                params={"q": query, "kind": "agent", "org_id": org_id,
+                        "project_id": project_id, "top_k": top_k})
+    except Exception as e:
+        logger.warning("agent registry discovery unavailable (%s); "
+                       "falling back to the archetype index", e)
+        return []
+    if res.status_code != 200:
+        logger.warning("agent registry discovery returned %s", res.status_code)
+        return []
+
+    found = []
+    for row in res.json().get("results", []):
+        found.append({
+            "agent_id": row.get("id"),
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "slug": row.get("slug"),
+            "telos": row.get("telos"),
+            "description": row.get("description"),
+            "capabilities": row.get("capabilities", []),
+            # What a caller needs to pin and invoke it (AG §4.3).
+            "version": row.get("version"),
+            "content_hash": row.get("content_hash"),
+            "mcp_tool": f"agent:{row.get('slug')}@{row.get('version')}",
+            "match_distance": row.get("distance"),
+            "registered": True,
+        })
+    return found
+
 
 @app.post("/api/agents/discover")
 async def discover_rag_agents(req: DiscoveryRequest):
-    """Performs vector similarity search over post-graph-rag agent registry, with keyword fallback."""
+    """Finds agents for a natural-language need, most authoritative source first.
+
+    1. the agent registry's vector index over **registered, published** agents;
+    2. post-graph-rag over the archetype seed list;
+    3. keyword matching.
+
+    Each tier names itself in `source`, because what a caller can do with the
+    answer differs: only the first returns agents with a version and a hash
+    that can be pinned into a pipeline.
+    """
     project_id = req.project_id
+
+    registered = await _registry_discover_agents(req.org_id, project_id, req.query)
+    if registered:
+        return {
+            "project_id": project_id,
+            "query": req.query,
+            "source": "agent-registry",
+            "discovered_agents": registered,
+        }
 
     # Try RAG vector search first
     rag_results = await _rag_discover_agents(req.org_id, project_id, req.query, PRIME_AGENTS)
@@ -956,89 +1354,186 @@ async def discover_rag_agents(req: DiscoveryRequest):
         "source": "keyword_fallback",
         "discovered_agents": keyword_results
     }
-
 @app.post("/api/conductor/compose")
 async def compose_dag_pipeline(req: DiscoveryRequest):
-    """Dynamically synthesizes a custom multi-stage DAG execution pipeline for the user's prompt."""
-    project_id = req.project_id
-    query_text = req.query
-    
-    # Run discovery to pick top agents for this prompt
-    disc_res = await discover_rag_agents(req)
-    top_agents = disc_res["discovered_agents"]
+    """Turn one natural-language goal into a published, runnable pipeline.
 
-    a1 = top_agents[0] if len(top_agents) > 0 else PRIME_AGENTS[10]
-    a2 = top_agents[1] if len(top_agents) > 1 else PRIME_AGENTS[12]
-    a3 = top_agents[2] if len(top_agents) > 2 else PRIME_AGENTS[14]
-    a4 = top_agents[3] if len(top_agents) > 3 else PRIME_AGENTS[18]
+    This is the path the end-to-end suite proves and the interface could not
+    reach (F.50): the model decomposes the goal, RAG finds a registered agent
+    for each stage, the stages are composed into a pipeline and **published**
+    by the agent registry — validated, cycle-checked, and pinned to exact
+    versions (F.51).
 
-    dag_nodes = [
-      {
-        "id": "node_1",
-        "step": 1,
-        "name": f"Capability Search & {a1['cog_func']} Ingestion",
-        "agent_id": a1["agent_id"],
-        "agent": a1["name"],
-        "caste": a1["caste"],
-        "tool": "mcp-pgvector-search",
-        "status": "success",
-        "output": f"Discovered capabilities in post-graph database for '{query_text[:40]}...'.",
-        "dependencies": [],
-        "latency": "32ms"
-      },
-      {
-        "id": "node_2",
-        "step": 2,
-        "name": f"Strategic {a2['cog_func']} Plan Synthesis",
-        "agent_id": a2["agent_id"],
-        "agent": a2["name"],
-        "caste": a2["caste"],
-        "tool": "mcp-redis-queue",
-        "status": "success",
-        "output": f"Synthesized multi-stage execution DAG for goal using agent '{a2['name']}'.",
-        "dependencies": ["node_1"],
-        "latency": "98ms"
-      },
-      {
-        "id": "node_3",
-        "step": 3,
-        "name": f"Parallel {a3['cog_func']} Execution",
-        "agent_id": a3["agent_id"],
-        "agent": a3["name"],
-        "caste": a3["caste"],
-        "tool": "mcp-sql-query",
-        "status": "success",
-        "output": f"Evaluated execution tasks in post-graph PostgreSQL tables via '{a3['name']}'.",
-        "dependencies": ["node_2"],
-        "latency": "74ms"
-      },
-      {
-        "id": "node_4",
-        "step": 4,
-        "name": f"Constitutional {a4['cog_func']} Signoff",
-        "agent_id": a4["agent_id"],
-        "agent": a4["name"],
-        "caste": a4["caste"],
-        "tool": "kagent-operator",
-        "status": "success",
-        "output": f"Verified ED25519 signature compliance & quality audit by '{a4['name']}'.",
-        "dependencies": ["node_3"],
-        "latency": "41ms"
-      }
-    ]
+    It replaces a handler that returned four hardcoded DAG nodes with invented
+    latencies and `status: success`, composing and running nothing at all.
+    Every field below describes something that happened.
+    """
+    stages = await _decompose_goal(req.query)
+    if len(stages) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=("The goal could not be broken into stages. Try describing "
+                    "the work as a sequence."))
 
-    edges = [
-      { "from": "node_1", "to": "node_2", "label": "capabilities" },
-      { "from": "node_2", "to": "node_3", "label": "execution_plan" },
-      { "from": "node_3", "to": "node_4", "label": "results_for_audit" }
-    ]
+    # RAG over the agent graph, one need at a time (AG §10).
+    resolved, unmatched = [], []
+    seen_steps = set()
+    for stage in stages:
+        found = await _registry_discover_agents(req.org_id, req.project_id,
+                                                stage["need"], top_k=1)
+        if not found:
+            unmatched.append(stage)
+            continue
+        step = stage["step"]
+        # Step identity is the step, not the agent (AG §3.4) — the same agent
+        # may legitimately serve two stages, but two steps cannot share a name.
+        while step in seen_steps:
+            step = f"{step}_2"
+        seen_steps.add(step)
+        resolved.append({"step": step, "need": stage["need"], "agent": found[0]})
+
+    if len(resolved) < 2:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Only {len(resolved)} of {len(stages)} stages matched a "
+                    f"registered agent, which is not enough to compose a "
+                    f"pipeline. Register agents for: "
+                    f"{'; '.join(s['need'] for s in unmatched)}"))
+
+    text_in = {"type": "object",
+               "properties": {"prompt": {"type": "string",
+                                         "description": "The task for this agent"}},
+               "required": ["prompt"]}
+    text_out = {"type": "object",
+                "properties": {"result": {"type": "string",
+                                          "description": "The agent's answer"}}}
+
+    suffix = uuid.uuid4().hex[:8]
+    pipeline_id = f"pln_composed_{suffix}"
+    slug = f"composed-{suffix}"
+    body = {
+        "org_id": req.org_id, "project_id": req.project_id,
+        "identity": {"pipeline_id": pipeline_id, "name": f"Composed {suffix}",
+                     "slug": slug, "telos": req.query, "description": req.query},
+        "version": {
+            "pipeline_id": pipeline_id, "version": "1.0.0",
+            "steps": {s["step"]: {
+                "version_id": f"agv_{s['agent']['agent_id']}_{s['agent']['version']}",
+                "alias": s["agent"].get("slug")} for s in resolved},
+            # Each edge maps one step's declared output to the next step's
+            # declared input. The registry checks that against both schemas at
+            # publish time, so a chain that could not pass data is rejected
+            # before it can run and produce a plausible wrong answer.
+            "dependencies": [
+                {"from_step": resolved[i]["step"], "to_step": resolved[i + 1]["step"],
+                 "relationship": "depends_on",
+                 "payload_map": {"result": "prompt"}}
+                for i in range(len(resolved) - 1)],
+            "entry_steps": [resolved[0]["step"]],
+            "exit_steps": [resolved[-1]["step"]],
+            "input_schema": text_in, "output_schema": text_out,
+            "execution": {"max_iterations": 20, "concurrency": 1,
+                          "on_limit": "halt_and_return"},
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            res = await client.post(f"{AGENT_REGISTRY_URL.rstrip('/')}/pipelines",
+                                    json=body)
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"Agent registry unreachable: {e}") from e
+    if res.status_code != 200:
+        # A rejected composition is reported as rejected, with the registry's
+        # own reason — it names the rule that refused it.
+        raise HTTPException(status_code=res.status_code,
+                            detail=f"The registry refused this pipeline: {res.text[:400]}")
+    registration = res.json()
 
     return {
-        "project_id": project_id,
-        "query": query_text,
-        "dag_nodes": dag_nodes,
-        "edges": edges
+        "org_id": req.org_id,
+        "project_id": req.project_id,
+        "goal": req.query,
+        "pipeline_id": pipeline_id,
+        "slug": slug,
+        "version": registration.get("version", "1.0.0"),
+        "mcp_tool": f"pipeline:{slug}@{registration.get('version', '1.0.0')}",
+        "is_cyclic": registration.get("is_cyclic", False),
+        # The stages, so the interface can show what was decided and why (F.50).
+        "stages": [{
+            "step": s["step"],
+            "need": s["need"],
+            "agent_id": s["agent"]["agent_id"],
+            "agent_name": s["agent"].get("name"),
+            "agent_slug": s["agent"].get("slug"),
+            # The resolved pin — what will actually run (F.51).
+            "version": s["agent"].get("version"),
+            "content_hash": s["agent"].get("content_hash"),
+            "match_distance": s["agent"].get("match_distance"),
+        } for s in resolved],
+        "unmatched_stages": unmatched,
+        "resolved_steps": registration.get("resolved_steps", {}),
+        "status": "published",
     }
+
+
+DECOMPOSE_SYSTEM = """\
+You break a goal into an ordered list of independent processing stages.
+
+Reply with ONLY a JSON array of objects, no prose and no code fences. Each
+object has:
+  "step": a short snake_case identifier
+  "need": one sentence describing the CAPABILITY required, written as a
+          description of what a worker does — not as an instruction
+
+Produce between 2 and 4 stages. Order them so each stage consumes the previous
+stage's output.
+"""
+
+
+async def _decompose_goal(goal: str) -> List[Dict[str, str]]:
+    """Ask the model to break one goal into ordered capability needs.
+
+    Models wrap JSON in fences and prose even when told not to, so the first
+    well-formed array wins rather than the whole reply being required to parse.
+    """
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        res = await client.post(
+            f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            json={"model": DEFAULT_LLM_MODEL, "temperature": 0.0, "max_tokens": 400,
+                  "messages": [{"role": "system", "content": DECOMPOSE_SYSTEM},
+                               {"role": "user", "content": goal}]})
+    if res.status_code != 200:
+        raise HTTPException(status_code=502,
+                            detail=f"The planner model returned {res.status_code}.")
+
+    text = res.json()["choices"][0]["message"]["content"].strip()
+    fenced = re.search(r"```(?:json)?\s*(.+?)```", text, re.S)
+    if fenced:
+        text = fenced.group(1).strip()
+    start, end = text.find("["), text.rfind("]")
+    if start == -1 or end == -1:
+        raise HTTPException(status_code=502,
+                            detail="The planner did not return a usable plan.")
+    try:
+        raw = json.loads(text[start:end + 1])
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=502,
+                            detail=f"The planner's plan did not parse: {e}") from e
+
+    stages = []
+    for index, stage in enumerate(raw):
+        if not isinstance(stage, dict):
+            continue
+        step = re.sub(r"[^a-z0-9_]+", "_",
+                      str(stage.get("step") or f"stage_{index}").lower()).strip("_")
+        need = str(stage.get("need") or "").strip()
+        if need:
+            stages.append({"step": step or f"stage_{index}", "need": need})
+    return stages
+
 
 class VerifySignaturePayload(BaseModel):
     agent_id: str
@@ -1212,92 +1707,161 @@ class MCPCallRequest(BaseModel):
     project_id: str
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
+    org_id: str = DEFAULT_ORG_ID
+    # Recorded on the usage event the tool registry writes (tool-registry-spec
+    # Rule 11.3): without it the ledger says an organisation spent something and
+    # cannot say on what.
+    caller: Dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: Optional[str] = None
+
+def _require_project_key(api_key, authorization):
+    """The project API key, or a 401/400 naming what is wrong with it."""
+    provided = api_key or (authorization.replace("Bearer ", "").strip()
+                           if authorization else None)
+    if not provided:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing Project API Key header. Set 'Authorization: Bearer "
+                   "XXXX-XXXX-XXXX-XXXX' or 'X-Project-API-Key'")
+    if not re.match(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$', provided):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid API Key format. Must be 16 uppercase alphanumeric "
+                   "digits with hyphens (e.g. XXXX-XXXX-XXXX-XXXX)")
+    return provided
+
 
 @app.get("/api/mcp/v1/tools")
-async def list_mcp_agent_tools(project_id: str = Query("proj_alpha_civilization"), api_key: Optional[str] = Header(None, alias="X-Project-API-Key")):
-    """Exposes all registered Prime Agents, Progeny, and GCP Custom Search API as MCP tools over HTTP."""
-    tools = [
-        {
-            "name": "agent_prime_orchestrator",
-            "description": "The Prime Orchestrator [Governance/Orchestrate] - Decomposes goals into multi-stage execution DAGs.",
-            "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}
-        },
-        {
-            "name": "agent_master_strategist",
-            "description": "The Master Strategist [Reasoning/Hierarchy] - Strategic planning and complex problem decomposition.",
-            "inputSchema": {"type": "object", "properties": {"goal": {"type": "string"}}, "required": ["goal"]}
-        },
-        {
-            "name": "agent_anomaly_detector",
-            "description": "The Anomaly Detector [Perception/Loop] - Real-time metric anomaly and fraud scanning.",
-            "inputSchema": {"type": "object", "properties": {"metrics_payload": {"type": "object"}}, "required": ["metrics_payload"]}
-        },
-        {
-            "name": "agent_grand_critic",
-            "description": "The Grand Critic [Reflection/Hierarchy] - Quality assurance and constitutional compliance audit.",
-            "inputSchema": {"type": "object", "properties": {"output_artifact": {"type": "string"}}, "required": ["output_artifact"]}
-        },
-        {
-            "name": "mcp_google_search",
-            "description": "Google Search (GCP API) - Executes web and Google Search queries from within Kubernetes cluster via GCP Custom Search API.",
-            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "num_results": {"type": "integer", "default": 5}}, "required": ["query"]}
-        },
-        {
-            "name": "mcp_document_rag_query",
-            "description": "Document RAG Query (post-graph-rag) - Queries Knowledge Graph RAG across document spaces (or space-agnostically) for a project.",
-            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "space_name": {"type": "string", "description": "Optional target document space. Omit to query across all spaces."}}, "required": ["query"]}
-        }
-    ]
-    return {"mcp_version": "1.0", "project_id": project_id, "tools": tools}
+async def list_mcp_agent_tools(
+    project_id: str = Query("proj_alpha_civilization"),
+    org_id: str = Query(DEFAULT_ORG_ID),
+    api_key: Optional[str] = Header(None, alias="X-Project-API-Key"),
+):
+    """Every MCP tool this project can actually call.
+
+    Aggregated from the two registries that own them: published agent and
+    pipeline versions from the agent registry (AG Rule 7.4), and MCP tools from
+    the tool registry. Nothing is listed that is not callable.
+
+    This endpoint previously returned a hardcoded list of six tools that
+    existed nowhere else in the system — four invented agents, a search tool
+    and a RAG tool — so a client could discover a tool, call it, and receive a
+    fabricated answer from the handler below.
+
+    A registry that cannot be reached is **reported**, not silently omitted: a
+    short list that looks complete is worse than a list that says what is
+    missing.
+    """
+    tools: List[Dict[str, Any]] = []
+    unavailable: List[Dict[str, str]] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            res = await client.get(f"{AGENT_REGISTRY_URL.rstrip('/')}/mcp/tools",
+                                   params={"org_id": org_id, "project_id": project_id})
+            if res.status_code == 200:
+                for tool in res.json().get("tools", []):
+                    tools.append({**tool, "registry": "agent-registry"})
+            else:
+                unavailable.append({"registry": "agent-registry",
+                                    "reason": f"HTTP {res.status_code}"})
+        except Exception as e:
+            unavailable.append({"registry": "agent-registry",
+                                "reason": f"{type(e).__name__}: {e}"})
+
+        try:
+            res = await client.get(f"{TOOL_REGISTRY_URL.rstrip('/')}/tools",
+                                   params={"org_id": org_id, "project_id": project_id})
+            if res.status_code == 200:
+                for tool in res.json().get("tools", []):
+                    tools.append({
+                        "name": tool["tool_id"],
+                        "description": tool.get("description", ""),
+                        "inputSchema": tool.get("input_schema",
+                                                {"type": "object", "properties": {}}),
+                        "registry": "tool-registry",
+                        "side_effects": tool.get("side_effects"),
+                        "pin": tool.get("pin"),
+                    })
+            else:
+                unavailable.append({"registry": "tool-registry",
+                                    "reason": f"HTTP {res.status_code}"})
+        except Exception as e:
+            unavailable.append({"registry": "tool-registry",
+                                "reason": f"{type(e).__name__}: {e}"})
+
+    body = {"mcp_version": "1.0", "org_id": org_id, "project_id": project_id,
+            "tools": tools, "count": len(tools)}
+    if unavailable:
+        body["unavailable"] = unavailable
+        body["warning"] = ("Part of the catalogue could not be read; this list "
+                           "is incomplete.")
+    return body
+
 
 @app.post("/api/mcp/v1/tools/call")
-async def call_mcp_agent_tool(req: MCPCallRequest, api_key: Optional[str] = Header(None, alias="X-Project-API-Key"), authorization: Optional[str] = Header(None)):
-    """Executes a target registered agent via Model Context Protocol (MCP). Restricted by Project API Key."""
-    provided_key = api_key or (authorization.replace("Bearer ", "").strip() if authorization else None)
-    if not provided_key:
-        raise HTTPException(status_code=401, detail="Missing Project API Key header. Set 'Authorization: Bearer XXXX-XXXX-XXXX-XXXX' or 'X-Project-API-Key'")
+async def call_mcp_agent_tool(
+    req: MCPCallRequest,
+    api_key: Optional[str] = Header(None, alias="X-Project-API-Key"),
+    authorization: Optional[str] = Header(None),
+):
+    """Invoke a tool, an agent version or a pipeline version. Restricted by API key.
 
-    pattern = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
-    if not re.match(pattern, provided_key):
-        raise HTTPException(status_code=400, detail="Invalid API Key format. Must be 16 uppercase alphanumeric digits with hyphens (e.g. XXXX-XXXX-XXXX-XXXX)")
+    Routed by name to the registry that owns it — `agent:` and `pipeline:`
+    names to the agent registry, anything else to the tool registry as a
+    `tool_id`.
 
-    if req.tool_name in ["mcp_google_search", "mcp-google-search", "agent_google_search"]:
-        q = req.arguments.get("query", "agents.london")
-        num = req.arguments.get("num_results", 5)
-        
-        # Dispatch to tool registry microservice
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+    **Every failure is reported.** This handler used to answer `status:
+    success` for any name it did not recognise, with an invented
+    `agent_response`, a fabricated `ed25519:` signature and a made-up `28ms`
+    latency; and when the search tool was unreachable it returned an invented
+    search result with a `google.com/search` link presented as a retrieved
+    finding. An agent cannot tell fabricated evidence from real evidence, so
+    this layer must never produce any.
+    """
+    _require_project_key(api_key, authorization)
+
+    name = req.tool_name
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        if name.startswith("agent:") or name.startswith("pipeline:"):
+            try:
                 res = await client.post(
-                    "http://tool-registry-service.default.svc.cluster.local:8002/tools/google-search",
-                    json={"query": q, "num_results": num, "project_id": req.project_id}
-                )
-                if res.status_code == 200:
-                    return res.json()
+                    f"{AGENT_REGISTRY_URL.rstrip('/')}/mcp/tools/{name}/call",
+                    json={"arguments": req.arguments, "org_id": req.org_id,
+                          "project_id": req.project_id})
+            except Exception as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Agent registry unreachable: {e}") from e
+            if res.status_code != 200:
+                raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+            return {"mcp_version": "1.0", "project_id": req.project_id,
+                    "tool": name, **res.json()}
+
+        # Anything else is a tool_id in the tool registry. Legacy underscored
+        # aliases are accepted so existing callers keep working.
+        tool_id = {"mcp_google_search": "mcp-google-search",
+                   "agent_google_search": "mcp-google-search",
+                   "mcp_document_rag_query": "mcp-pgvector-search",
+                   "mcp_pgvector_search": "mcp-pgvector-search",
+                   "mcp_sql_query": "mcp-sql-query",
+                   "mcp_redis_queue": "mcp-redis-queue"}.get(name, name)
+
+        payload = {"arguments": req.arguments, "org_id": req.org_id,
+                   "project_id": req.project_id, "caller": req.caller}
+        if req.idempotency_key:
+            payload["idempotency_key"] = req.idempotency_key
+        try:
+            res = await client.post(
+                f"{TOOL_REGISTRY_URL.rstrip('/')}/tools/{tool_id}/call", json=payload)
         except Exception as e:
-            logger.debug(f"Tool registry microservice search call error: {e}")
+            raise HTTPException(status_code=502,
+                                detail=f"Tool registry unreachable: {e}") from e
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+        return {"mcp_version": "1.0", "project_id": req.project_id,
+                "tool": tool_id, **res.json()}
 
-        return {
-            "status": "success",
-            "source": "gcp_cluster_google_search",
-            "query": q,
-            "results": [
-                {"title": f"Google Search Results for '{q}'", "snippet": f"Retrieved web search results for '{q}' inside Kubernetes cluster via GCP Custom Search API.", "link": f"https://www.google.com/search?q={q}"}
-            ]
-        }
-
-    agent_name = req.tool_name.replace("agent_", "").replace("_", "-")
-    return {
-        "mcp_version": "1.0",
-        "project_id": req.project_id,
-        "tool": req.tool_name,
-        "status": "success",
-        "result": {
-            "agent_response": f"MCP Tool execution complete for agent '{agent_name}'. Input parameters processed under project '{req.project_id}'.",
-            "signature": f"ed25519:mcp_sig_{req.tool_name}",
-            "execution_latency": "28ms"
-        }
-    }
 
 class A2ADispatchRequest(BaseModel):
     project_id: str
@@ -1305,23 +1869,76 @@ class A2ADispatchRequest(BaseModel):
     target_agent_id: str
     payload: Dict[str, Any]
     signature: Optional[str] = None
+    # The realm the target lives in. A registry keeps each organisation in its
+    # own schema, so a delivery that does not name one looks in the wrong
+    # place and reports the target as unregistered.
+    org_id: str = DEFAULT_ORG_ID
 
 @app.post("/api/a2a/v1/dispatch")
-async def dispatch_a2a_agent_message(req: A2ADispatchRequest, api_key: Optional[str] = Header(None, alias="X-Project-API-Key"), authorization: Optional[str] = Header(None)):
-    """Executes Agent-to-Agent (A2A) direct protocol communication. Restricted by Project API Key."""
-    provided_key = api_key or (authorization.replace("Bearer ", "").strip() if authorization else None)
-    if not provided_key:
-        raise HTTPException(status_code=401, detail="Missing Project API Key header. Set 'Authorization: Bearer XXXX-XXXX-XXXX-XXXX' or 'X-Project-API-Key'")
+async def dispatch_a2a_agent_message(
+    req: A2ADispatchRequest,
+    api_key: Optional[str] = Header(None, alias="X-Project-API-Key"),
+    authorization: Optional[str] = Header(None),
+):
+    """Deliver an A2A message to the target agent, and return what it answered.
 
-    pattern = r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$'
-    if not re.match(pattern, provided_key):
-        raise HTTPException(status_code=400, detail="Invalid API Key format. Must be 16 uppercase alphanumeric digits with hyphens (e.g. XXXX-XXXX-XXXX-XXXX)")
+    The message is really delivered: the target agent id is resolved to its
+    published slug and version in the agent registry, and the payload is
+    submitted as an A2A task.
 
+    This endpoint used to publish a Redis event and then return `status:
+    delivered` with a fabricated `ed25519:` acknowledgement and a sentence
+    saying the goal had been "processed successfully" — without ever contacting
+    the target. A sender had no way to tell that from a real delivery.
+    """
+    _require_project_key(api_key, authorization)
+    org_id = getattr(req, "org_id", None) or DEFAULT_ORG_ID
+
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        # Resolve the target to the slug and version its A2A card is published
+        # under. An agent that is not published has no card and cannot receive
+        # a task (AG Rule 7.4).
+        try:
+            found = await client.get(
+                f"{AGENT_REGISTRY_URL.rstrip('/')}/agents/{req.target_agent_id}",
+                params={"org_id": org_id, "project_id": req.project_id})
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"Agent registry unreachable: {e}") from e
+        if found.status_code != 200:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Target agent '{req.target_agent_id}' is not registered "
+                       f"in org '{org_id}'.")
+
+        agent = found.json().get("agent", {})
+        slug, version = agent.get("slug"), agent.get("version")
+        if not slug or not version:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Target agent '{req.target_agent_id}' has no published "
+                       f"version, so it has no A2A card to deliver to.")
+
+        try:
+            res = await client.post(
+                f"{AGENT_REGISTRY_URL.rstrip('/')}/a2a/agents/{slug}/{version}/tasks",
+                json={"arguments": req.payload, "org_id": org_id,
+                      "project_id": req.project_id})
+        except Exception as e:
+            raise HTTPException(status_code=502,
+                                detail=f"A2A delivery failed: {e}") from e
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+        task = res.json()
+
+    # The event stream is a record of what happened, published after the fact
+    # rather than in place of it.
     redis_bus.publish_event("org_global", req.project_id, {
         "event": "a2a_message_dispatched",
         "sender": req.sender_agent_id,
         "target": req.target_agent_id,
-        "payload": req.payload
+        "state": task.get("state"),
+        "payload": req.payload,
     })
 
     return {
@@ -1329,12 +1946,15 @@ async def dispatch_a2a_agent_message(req: A2ADispatchRequest, api_key: Optional[
         "project_id": req.project_id,
         "sender": req.sender_agent_id,
         "target": req.target_agent_id,
-        "status": "delivered",
-        "ack_signature": f"ed25519:a2a_ack_{req.target_agent_id}",
-        "response": {
-            "message": f"A2A message received by '{req.target_agent_id}' from '{req.sender_agent_id}'. Goal intent processed successfully."
-        }
+        "target_card": f"/a2a/agents/{slug}/{version}/card",
+        # The target's real state. A halted run surfaces as `failed` with a
+        # halt_reason and is never reported as completion (AG §11.5).
+        "state": task.get("state"),
+        "status": "delivered" if task.get("state") == "completed" else task.get("state"),
+        "halt_reason": task.get("halt_reason"),
+        "response": task,
     }
+
 
 # =========================================================================
 # DOCUMENT REGISTRY & POST-GRAPH-RAG SPACE ENDPOINTS
@@ -1414,13 +2034,17 @@ async def create_user_org_project(org_id: str, user_id: str, name: str = Query(.
 DOCUMENT_REGISTRY_URL = os.getenv("DOCUMENT_REGISTRY_URL", "http://document-registry-service.default.svc.cluster.local:8003")
 
 @app.post("/api/projects/{project_id}/spaces")
-async def create_document_space(project_id: str, space_name: str = Query(...), description: Optional[str] = None):
+async def create_document_space(project_id: str, space_name: str = Query(...),
+                                description: Optional[str] = None,
+                                org_id: str = Query(DEFAULT_ORG_ID)):
     """Creates a new document space for a project using post-graph space sub-grouping."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces",
-                json={"project_id": project_id, "space_name": space_name, "description": description}
+                json={"org_id": org_id, "project_id": project_id,
+                      "document_space": space_name, "space_name": space_name,
+                      "description": description}
             )
             if res.status_code == 200:
                 return res.json()
@@ -1437,11 +2061,12 @@ async def create_document_space(project_id: str, space_name: str = Query(...), d
     }
 
 @app.get("/api/projects/{project_id}/spaces")
-async def list_document_spaces(project_id: str):
+async def list_document_spaces(project_id: str, org_id: str = Query(DEFAULT_ORG_ID)):
     """Lists all document spaces belonging to a project."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/spaces")
+            res = await client.get(f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/spaces",
+                                   params={"org_id": org_id})
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
@@ -1462,14 +2087,16 @@ async def list_document_spaces(project_id: str):
     }
 
 @app.get("/api/projects/{project_id}/documents")
-async def list_project_documents(project_id: str, space_name: Optional[str] = None):
+async def list_project_documents(project_id: str, space_name: Optional[str] = None,
+                                 org_id: str = Query(DEFAULT_ORG_ID)):
     """Lists all uploaded documents stored persistently in post-graph documents_catalog."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             url = f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/documents"
+            params = {"org_id": org_id}
             if space_name:
-                url += f"?space_name={space_name}"
-            res = await client.get(url)
+                params["document_space"] = space_name
+            res = await client.get(url, params=params)
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
@@ -1478,91 +2105,117 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
     return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
 
 @app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
-async def upload_document_text(project_id: str, space_name: str, document_name: str = Query(...), content: str = Query(...)):
-    """Indexes text content into post-graph-rag under the specified space."""
+async def upload_document_text(project_id: str, space_name: str,
+                               document_name: str = Query(...),
+                               content: str = Query(...),
+                               org_id: str = Query(DEFAULT_ORG_ID)):
+    """Index text into a document space, and report what really happened.
+
+    The registry distinguishes indexed from catalogued-but-not-indexed
+    (document-registry-spec Rule 6.2), and its answer is passed through
+    unchanged. This proxy used to answer `status: success` whenever the
+    registry was unreachable, claiming an ingest that never occurred.
+    """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-text",
                 json={
+                    "org_id": org_id,
                     "project_id": project_id,
+                    "document_space": space_name,
                     "space_name": space_name,
                     "document_name": document_name,
                     "content": content
                 }
             )
-            if res.status_code == 200:
-                return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry: {e}")
-
-    return {
-        "status": "success",
-        "message": f"Text indexed into space '{space_name}'",
-        "document": {"document_name": document_name, "space_name": space_name, "content_length": len(content)}
-    }
+        raise HTTPException(
+            status_code=502,
+            detail=(f"The document registry at {DOCUMENT_REGISTRY_URL} could not "
+                    f"be reached, so nothing was indexed. Reporting success here "
+                    f"would claim a corpus change that did not happen.")) from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+    return res.json()
 
 @app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-file")
-async def upload_document_file(project_id: str, space_name: str, file: UploadFile = File(...)):
+async def upload_document_file(project_id: str, space_name: str,
+                               file: UploadFile = File(...),
+                               org_id: str = Query(DEFAULT_ORG_ID)):
     """Uploads a PDF, DOCX, or text file, extracts content via Docling/PyPDF, and indexes into target space."""
     file_bytes = await file.read()
     filename = file.filename or "uploaded_document"
     files = {"file": (filename, file_bytes, file.content_type or "application/octet-stream")}
-    data = {"project_id": project_id}
+    data = {"project_id": project_id, "org_id": org_id,
+            "document_space": space_name}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-file",
                 data=data,
                 files=files
             )
-            if res.status_code == 200:
-                return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry file upload: {e}")
-
-    return {
-        "status": "success",
-        "message": f"File '{filename}' processed and indexed into space '{space_name}'",
-        "document": {"filename": filename, "space_name": space_name, "content_length": len(file_bytes)}
-    }
+        raise HTTPException(
+            status_code=502,
+            detail=(f"The document registry at {DOCUMENT_REGISTRY_URL} could not "
+                    f"be reached, so nothing was uploaded. Reporting success here "
+                    f"would claim a corpus change that did not happen.")) from e
+    # 415 means no parser could read the file, and the registry stored nothing
+    # (Rule 5.3). That is the caller's answer, not something to smooth over.
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+    return res.json()
 
 @app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-multiple-files")
-async def upload_multiple_document_files(project_id: str, space_name: str, files: List[UploadFile] = File(...)):
+async def upload_multiple_document_files(project_id: str, space_name: str,
+                                        files: List[UploadFile] = File(...),
+                                        org_id: str = Query(DEFAULT_ORG_ID)):
     """Uploads multiple files (PDF, DOCX, PPTX, XLSX, TXT), extracts content via Docling/PyPDF, and indexes all into target space."""
     file_list = []
     for f in files:
         f_bytes = await f.read()
         f_name = f.filename or "uploaded_doc"
         file_list.append(("files", (f_name, f_bytes, f.content_type or "application/octet-stream")))
-    data = {"project_id": project_id}
+    data = {"project_id": project_id, "org_id": org_id,
+            "document_space": space_name}
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=600.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-multiple-files",
                 data=data,
                 files=file_list
             )
-            if res.status_code == 200:
-                return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry batch upload: {e}")
-
-    return {
-        "status": "success",
-        "message": f"Processed and indexed {len(files)} files into space '{space_name}'",
-        "count": len(files)
-    }
+        raise HTTPException(
+            status_code=502,
+            detail=(f"The document registry at {DOCUMENT_REGISTRY_URL} could not "
+                    f"be reached, so nothing was uploaded. Reporting success here "
+                    f"would claim a corpus change that did not happen.")) from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+    # The registry reports per-file outcomes and separate counts (Rule 5.5);
+    # collapsing them to one number is how a partial batch reads as complete.
+    return res.json()
 
 @app.get("/api/projects/{project_id}/rag/graph")
-async def get_rag_graph(project_id: str, query: str = Query(...), space_name: Optional[str] = None, depth: int = Query(1)):
+async def get_rag_graph(project_id: str, query: str = Query(...),
+                        space_name: Optional[str] = None,
+                        depth: int = Query(1),
+                        org_id: str = Query(DEFAULT_ORG_ID)):
     """Returns a focused subgraph from post-graph-rag centered on a search query.
     Use depth=1 for immediate connections, increase to expand the neighborhood."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/query",
-                json={"project_id": project_id, "query": query, "space_name": space_name, "top_k": depth * 5, "mode": "local"}
+                json={"org_id": org_id, "project_id": project_id, "query": query,
+                      "document_space": space_name, "space_name": space_name,
+                      "top_k": depth * 5, "mode": "local"}
             )
             if res.status_code == 200:
                 data = res.json().get("data", {})
@@ -1587,25 +2240,33 @@ async def get_rag_graph(project_id: str, query: str = Query(...), space_name: Op
     return {"project_id": project_id, "query": query, "nodes": [], "edges": [], "chunks": []}
 
 @app.post("/api/projects/{project_id}/rag/query")
-async def query_document_rag(project_id: str, query: str = Query(...), space_name: Optional[str] = None):
-    """Executes GraphRAG retrieval across a specific document space or space-agnostically."""
+async def query_document_rag(project_id: str, query: str = Query(...),
+                             space_name: Optional[str] = None,
+                             org_id: str = Query(DEFAULT_ORG_ID)):
+    """GraphRAG retrieval, scoped to a document space or project-wide.
+
+    The registry's own answer is returned, including whether it had to degrade
+    (Rule 8.2). An empty result used to be manufactured here with
+    `status: success` whenever the registry was unreachable — which an agent
+    reads as "the corpus has nothing to say", not "nobody asked it".
+    """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/query",
-                json={"project_id": project_id, "query": query, "space_name": space_name}
+                json={"org_id": org_id, "project_id": project_id, "query": query,
+                      "document_space": space_name, "space_name": space_name}
             )
-            if res.status_code == 200:
-                return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry query: {e}")
-
-    return {
-        "status": "success",
-        "project_id": project_id,
-        "space_name": space_name or "all_spaces",
-        "data": {"entities": [], "relationships": [], "chunks": []}
-    }
+        raise HTTPException(
+            status_code=502,
+            detail=(f"The document registry at {DOCUMENT_REGISTRY_URL} could not "
+                    f"be reached. An empty result would read as an empty corpus.")
+        ) from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+    return res.json()
 
 @app.websocket("/ws/civilization")
 async def websocket_endpoint(websocket: WebSocket):
