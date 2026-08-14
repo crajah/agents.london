@@ -15,6 +15,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 try:
     from backend.env_config import (
@@ -167,9 +168,11 @@ GENERIC_EMAIL_DOMAINS = {
 DEFAULT_ORG_ID = os.getenv("DEFAULT_ORG_ID", "org_london_meta")
 
 try:
-    from backend.founders import roster as founder_roster, AUTONOMOUS, founder
+    from backend.founders import (roster as founder_roster, AUTONOMOUS,
+                                  founder, founder_prompt)
 except ImportError:                       # running from inside backend/
-    from founders import roster as founder_roster, AUTONOMOUS, founder
+    from founders import (roster as founder_roster, AUTONOMOUS,
+                          founder, founder_prompt)
 
 
 # The registries this backend fronts. One constant each, read from the
@@ -1366,23 +1369,45 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
 
     It replaces a handler that returned four hardcoded DAG nodes with invented
     latencies and `status: success`, composing and running nothing at all.
-    Every field below describes something that happened.
+
+    The work itself lives in `_compose_pipeline`, because the playground stream
+    needs the same composition with progress reported as it happens. Two copies
+    of a composition would eventually compose two different pipelines.
     """
-    stages = await _decompose_goal(req.query)
+    return await _compose_pipeline(req.org_id, req.project_id, req.query)
+
+
+async def _compose_pipeline(org_id: str, project_id: str, goal: str,
+                            emit=None) -> Dict[str, Any]:
+    """Decompose a goal, resolve each stage to a published agent, publish it.
+
+    `emit(event, payload)` is an optional async callback, called as each part
+    actually completes. It is how the playground shows the composition being
+    made rather than presenting it finished — the events are emitted at the
+    moment the thing they describe happens, not replayed afterwards.
+    """
+    async def report(event: str, payload: Dict[str, Any]) -> None:
+        if emit:
+            await emit(event, payload)
+
+    stages = await _decompose_goal(goal)
     if len(stages) < 2:
         raise HTTPException(
             status_code=422,
             detail=("The goal could not be broken into stages. Try describing "
                     "the work as a sequence."))
+    await report("decomposed", {"stages": stages, "count": len(stages)})
 
     # RAG over the agent graph, one need at a time (AG §10).
     resolved, unmatched = [], []
     seen_steps = set()
     for stage in stages:
-        found = await _registry_discover_agents(req.org_id, req.project_id,
+        await report("matching", {"step": stage["step"], "need": stage["need"]})
+        found = await _registry_discover_agents(org_id, project_id,
                                                 stage["need"], top_k=1)
         if not found:
             unmatched.append(stage)
+            await report("unmatched", {"step": stage["step"], "need": stage["need"]})
             continue
         step = stage["step"]
         # Step identity is the step, not the agent (AG §3.4) — the same agent
@@ -1390,7 +1415,15 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
         while step in seen_steps:
             step = f"{step}_2"
         seen_steps.add(step)
-        resolved.append({"step": step, "need": stage["need"], "agent": found[0]})
+        agent = found[0]
+        resolved.append({"step": step, "need": stage["need"], "agent": agent})
+        await report("matched", {
+            "step": step, "need": stage["need"],
+            "agent_id": agent["agent_id"], "agent_name": agent.get("name"),
+            "agent_slug": agent.get("slug"), "version": agent.get("version"),
+            "content_hash": agent.get("content_hash"),
+            "match_distance": agent.get("match_distance"),
+        })
 
     if len(resolved) < 2:
         raise HTTPException(
@@ -1412,9 +1445,9 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
     pipeline_id = f"pln_composed_{suffix}"
     slug = f"composed-{suffix}"
     body = {
-        "org_id": req.org_id, "project_id": req.project_id,
+        "org_id": org_id, "project_id": project_id,
         "identity": {"pipeline_id": pipeline_id, "name": f"Composed {suffix}",
-                     "slug": slug, "telos": req.query, "description": req.query},
+                     "slug": slug, "telos": goal, "description": goal},
         "version": {
             "pipeline_id": pipeline_id, "version": "1.0.0",
             "steps": {s["step"]: {
@@ -1451,10 +1484,10 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
                             detail=f"The registry refused this pipeline: {res.text[:400]}")
     registration = res.json()
 
-    return {
-        "org_id": req.org_id,
-        "project_id": req.project_id,
-        "goal": req.query,
+    composed = {
+        "org_id": org_id,
+        "project_id": project_id,
+        "goal": goal,
         "pipeline_id": pipeline_id,
         "slug": slug,
         "version": registration.get("version", "1.0.0"),
@@ -1476,6 +1509,249 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
         "resolved_steps": registration.get("resolved_steps", {}),
         "status": "published",
     }
+    await report("published", composed)
+    return composed
+
+
+# --------------------------------------------------------- playground stream
+
+class PlaygroundStreamRequest(BaseModel):
+    org_id: str = Field(default=DEFAULT_ORG_ID)
+    project_id: str
+    prompt: str
+    # A single published agent, invoked directly, instead of a composition.
+    agent: Optional[str] = Field(
+        default=None, description="agent:{slug}@{version} to run alone")
+
+
+async def _intake_decision(org_id: str, project_id: str, prompt: str) -> Dict[str, Any]:
+    """What the Intake Praetor decides to do with this prompt.
+
+    The founder's own registered system prompt, so the decision the playground
+    shows is the decision the platform makes — not a second router written for
+    the demo that could disagree with the real one.
+    """
+    system = founder_prompt("intake-praetor") or ""
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            res = await client.post(
+                f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                json={"model": DEFAULT_LLM_MODEL, "temperature": 0.0,
+                      "max_tokens": 900,
+                      "response_format": {"type": "json_object"},
+                      "messages": [
+                          {"role": "system", "content": system},
+                          {"role": "user", "content":
+                              f"Project: {project_id} | Organisation: {org_id}\n\n"
+                              f"Request: {prompt}\n\n"
+                              "Respond with your JSON object only."}]})
+        if res.status_code != 200:
+            raise RuntimeError(f"model router returned {res.status_code}")
+        decision = json.loads(res.json()["choices"][0]["message"]["content"])
+    except Exception as e:
+        logger.warning("intake could not be reached for the playground: %s", e)
+        # Labelled, not silently defaulted: everything downstream inherits this.
+        return {"route": "PIPELINE", "confidence": "low",
+                "reasoning": f"The Intake Praetor could not be reached ({e}); "
+                             f"this was composed as a pipeline without its "
+                             f"judgement."}
+    return decision
+
+
+async def _invoke_agent(org_id: str, project_id: str, mcp_tool: str,
+                        prompt: str) -> Dict[str, Any]:
+    """Run one published agent version by its MCP name, and return what it said."""
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        res = await client.post(
+            f"{AGENT_REGISTRY_URL.rstrip('/')}/mcp/call",
+            json={"tool_name": mcp_tool, "arguments": {"prompt": prompt},
+                  "org_id": org_id, "project_id": project_id})
+    if res.status_code != 200:
+        raise RuntimeError(f"{mcp_tool} returned {res.status_code}: {res.text[:300]}")
+    body = res.json()
+    text = ""
+    for part in body.get("content") or []:
+        if part.get("type") == "text":
+            text += part.get("text") or ""
+    return {"text": text, "isError": bool(body.get("isError")),
+            "usage": body.get("usage") or {}}
+
+
+@app.post("/api/playground/stream", tags=["Playground"])
+async def playground_stream(req: PlaygroundStreamRequest):
+    """The whole journey from a prompt to an answer, streamed as it happens.
+
+    Server-sent events, one per thing that actually occurred:
+
+      accepted    the request was received
+      intake      the Intake Praetor's route, reasoning and confidence
+      decomposed  the stages the planner produced
+      matching    a stage being looked up in the registry
+      matched     the agent it resolved to, with its version and content hash
+      unmatched   a stage with no registered agent — named, never dropped
+      published   the pipeline, pinned and validated by the registry
+      step_start  an agent about to run, with the input it was handed
+      step_end    what that agent actually returned, and how long it took
+      step_error  a stage that failed, with the real reason
+      complete    the final answer and the total elapsed time
+      error       the run could not continue, and why
+
+    The stages are executed one at a time rather than by calling the published
+    pipeline in a single shot. Both run the same pinned versions in the same
+    order with the same payload map; the difference is that this way each
+    agent's real output is available the moment it arrives, which is the point
+    of watching a pipeline work. Nothing here is simulated: there is no typing
+    animation, no invented reasoning trace, and no step that reports a result
+    it did not receive.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    started = datetime.now(timezone.utc)
+
+    async def emit(event: str, payload: Dict[str, Any]) -> None:
+        await queue.put((event, payload))
+
+    async def work() -> None:
+        try:
+            await emit("accepted", {"prompt": req.prompt, "project_id": req.project_id,
+                                    "org_id": req.org_id,
+                                    "at": started.isoformat()})
+
+            # One published agent, run directly. Still a real invocation of a
+            # real pinned version — just without a composition around it.
+            if req.agent:
+                await emit("step_start", {"step": "single", "index": 0, "total": 1,
+                                          "agent": req.agent, "input": req.prompt})
+                begin = datetime.now(timezone.utc)
+                out = await _invoke_agent(req.org_id, req.project_id, req.agent,
+                                          req.prompt)
+                ms = int((datetime.now(timezone.utc) - begin).total_seconds() * 1000)
+                await emit("step_end", {"step": "single", "index": 0,
+                                        "agent": req.agent, "output": out["text"],
+                                        "duration_ms": ms, "usage": out["usage"],
+                                        "failed": out["isError"]})
+                await emit("complete", {
+                    "answer": out["text"], "failed": out["isError"],
+                    "duration_ms": int((datetime.now(timezone.utc) - started)
+                                       .total_seconds() * 1000)})
+                return
+
+            decision = await _intake_decision(req.org_id, req.project_id, req.prompt)
+            await emit("intake", decision)
+
+            route = str(decision.get("route", "PIPELINE")).upper()
+            if route == "REFUSE":
+                await emit("complete", {
+                    "answer": decision.get("refusal_reason")
+                              or "This request was refused at intake.",
+                    "refused": True, "failed": False,
+                    "duration_ms": int((datetime.now(timezone.utc) - started)
+                                       .total_seconds() * 1000)})
+                return
+            if route == "SIMPLE_CHAT" and decision.get("answer"):
+                # The Praetor already answered it. Composing a pipeline for a
+                # greeting would be theatre, and would cost real tokens.
+                await emit("complete", {
+                    "answer": decision["answer"], "failed": False,
+                    "direct": True,
+                    "duration_ms": int((datetime.now(timezone.utc) - started)
+                                       .total_seconds() * 1000)})
+                return
+
+            composed = await _compose_pipeline(req.org_id, req.project_id,
+                                               req.prompt, emit=emit)
+
+            # Execute the published stages in dependency order, feeding each
+            # one the previous stage's output — the payload map the pipeline
+            # declares and the registry validated.
+            stages = composed["stages"]
+            carried = req.prompt
+            outputs = []
+            for index, stage in enumerate(stages):
+                mcp_tool = f"agent:{stage['agent_slug']}@{stage['version']}"
+                await emit("step_start", {
+                    "step": stage["step"], "index": index, "total": len(stages),
+                    "need": stage["need"], "agent": mcp_tool,
+                    "agent_name": stage["agent_name"],
+                    "version": stage["version"],
+                    "content_hash": stage["content_hash"],
+                    "input": carried})
+                begin = datetime.now(timezone.utc)
+                try:
+                    out = await _invoke_agent(req.org_id, req.project_id,
+                                              mcp_tool, carried)
+                except Exception as e:
+                    ms = int((datetime.now(timezone.utc) - begin).total_seconds() * 1000)
+                    await emit("step_error", {
+                        "step": stage["step"], "index": index, "agent": mcp_tool,
+                        "error": str(e), "duration_ms": ms})
+                    # A halted pipeline is not a pipeline that produced a
+                    # shorter answer. It stops, and says where.
+                    await emit("complete", {
+                        "answer": None, "failed": True,
+                        "halted_at": stage["step"], "reason": str(e),
+                        "duration_ms": int((datetime.now(timezone.utc) - started)
+                                           .total_seconds() * 1000)})
+                    return
+                ms = int((datetime.now(timezone.utc) - begin).total_seconds() * 1000)
+                outputs.append(out["text"])
+                await emit("step_end", {
+                    "step": stage["step"], "index": index, "agent": mcp_tool,
+                    "agent_name": stage["agent_name"],
+                    "output": out["text"], "duration_ms": ms,
+                    "usage": out["usage"], "failed": out["isError"]})
+                if out["isError"]:
+                    await emit("complete", {
+                        "answer": None, "failed": True,
+                        "halted_at": stage["step"],
+                        "reason": out["text"][:500],
+                        "duration_ms": int((datetime.now(timezone.utc) - started)
+                                           .total_seconds() * 1000)})
+                    return
+                carried = out["text"]
+
+            await emit("complete", {
+                "answer": outputs[-1] if outputs else None,
+                "failed": False,
+                "pipeline_id": composed["pipeline_id"],
+                "mcp_tool": composed["mcp_tool"],
+                "stages_run": len(outputs),
+                "duration_ms": int((datetime.now(timezone.utc) - started)
+                                   .total_seconds() * 1000)})
+
+        except HTTPException as e:
+            await emit("error", {"status": e.status_code, "detail": e.detail})
+        except Exception as e:
+            logger.exception("playground stream failed")
+            await emit("error", {"status": 500, "detail": str(e)})
+        finally:
+            await queue.put(None)
+
+    async def events():
+        task = asyncio.create_task(work())
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    # A comment line keeps the connection open through proxies
+                    # while a slow agent is still thinking.
+                    yield ": keepalive\n\n"
+                    continue
+                if item is None:
+                    break
+                event, payload = item
+                yield f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                 # nginx and friends buffer streamed responses by default,
+                 # which turns a live trace into one delivery at the end.
+                 "X-Accel-Buffering": "no"})
 
 
 DECOMPOSE_SYSTEM = """\
@@ -1543,16 +1819,18 @@ class VerifySignaturePayload(BaseModel):
 
 @app.post("/api/civilization/verify")
 async def verify_civilization_agent(req: VerifySignaturePayload):
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            res = await client.post("http://localhost:8001/agents/verify", json=req.model_dump())
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        logger.debug(f"Verification service call error: {e}")
-    
-    return {"agent_id": req.agent_id, "verified": True, "computed_digest": "verified_digest"}
+    """Signature verification, by the registry that holds the key.
+
+    This used to answer `verified: true` with a `computed_digest` of
+    "verified_digest" whenever the registry could not be reached — a hardcoded
+    string standing in for a check that never ran. An unverifiable signature
+    reported as valid is the single failure this mechanism exists to prevent.
+    """
+    res = await _registry_call("POST", "/agents/verify",
+                               json_body=req.model_dump())
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:400])
+    return res.json()
 
 @app.post("/api/sessions")
 async def initiate_session(req: InitiateSessionRequest):

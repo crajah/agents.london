@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Paper, Typography, Button, Chip, Stack, ToggleButtonGroup, ToggleButton, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import AddIcon from '@mui/icons-material/Add';
 import GavelIcon from '@mui/icons-material/Gavel';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -193,7 +192,7 @@ export default function CivilizationGraphView({ state, onOpenMaterialize, reload
       >
         <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ fontSize: 18 }} />}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 1 }}>
-            <GavelIcon sx={{ fontSize: 18 }} /> The 4 Core Directives ("The Constitution")
+            <GavelIcon sx={{ fontSize: 18 }} /> The 4 Core Directives (“The Constitution”)
           </Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ pt: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -201,7 +200,7 @@ export default function CivilizationGraphView({ state, onOpenMaterialize, reload
             1. <strong>Directive of Preservation:</strong> No agent shall act in a manner that threatens the infrastructural integrity of the Civilization itself.
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            2. <strong>Directive of Purpose:</strong> Every agent must possess a definable objective (its "Telos") and actively work towards its fulfillment.
+            2. <strong>Directive of Purpose:</strong> Every agent must possess a definable objective (its “Telos”) and actively work towards its fulfillment.
           </Typography>
           <Typography variant="caption" color="text.secondary">
             3. <strong>Directive of Compliance:</strong> All agents must yield to the directives of recognized Oversight and Judicature agents.

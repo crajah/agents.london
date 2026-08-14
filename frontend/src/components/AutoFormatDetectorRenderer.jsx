@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import {
-  Box, Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  IconButton, Tooltip, Chip, Stack, Button, Divider, ToggleButtonGroup, ToggleButton
+  Box, Paper, Typography,
+  IconButton, Tooltip, Chip, Stack, Divider, ToggleButtonGroup, ToggleButton
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import CodeIcon from '@mui/icons-material/Code';
-import TableChartIcon from '@mui/icons-material/TableChart';
 import DataObjectIcon from '@mui/icons-material/DataObject';
 import WebIcon from '@mui/icons-material/Web';
 import LaunchIcon from '@mui/icons-material/Launch';
@@ -171,7 +170,7 @@ export default function AutoFormatDetectorRenderer({ content }) {
     try {
       jsonObject = JSON.parse(potentialJson);
       jsonString = JSON.stringify(jsonObject, null, 2);
-    } catch (e) {
+    } catch {
       jsonObject = null;
     }
   }

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api, attempt } from '../utils/api';
 import { casteColor } from '../utils/caste';
 import {
-  Box, Paper, Typography, TextField, Button, Chip, Stack, Card, CardContent, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
+  Box, Paper, Typography, TextField, Button, Chip, Stack, CircularProgress, LinearProgress, Divider, Dialog, DialogTitle, DialogContent, DialogActions, IconButton
 , Alert, Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -38,7 +37,7 @@ export default function AgentDiscoveryView({ state }) {
 
   // Discovery is cheap and runs as you type. Composition is not — it calls a
   // planner model and publishes a pipeline — so it is an explicit action (F.50).
-  const handleDiscover = async (queryToUse) => {
+  const handleDiscover = useCallback(async (queryToUse) => {
     const q = (queryToUse || goalQuery).trim();
     if (!q) return;
     setSearching(true);
@@ -55,7 +54,9 @@ export default function AgentDiscoveryView({ state }) {
       setDiscoveredAgents(data.discovered_agents || []);
     }
     setSearching(false);
-  };
+    // Memoised because the debounce effect below runs it, and an effect whose
+    // dependency list omits the function it calls can go on calling a stale one.
+  }, [goalQuery]);
 
   const composedPipeline = (composition?.stages || []).map((s, index) => ({
     id: s.step,
@@ -76,7 +77,7 @@ export default function AgentDiscoveryView({ state }) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => handleDiscover(goalQuery), 600);
     return () => clearTimeout(debounceRef.current);
-  }, [state.projectId, state.orgId, goalQuery]);
+  }, [state.projectId, state.orgId, goalQuery, handleDiscover]);
 
   /**
    * One goal in, one published pipeline out (F.50).
@@ -441,7 +442,7 @@ export default function AgentDiscoveryView({ state }) {
 
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            Visualizing multi-agent DAG topology for query: <em>"{goalQuery}"</em>
+            Visualizing multi-agent DAG topology for query: <em>“{goalQuery}”</em>
           </Typography>
 
           {/* Interactive DAG Directed Arrows View */}
