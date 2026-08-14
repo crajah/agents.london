@@ -1,0 +1,60 @@
+# What the root build context must not carry.
+#
+# The three registry images build from the repository root, because each copies
+# a shared module out of backend/ and a service-scoped context cannot see
+# outside its own directory. The cost of that is the whole repository being
+# sent to the daemon — including 27MB of .git and 212MB of frontend
+# node_modules, none of which any image installs. That is slow, and it makes
+# every unrelated file a cache-invalidating input.
+#
+# The frontend and backend images build from their own directories and use
+# their own ignore files; this one applies only to the root-context builds.
+
+.git
+.github
+.gitignore
+
+# 332MB of credentials and installers that must never enter a build context,
+# let alone an image layer. Already gitignored; ignored here for the same
+# reason, because a root context sends everything the ignore file does not stop.
+secrets
+**/*secret*
+*.dmg
+*.pem
+*.p12
+*.key
+
+# Never bake a real environment file into an image.
+.env
+.env.*
+!.env.example
+
+# Installed, not copied.
+**/node_modules
+**/dist
+**/build
+**/.vite
+
+# Python build and cache artefacts.
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/venv
+**/*.egg-info
+
+# The end-to-end suite needs a live database and three running servers; it does
+# not belong in an image.
+tests
+test_civilization.py
+
+# Documentation and local scratch.
+spec
+docs
+*.md
+!services/*/README.md
+.DS_Store
+**/.idea
+**/.vscode

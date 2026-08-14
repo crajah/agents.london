@@ -47,9 +47,15 @@ jobs:
             context: .
             dockerfile: services/agent-registry/Dockerfile
           - name: tool-registry
-            context: services/tool-registry
+            # Root context, for the same reason as the agent registry: this
+            # image copies backend/metering.py and backend/embedding.py, and a
+            # service-scoped context cannot see outside its own directory.
+            context: .
+            dockerfile: services/tool-registry/Dockerfile
           - name: document-registry-service
-            context: services/document-registry
+            # Root context: this image copies backend/metering.py.
+            context: .
+            dockerfile: services/document-registry/Dockerfile
           - name: agent-london-backend
             context: backend
           - name: agent-london-frontend
