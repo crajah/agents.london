@@ -34,6 +34,16 @@ AGENT_REGISTRY_URL = os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
 DOCUMENT_REGISTRY_URL = os.getenv("DOCUMENT_REGISTRY_URL", "http://localhost:8003")
 
 
+def web_search_configured() -> bool:
+    """Whether this deployment can actually reach the web.
+
+    Read here rather than assumed, so the difference between "this realm has no
+    web search" and "this deployment was never given search credentials" is a
+    fact the system knows about itself and can say out loud.
+    """
+    return bool(os.getenv("GOOGLE_SEARCH_API_KEY") and os.getenv("GOOGLE_SEARCH_CX"))
+
+
 def _object(properties: Dict[str, Any], required: Optional[List[str]] = None) -> Dict[str, Any]:
     return {"type": "object", "properties": properties,
             "required": required or [], "additionalProperties": True}
@@ -72,7 +82,32 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
             },
         }
 
-    return [
+    tools = []
+
+    # Web search is seeded only when it is configured. The tool registry's
+    # search endpoint returns 503 without GOOGLE_SEARCH_API_KEY and
+    # GOOGLE_SEARCH_CX, and publishing a tool that cannot work is worse than
+    # publishing none: an agent plans around it and fails at the moment it
+    # calls, which is the most expensive moment to find out.
+    if web_search_configured():
+        tools.append(body(
+            "mcp-web-search", "Web search",
+            "Search the public web and return titles, snippets and links. Use "
+            "it for anything outside this project's own documents — current "
+            "events, external facts, other organisations.",
+            f"{tool}/tools/google-search", "external",
+            _object({
+                "query": {"type": "string", "description": "What to search for"},
+                "num_results": {"type": "integer",
+                                "description": "How many results, 1 to 10"},
+            }, ["query"]),
+            _object({"results": {"type": "array",
+                                 "description": "Titles, snippets and links"},
+                     "count": {"type": "integer"}}),
+            ["web_search", "internet", "current_events", "external_research"],
+        ))
+
+    return tools + [
         body(
             "mcp-pgvector-search", "Document retrieval",
             "Retrieve passages from this project's document spaces by meaning. "
@@ -202,8 +237,21 @@ async def ensure_platform_tools(org_id: str,
             "count": len(registered)}
 
 
-# The tools a founding agent may pin. Anything not in this set has to be
-# registered by the Toolwright before an agent can name it.
+# The tools a founding agent may pin. Derived from the definitions above rather
+# than written out again: a second list would eventually name a tool that is no
+# longer seeded, and a founder would be born pinning it.
+def platform_tool_ids() -> tuple:
+    """Every tool this deployment seeds, including the optional ones."""
+    return tuple(spec["identity"]["tool_id"] for spec in platform_tools("_ids"))
+
+
+# The tools that are always present, whatever the deployment is configured with.
 PLATFORM_TOOL_IDS = ("mcp-pgvector-search", "mcp-document-ingest",
                      "mcp-agent-discovery", "mcp-tool-discovery",
                      "mcp-agent-invoke")
+
+# Tools that exist only when the deployment can support them. A founder may
+# name one, and its prompt will only mention it where it is actually published.
+OPTIONAL_TOOL_IDS = ("mcp-web-search",)
+
+ALL_TOOL_IDS = PLATFORM_TOOL_IDS + OPTIONAL_TOOL_IDS

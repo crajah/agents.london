@@ -1524,14 +1524,44 @@ class PlaygroundStreamRequest(BaseModel):
         default=None, description="agent:{slug}@{version} to run alone")
 
 
+async def _published_tool_ids(org_id: str,
+                              project_id: Optional[str] = None) -> Optional[List[str]]:
+    """Which tools this realm actually has, or None if the registry is unreachable.
+
+    None means "do not filter": a founder told about no tools at all would
+    refuse everything, which is a worse failure than a prompt that overstates
+    the toolbelt by one entry.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(f"{TOOL_REGISTRY_URL.rstrip('/')}/tools",
+                                   params={"org_id": org_id,
+                                           "project_id": project_id})
+        if res.status_code != 200:
+            return None
+        return [tool["tool_id"] for tool in res.json().get("tools", [])
+                if tool.get("tool_id")]
+    except Exception as e:
+        logger.warning("could not read the toolbelt for %s/%s: %s",
+                       org_id, project_id, e)
+        return None
+
+
 async def _intake_decision(org_id: str, project_id: str, prompt: str) -> Dict[str, Any]:
     """What the Intake Praetor decides to do with this prompt.
 
     The founder's own registered system prompt, so the decision the playground
     shows is the decision the platform makes — not a second router written for
     the demo that could disagree with the real one.
+
+    The realm's actual toolbelt is passed in, so the Praetor is told what this
+    deployment can do rather than what a founder would like to hold. Without
+    it, a request to search the web was refused as "not granted to this realm"
+    in deployments that had search — the Praetor was reasoning about a fixed
+    tool list rather than a real one.
     """
-    system = founder_prompt("intake-praetor") or ""
+    system = founder_prompt("intake-praetor", await _published_tool_ids(org_id,
+                                                                        project_id)) or ""
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
             res = await client.post(

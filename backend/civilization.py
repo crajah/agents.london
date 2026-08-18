@@ -514,7 +514,9 @@ class AgentCivilizationEngine:
         # kept its own list of twenty-eight; the engine that actually runs kept
         # a different list of four. Two rosters for one civilisation is two
         # civilisations, and only one of them was ever provisioned.
-        prime_agents_def = roster(project_id)
+        published = [pin.get("tool_id") for pin in seeded["registered"]
+                     if pin.get("tool_id")]
+        prime_agents_def = roster(project_id, published)
 
         provisioned_agents = []
         for p_def in prime_agents_def:
