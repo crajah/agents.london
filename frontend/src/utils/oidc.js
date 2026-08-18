@@ -8,8 +8,13 @@
  * All tokens and codes are verified server-side via /api/auth/{provider}/verify.
  */
 
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-export const MS_CLIENT_ID = import.meta.env.VITE_MS_CLIENT_ID || '';
+// `import.meta.env` is Vite's, and does not exist under plain Node — which made
+// this module impossible to test at all. Reading it through a guard costs
+// nothing in the bundle and makes the sign-in helpers reachable from tests.
+const _env = (typeof import.meta !== 'undefined' && import.meta.env) || {};
+
+export const GOOGLE_CLIENT_ID = _env.VITE_GOOGLE_CLIENT_ID || '';
+export const MS_CLIENT_ID = _env.VITE_MS_CLIENT_ID || '';
 
 // ─── JWT Parsing (display only — auth decisions use server-side verification) ─
 
@@ -123,47 +128,109 @@ export function checkAndHandleOidcCallback() {
  * @param {(session: {email, orgId, userId, verified, provider}) => void} onSuccess
  * @param {(error: string) => void} onError
  */
+/**
+ * What a `403` from Google actually means, said in a way that can be acted on.
+ *
+ * Google Identity Services requests `accounts.google.com/gsi/status` before it
+ * will show anything, and answers `403 Forbidden` when the page's origin is not
+ * an Authorized JavaScript origin for that client. Nothing in the page can fix
+ * that, so the least this can do is name the two values that have to match —
+ * the origin and the client — instead of leaving a 403 in the console and a
+ * button that does nothing.
+ */
+export function googleOriginHelp(clientId) {
+  const origin = window.location.origin;
+  // The whole client id, not a prefix. It is public — it ships in the bundle —
+  // and a project with several OAuth clients has several that share a prefix,
+  // so a truncated one cannot be matched against the console, which is the one
+  // thing this message exists to let someone do.
+  const id = clientId || '(none — VITE_GOOGLE_CLIENT_ID was empty at build time)';
+  return (
+    `Google rejected this origin. Add ${origin} to the OAuth client's ` +
+    `"Authorized JavaScript origins" (and to "Authorized redirect URIs" for the ` +
+    `popup fallback) in the Google Cloud console, for client ${id}. ` +
+    `A 403 from accounts.google.com means the origin and the client do not match.`
+  );
+}
+
 export function triggerGoogleOIDC(onSuccess, onError) {
   const clientId = GOOGLE_CLIENT_ID;
   if (!clientId) {
-    onError('Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID in .env');
+    onError('Google sign-in is not configured: VITE_GOOGLE_CLIENT_ID was empty '
+            + 'when this bundle was built. It is a build-time value, so setting '
+            + 'it now requires a rebuild.');
     return;
   }
 
-  // Primary: Google Identity Services SDK
-  if (window.google?.accounts?.id) {
+  const onCredential = async (response) => {
     try {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response) => {
-          try {
-            const data = await verifyWithBackend('google', { id_token: response.credential });
-            onSuccess({
-              email: data.email,
-              orgId: data.org_id,
-              userId: data.user_id,
-              verified: true,
-              provider: 'google',
-            });
-          } catch (err) {
-            onError(err.message);
-          }
-        },
+      const data = await verifyWithBackend('google', { id_token: response.credential });
+      onSuccess({
+        email: data.email,
+        orgId: data.org_id,
+        userId: data.user_id,
+        verified: true,
+        provider: 'google',
       });
-      window.google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          // One Tap suppressed (cooldown, browser settings, etc.) — use popup
-          _googleAuthCodePopup(clientId, onSuccess, onError);
-        }
-      });
-      return;
     } catch (err) {
-      console.warn('GIS SDK error, falling back to popup:', err);
+      onError(err.message);
     }
+  };
+
+  // Only one fallback, however many ways the attempt fails.
+  let handedOff = false;
+  const fallback = (why) => {
+    if (handedOff) return;
+    handedOff = true;
+    if (why) console.warn('Google One Tap unavailable:', why);
+    _googleAuthCodePopup(clientId, onSuccess, onError);
+  };
+
+  if (!window.google?.accounts?.id) {
+    // The GIS script is loaded async in index.html and may not have arrived,
+    // or may be blocked by an extension or a content blocker.
+    fallback('the Google Identity script has not loaded');
+    return;
   }
 
-  // Fallback: authorization code popup
-  _googleAuthCodePopup(clientId, onSuccess, onError);
+  try {
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: onCredential,
+      // GIS reports origin and configuration failures here rather than
+      // throwing. Without it, a rejected origin is a console 403 and a button
+      // that does nothing at all.
+      error_callback: (err) => {
+        const kind = err?.type || err?.message || 'unknown';
+        if (String(kind).includes('origin') || String(kind).includes('unregistered')) {
+          handedOff = true;
+          onError(googleOriginHelp(clientId));
+          return;
+        }
+        fallback(kind);
+      },
+    });
+
+    window.google.accounts.id.prompt((notification) => {
+      // `isNotDisplayed()` and `isSkippedMoment()` are deprecated, and throw
+      // once FedCM is on — which is the default. They used to be called
+      // unguarded from inside this callback, so the exception escaped the try
+      // block around `prompt()` entirely: One Tap silently did nothing and the
+      // popup fallback never ran. Anything other than a displayed prompt is
+      // treated as "use the popup".
+      let displayed = false;
+      try {
+        displayed = typeof notification?.isDisplayed === 'function'
+          ? notification.isDisplayed()
+          : false;
+      } catch {
+        displayed = false;
+      }
+      if (!displayed) fallback('One Tap was not displayed');
+    });
+  } catch (err) {
+    fallback(err?.message || err);
+  }
 }
 
 function _googleAuthCodePopup(clientId, onSuccess, onError) {
@@ -287,7 +354,17 @@ function _openOAuthPopup(authUrl, provider, redirectUri, onSuccess, onError, cod
         setTimeout(() => {
           if (!resolved) {
             window.removeEventListener('message', messageHandler);
-            onError('Authentication window was closed');
+            // A closed window with no result is usually someone changing their
+            // mind — but it is also what a rejected origin looks like, because
+            // the provider shows its own error page and the person closes it.
+            // Naming the second possibility costs nothing and saves the search
+            // through a console for a 403 nobody was looking for.
+            onError(
+              provider === 'google'
+                ? `Authentication window closed before sign-in finished. `
+                  + `If it showed an error rather than a sign-in prompt: `
+                  + googleOriginHelp(GOOGLE_CLIENT_ID)
+                : 'Authentication window was closed');
           }
         }, 1000);
       }

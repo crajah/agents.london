@@ -222,3 +222,25 @@ test('the context is readable, so the shell can prove what it set', () => {
   setApiContext({ orgId: 'org_z', projectId: 'proj_z' });
   assert.deepEqual(getApiContext(), { orgId: 'org_z', projectId: 'proj_z' });
 });
+
+// ------------------------------------------------------------------- sign-in
+
+test('a rejected Google origin is explained, not left as a console 403', async () => {
+  globalThis.window = { location: { origin: 'https://agents.london' } };
+  const { googleOriginHelp } = await import('../src/utils/oidc.js');
+
+  const help = googleOriginHelp('976346242948-poehj19t44aff.apps.googleusercontent.com');
+
+  // The two values that have to match, both named.
+  assert.match(help, /https:\/\/agents\.london/);
+  assert.match(help, /976346242948-poehj19t44aff\.apps\.googleusercontent\.com/);
+  assert.match(help, /Authorized JavaScript origins/);
+  delete globalThis.window;
+});
+
+test('the help text survives a missing client id', async () => {
+  globalThis.window = { location: { origin: 'http://localhost:3000' } };
+  const { googleOriginHelp } = await import('../src/utils/oidc.js');
+  assert.match(googleOriginHelp(''), /VITE_GOOGLE_CLIENT_ID was empty/);
+  delete globalThis.window;
+});
