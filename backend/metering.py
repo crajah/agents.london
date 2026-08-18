@@ -76,6 +76,32 @@ class UsageEvent:
         return d
 
 
+def _counter(name: str, documentation: str, labelnames: List[str]):
+    """A counter registered once per process, however often this is called.
+
+    `Counter(...)` registers into a global registry and raises on a second
+    registration of the same name. Every `Meter` builds a sink, and this module
+    is imported twice in the same process under two names — `metering` inside a
+    service image, `backend.metering` in the backend — so the second one raised
+    `DuplicateTimeseries` and took the service down with it. Nothing showed it
+    until prometheus_client arrived as a transitive dependency and the
+    ImportError guard stopped catching everything.
+
+    So: build it, and if the name is already taken, use the collector that
+    already holds it.
+    """
+    from prometheus_client import REGISTRY, Counter
+    try:
+        return Counter(name, documentation, labelnames)
+    except Exception:
+        existing = getattr(REGISTRY, "_names_to_collectors", {})
+        # prometheus strips the `_total` suffix for the collector's own name.
+        found = existing.get(name) or existing.get(name.removesuffix("_total"))
+        if found is None:
+            raise
+        return found
+
+
 class PrometheusSink:
     """Counters for the existing scrape. No new infrastructure (spec §12.2).
 
@@ -86,21 +112,28 @@ class PrometheusSink:
     def __init__(self) -> None:
         self.enabled = False
         try:
-            from prometheus_client import Counter
+            import prometheus_client  # noqa: F401
         except ImportError:
             logger.info("prometheus_client not installed; metrics endpoint disabled")
             return
         labels = ["org_id", "kind"]
-        self.bytes = Counter("agentslondon_bytes_processed_total",
-                             "Bytes processed, by organisation and operation", labels)
-        self.tokens_in = Counter("agentslondon_tokens_input_total",
-                                 "Input tokens, by organisation and operation", labels)
-        self.tokens_out = Counter("agentslondon_tokens_output_total",
-                                  "Output tokens, by organisation and operation", labels)
-        self.compute = Counter("agentslondon_compute_units_total",
-                               "Compute units (total tokens x 4)", labels)
-        self.dropped = Counter("agentslondon_usage_events_dropped_total",
-                               "Usage events lost to a full queue", ["org_id"])
+        try:
+            self.bytes = _counter("agentslondon_bytes_processed_total",
+                                  "Bytes processed, by organisation and operation", labels)
+            self.tokens_in = _counter("agentslondon_tokens_input_total",
+                                      "Input tokens, by organisation and operation", labels)
+            self.tokens_out = _counter("agentslondon_tokens_output_total",
+                                       "Output tokens, by organisation and operation", labels)
+            self.compute = _counter("agentslondon_compute_units_total",
+                                    "Compute units (total tokens x 4)", labels)
+            self.dropped = _counter("agentslondon_usage_events_dropped_total",
+                                    "Usage events lost to a full queue", ["org_id"])
+        except Exception:
+            # Observability is not worth failing a service over — the same
+            # judgement as the ImportError above. The ledger is what must not
+            # be lost, and it is written regardless.
+            logger.exception("prometheus counters unavailable; metrics disabled")
+            return
         self.enabled = True
 
     def observe(self, e: UsageEvent) -> None:

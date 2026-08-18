@@ -84,3 +84,88 @@ def test_the_cluster_and_the_code_agree_on_the_defaults():
                           ("RAG_EMBEDDING_MODEL", env_config.EMBEDDING_MODEL),
                           ("RAG_EMBEDDING_DIM", str(env_config.EMBEDDING_DIM))):
         assert f'{key}: "{expected}"' in text, f"{key} disagrees with env_config"
+
+
+# ------------------------------------------------------------ manifest shape
+
+MANIFESTS = sorted((ROOT / "deploy" / "k8s").glob("*.yaml")) if (
+    ROOT / "deploy" / "k8s").is_dir() else []
+
+
+def load_manifests():
+    import yaml
+    for path in MANIFESTS:
+        for doc in yaml.safe_load_all(path.read_text()):
+            if doc:
+                yield path.name, doc
+
+
+def test_a_read_write_once_volume_is_never_rolling_updated():
+    """The deadlock that stopped a deploy:
+
+        Multi-Attach error for volume "pvc-…": Volume is already used by
+        pod(s) document-registry-64c55478bd-9d99z
+
+    A ReadWriteOnce volume attaches to one node at a time. A Deployment's
+    default strategy starts the replacement before stopping the original, so
+    the new pod waits forever for a volume the old pod will not release until
+    the new one is ready. It cannot resolve itself.
+
+    Either the workload does not need the volume, or the strategy must be
+    Recreate — never a rolling update over an RWO claim.
+    """
+    if not MANIFESTS:
+        pytest.skip("no manifests in this checkout")
+
+    rwo_claims = {doc["metadata"]["name"]
+                  for _, doc in load_manifests()
+                  if doc.get("kind") == "PersistentVolumeClaim"
+                  and "ReadWriteOnce" in (doc.get("spec", {}).get("accessModes") or [])}
+
+    offenders = []
+    for name, doc in load_manifests():
+        if doc.get("kind") != "Deployment":
+            continue
+        spec = doc.get("spec", {})
+        strategy = (spec.get("strategy") or {}).get("type", "RollingUpdate")
+        claims = {v["persistentVolumeClaim"]["claimName"]
+                  for v in (spec.get("template", {}).get("spec", {}).get("volumes") or [])
+                  if "persistentVolumeClaim" in v}
+        clashing = claims & rwo_claims
+        if clashing and strategy != "Recreate":
+            offenders.append(f"{name}: {doc['metadata']['name']} rolling-updates "
+                             f"over {sorted(clashing)}")
+
+    assert not offenders, "\n".join(offenders)
+
+
+def test_no_workload_mounts_a_volume_nothing_writes_to():
+    """The document registry carried a 5Gi claim it never opened a file on.
+
+    It persists through post-graph, into PostgreSQL. The volume bought nothing
+    and cost a deploy: it is the claim that deadlocked the rollout.
+    """
+    if not MANIFESTS:
+        pytest.skip("no manifests in this checkout")
+
+    sources = " ".join(
+        path.read_text()
+        for directory in ("backend", "services")
+        for path in (ROOT / directory).rglob("*.py"))
+
+    unused = []
+    for name, doc in load_manifests():
+        if doc.get("kind") != "Deployment":
+            continue
+        for container in doc["spec"]["template"]["spec"].get("containers", []):
+            # A mount earns its place if the code writes there, or if the
+            # container is configured to — a cache directory is named by an
+            # environment variable, not by a line of Python.
+            configured = " ".join(str(e.get("value", ""))
+                                  for e in container.get("env") or [])
+            for mount in container.get("volumeMounts") or []:
+                path = mount["mountPath"]
+                if path not in sources and path not in configured:
+                    unused.append(f"{name}: {container['name']} mounts {path}, "
+                                  f"which nothing reads, writes or points at")
+    assert not unused, "\n".join(unused)
