@@ -17,11 +17,11 @@ from pydantic import BaseModel, Field
 
 from post_graph import AsyncPostGraph
 
-from tool_api import router as tool_router
+from tool_api import discovery_embedding, router as tool_router
 from tool_cache import ToolCache
-from tool_model import ToolIdentity, ToolVersionSpec
+from tool_model import DORMANT, ToolIdentity, ToolVersionSpec
 from tool_store import (
-    ensure_schema, list_realms, list_tools, register_or_bump,
+    ensure_schema, list_realms, list_tools, register_or_bump, set_lifecycle,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,14 +184,54 @@ async def seed_default_tools(client, cache: ToolCache) -> int:
         spec = ToolVersionSpec(tool_id=identity.tool_id, version="1.0.0",
                                **version_fields)
         try:
-            record = await register_or_bump(client, identity, spec)
+            # With the discovery vector, or the tool is registered and then
+            # cannot be found by the search every agent uses to look for it.
+            record = await register_or_bump(
+                client, identity, spec,
+                embedding=await discovery_embedding(identity, spec))
         except Exception:
             logger.exception("failed to seed tool %s", identity.tool_id)
             continue
         cache.put(SEED_REALM, identity.tool_id, record.get("version"),
                   identity.model_dump(mode="json"), record)
         seeded += 1
+
+    await retire_withdrawn_defaults(client)
     return seeded
+
+
+async def retire_withdrawn_defaults(client) -> int:
+    """Withdraw first-party tools that are no longer in the catalogue.
+
+    A renamed or removed default leaves its old identity published, pointing at
+    an endpoint this service no longer serves — `mcp-google-search` outlived the
+    endpoint it named by exactly one rename. Listed, discoverable, and a 404 the
+    moment an agent believes it and calls.
+
+    Dormancy, not deletion: a published agent version may pin it, and its hash
+    certifies that pin (Rule 9.3).
+    """
+    current = {identity.tool_id for identity, _ in DEFAULT_TOOLS}
+    retired = 0
+    try:
+        entries = await list_tools(client, SEED_REALM, None, include_inactive=False)
+    except Exception:
+        logger.exception("could not review the first-party catalogue")
+        return 0
+
+    for entry in entries:
+        identity = entry["identity"]
+        if identity.kind != "builtin" or identity.tool_id in current:
+            continue
+        try:
+            await set_lifecycle(client, SEED_REALM, identity.tool_id, DORMANT)
+            logger.warning("retired %s: no longer in the first-party catalogue, "
+                           "and its endpoint is no longer served",
+                           identity.tool_id)
+            retired += 1
+        except Exception:
+            logger.exception("could not retire %s", identity.tool_id)
+    return retired
 
 
 async def warm_cache(client, cache: ToolCache) -> int:
