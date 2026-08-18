@@ -22,12 +22,25 @@ spec:
           ports:
             - containerPort: 8003
           resources:
+            # Ephemeral storage, not a volume. Nothing here needs to outlive a
+            # pod: docling downloads its layout and OCR models to the container
+            # filesystem on first use, and extraction writes each upload to a
+            # temp file that is unlinked in a finally. Both want space, neither
+            # wants persistence — a PersistentVolumeClaim buys nothing and, as
+            # ReadWriteOnce, deadlocks the rolling update that replaces the pod.
+            #
+            # Undeclared, Autopilot grants a small default and evicts the pod
+            # when the models exceed it: "The node was low on resource:
+            # ephemeral-storage", mid-extraction, with the upload already
+            # accepted.
             requests:
               cpu: 250m
               memory: 512Mi
+              ephemeral-storage: 4Gi
             limits:
               cpu: 500m
               memory: 512Mi
+              ephemeral-storage: 4Gi
           readinessProbe:
             httpGet:
               path: /health
@@ -44,16 +57,6 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
-            # Docling downloads its layout and OCR models on first use. Without
-            # a durable cache every pod restart re-downloads them and the first
-            # extraction afterwards pays for it. Pointing both caches at the
-            # shared volume is also what makes ReadWriteMany worth having:
-            # replicas read one copy of the models instead of each fetching its
-            # own, and the volume finally has a reader and a writer.
-            - name: HF_HOME
-              value: /app/cache/huggingface
-            - name: DOCLING_ARTIFACTS_PATH
-              value: /app/cache/docling
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -77,39 +80,6 @@ spec:
                   name: postgres-secrets
                   key: POSTGRES_DB
                   optional: true
-          volumeMounts:
-            - name: document-registry-cache
-              mountPath: /app/cache
-      volumes:
-        - name: document-registry-cache
-          persistentVolumeClaim:
-            claimName: document-registry-pvc
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: document-registry-pvc
-  namespace: default
-spec:
-  # ReadWriteMany, so a rolling update does not deadlock. A ReadWriteOnce volume
-  # attaches to one node at a time, and a Deployment starts the replacement pod
-  # before stopping the original — so the new pod waits for a volume the old pod
-  # will not release until the new one is ready:
-  #
-  #   Multi-Attach error for volume "pvc-…": Volume is already used by pod(s) …
-  #
-  # That cannot resolve itself. Two cheaper routes to the same place, if the
-  # shared model cache is not wanted: set strategy {type: Recreate} on the
-  # Deployment and keep ReadWriteOnce, or drop the volume altogether.
-  accessModes:
-    - ReadWriteMany
-  # Filestore multishare carves shares out of one managed instance instead of
-  # provisioning a whole instance per claim, which is the difference between a
-  # small share and a terabyte minimum.
-  storageClassName: enterprise-multishare-rwx
-  resources:
-    requests:
-      storage: 100Gi
 ---
 apiVersion: v1
 kind: Service

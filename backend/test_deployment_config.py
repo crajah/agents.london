@@ -169,3 +169,31 @@ def test_no_workload_mounts_a_volume_nothing_writes_to():
                     unused.append(f"{name}: {container['name']} mounts {path}, "
                                   f"which nothing reads, writes or points at")
     assert not unused, "\n".join(unused)
+
+
+def test_a_container_that_writes_to_disk_declares_ephemeral_storage():
+    """Space the pod needs, asked for rather than assumed.
+
+    The document registry downloads docling's models to the container
+    filesystem and writes each upload to a temp file. Neither wants
+    persistence, so neither wants a volume — but both want room. Undeclared,
+    the scheduler grants a small default and evicts the pod when the models
+    exceed it, mid-extraction, after the upload has been accepted.
+    """
+    if not MANIFESTS:
+        pytest.skip("no manifests in this checkout")
+
+    writes_to_disk = {"document-registry"}
+    missing = []
+    for name, doc in load_manifests():
+        if doc.get("kind") != "Deployment":
+            continue
+        for container in doc["spec"]["template"]["spec"].get("containers", []):
+            if container["name"] not in writes_to_disk:
+                continue
+            for bound in ("requests", "limits"):
+                declared = (container.get("resources") or {}).get(bound) or {}
+                if "ephemeral-storage" not in declared:
+                    missing.append(f"{name}: {container['name']} declares no "
+                                   f"ephemeral-storage {bound}")
+    assert not missing, "\n".join(missing)
