@@ -111,18 +111,6 @@ spec:
                   name: oidc-auth-secret
                   key: MS_CLIENT_SECRET
                   optional: true
-            - name: GOOGLE_SEARCH_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gcp-search-secrets
-                  key: GOOGLE_SEARCH_API_KEY
-                  optional: true
-            - name: GOOGLE_SEARCH_CX
-              valueFrom:
-                secretKeyRef:
-                  name: gcp-search-secrets
-                  key: GOOGLE_SEARCH_CX
-                  optional: true
 ---
 apiVersion: v1
 kind: Service

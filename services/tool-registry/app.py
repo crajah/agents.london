@@ -5,6 +5,7 @@ versioned, content-hashed records an agent version can pin (see
 spec/tool-registry-spec.md). Tools are scoped to an {org} or a {project}, and
 persisted in post-graph under realm = org_id, space = project_id.
 """
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -41,6 +42,26 @@ SCHEMA_PER_REALM = os.getenv("SCHEMA_PER_REALM", "1").lower() in ("1", "true", "
 # The realm the first-party catalogue is seeded into.
 SEED_REALM = os.getenv("TOOL_SEED_REALM", "org_london_meta")
 
+# Web search, through the router this cluster already runs. Google withdrew
+# "search the entire web" from Programmable Search Engine for new engines on
+# 20 January 2026 and ends it for existing ones on 1 January 2027, so the
+# Custom Search route is closed; grounding is the supported replacement and
+# needs no second vendor.
+#
+# Set WEB_SEARCH_MODEL empty to switch web search off: the backend then seeds
+# no search tool, and no agent is told it has one.
+MODEL_ROUTER_URL = os.getenv("OPENAI_API_BASE",
+                             os.getenv("LITELLM_URL", "http://localhost:4000/v1"))
+MODEL_ROUTER_KEY = os.getenv("OPENAI_API_KEY", "")
+WEB_SEARCH_MODEL = os.getenv("WEB_SEARCH_MODEL", "gemini-3.5-flash-lite").strip()
+SEARCH_TIMEOUT = float(os.getenv("WEB_SEARCH_TIMEOUT", "120"))
+
+# Grounding returns opaque `vertexaisearch…/grounding-api-redirect/…` links.
+# Following them costs one HEAD per citation and yields the URL the claim
+# actually came from, which is what a citation is for.
+RESOLVE_CITATIONS = os.getenv("WEB_SEARCH_RESOLVE_CITATIONS", "1").lower() in (
+    "1", "true", "yes")
+
 BACKEND_MCP = os.getenv(
     "BACKEND_MCP_URL",
     "http://agent-london-backend-service.default.svc.cluster.local:8000/api/mcp/v1/tools/call")
@@ -76,17 +97,19 @@ def _obj(properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
 DEFAULT_TOOLS = [
     (
         ToolIdentity(
-            tool_id="mcp-google-search", name="Google Search (GCP API)",
-            description="Performs web and Google searches from within the Kubernetes "
-                        "cluster via the GCP Custom Search API.",
+            tool_id="mcp-web-search", name="Web search",
+            description="Searches the public web through the model router's "
+                        "search grounding, and returns a summary with the "
+                        "sources that support it.",
             scope_type="org", org_id=SEED_REALM, kind="builtin",
-            capabilities=["web_search", "retrieve"]),
-        dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/google-search",
+            capabilities=["web_search", "internet", "retrieve"]),
+        dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/web-search",
              side_effects="external",
-             input_schema=_obj({"query": {"type": "string", "description": "Search query prompt"},
-                                "num_results": {"type": "integer", "description": "How many results to return"}},
+             input_schema=_obj({"query": {"type": "string", "description": "What to search for"},
+                                "num_results": {"type": "integer", "description": "How many findings, 1 to 10"}},
                                ["query"]),
-             output_schema=_obj({"results": {"type": "array", "description": "Titles, snippets and links"},
+             output_schema=_obj({"summary": {"type": "string", "description": "What the sources say"},
+                                 "results": {"type": "array", "description": "Titles, snippets and links"},
                                  "count": {"type": "integer"}}, []),
              cost_hint={"kind": "search_query"}),
     ),
@@ -288,55 +311,136 @@ async def health_check():
 
 # ------------------------------------------------------------- builtin tools
 
-class GoogleSearchRequest(BaseModel):
+class WebSearchRequest(BaseModel):
     query: str
     num_results: int = Field(5, ge=1, le=10)
-    project_id: Optional[str] = "proj_alpha_civilization"
+    project_id: Optional[str] = None
 
 
-@app.post("/tools/google-search", tags=["Builtin Tools"])
-async def execute_google_search(req: GoogleSearchRequest):
-    """Executes a Google Search query from within the cluster via the GCP Custom Search API.
+async def _resolve_citation(http: httpx.AsyncClient, url: str) -> str:
+    """Follow a grounding redirect to the page it actually points at.
 
-    Every failure path returns an error. This endpoint previously answered
+    Grounding hands back `vertexaisearch.cloud.google.com/grounding-api-redirect/…`
+    rather than the source URL. That is an opaque token: it resolves in a
+    browser, but an agent storing it has recorded where Google sent it, not
+    where the claim came from — and this system's whole argument about
+    citations is that they say where a passage came from.
+
+    Best effort. A redirect that will not resolve is returned unchanged rather
+    than dropped, because the opaque link is still better than no link.
+    """
+    try:
+        res = await http.head(url, follow_redirects=True, timeout=6.0)
+        return str(res.url) or url
+    except httpx.HTTPError:
+        return url
+
+
+@app.post("/tools/web-search", tags=["Builtin Tools"])
+async def execute_web_search(req: WebSearchRequest):
+    """Search the public web, through the model router's search grounding.
+
+    This used to call the Google Custom Search JSON API against a Programmable
+    Search Engine. Google withdrew "search the entire web" for new engines on
+    20 January 2026 and stops it for existing ones on 1 January 2027, so that
+    route cannot be set up any more and would not have lasted. Grounding is
+    Google's own replacement path and needs no second vendor: the router this
+    cluster already runs serves the model, and the model does the searching.
+
+    Every failure path raises. An earlier version of this endpoint answered
     `status: success` with three invented results whose snippets described
     themselves as "empirically retrieved" — handing an agent fabricated
-    evidence it had no way to distinguish from a real search, and which would
-    then be reasoned over and persisted as fact.
+    evidence it had no way to tell from a real search, which it would then
+    reason over and persist as fact.
     """
-    api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-    cx = os.getenv("GOOGLE_SEARCH_CX")
-    if not api_key or not cx:
+    if not WEB_SEARCH_MODEL:
         raise HTTPException(
             status_code=503,
-            detail="Search is unconfigured: set GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX.",
-        )
+            detail="Web search is disabled: WEB_SEARCH_MODEL is empty.")
 
-    url = "https://www.googleapis.com/customsearch/v1"
-    params = {"key": api_key, "cx": cx, "q": req.query, "num": req.num_results}
+    body = {
+        "model": WEB_SEARCH_MODEL,
+        "messages": [
+            {"role": "system", "content":
+                "You are a search tool, not an assistant. Search the web and "
+                "report what you find. State only what the sources say. If the "
+                "search returns nothing relevant, say so plainly rather than "
+                "answering from memory — the caller needs to know the web was "
+                "consulted and came back empty."},
+            {"role": "user", "content":
+                f"Search the web for: {req.query}\n\n"
+                f"Summarise the {req.num_results} most relevant findings."},
+        ],
+        # The grounding tool. Without it the model answers from training data,
+        # which is the one thing a search tool must never silently do.
+        "tools": [{"googleSearch": {}}],
+        "max_tokens": 1200,
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(url, params=params)
+        async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT) as http:
+            res = await http.post(
+                f"{MODEL_ROUTER_URL.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {MODEL_ROUTER_KEY}"},
+                json=body)
     except httpx.HTTPError as e:
-        logger.warning("GCP Custom Search request failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"Search upstream unreachable: {e}") from e
+        logger.warning("search grounding request failed: %s", e)
+        raise HTTPException(status_code=502,
+                            detail=f"Search upstream unreachable: {e}") from e
 
     if res.status_code != 200:
-        logger.warning("GCP Custom Search returned %s: %s", res.status_code, res.text[:200])
-        raise HTTPException(status_code=502,
-                            detail=f"Search upstream returned {res.status_code}.")
+        logger.warning("search grounding returned %s: %s",
+                       res.status_code, res.text[:300])
+        raise HTTPException(
+            status_code=502,
+            detail=f"Search upstream returned {res.status_code}: {res.text[:200]}")
 
-    items = res.json().get("items", [])
-    results = [
-        {"title": item.get("title"), "snippet": item.get("snippet"), "link": item.get("link")}
-        for item in items
-    ]
+    message = res.json()["choices"][0]["message"]
+    summary = message.get("content") or ""
+    citations = [a.get("url_citation") or {} for a in (message.get("annotations") or [])
+                 if a.get("type") == "url_citation"]
+
+    # No citations means the model answered without consulting anything. That
+    # is not a search result, and returning it as one would put unsourced text
+    # into an agent's evidence with a search tool's authority behind it.
+    if not citations:
+        raise HTTPException(
+            status_code=502,
+            detail=("The search returned no sources. The model answered without "
+                    "grounding, so there is nothing to cite and this is not a "
+                    "search result."))
+
+    async with httpx.AsyncClient() as http:
+        links = list(await asyncio.gather(*[
+            _resolve_citation(http, c.get("url", "")) for c in citations
+        ])) if RESOLVE_CITATIONS else [c.get("url", "") for c in citations]
+
+    results = []
+    for citation, link in zip(citations, links):
+        start_at, end_at = citation.get("start_index"), citation.get("end_index")
+        # The span of the summary this source actually supports, where the
+        # provider marked one. A snippet lifted from somewhere else in the
+        # answer would attribute a claim to a source that did not make it.
+        snippet = (summary[start_at:end_at]
+                   if isinstance(start_at, int) and isinstance(end_at, int)
+                   else "")
+        results.append({
+            "title": citation.get("title") or link,
+            "snippet": snippet.strip(),
+            "link": link,
+            "redirect": citation.get("url"),
+        })
+
     return {
         "status": "success",
-        "source": "gcp_custom_search_api",
+        # Named, so a caller can tell how the passage was obtained (Rule 8.1).
+        "source": "gemini_search_grounding",
+        "model": WEB_SEARCH_MODEL,
         "query": req.query,
+        "summary": summary,
         "count": len(results),
         "results": results,
+        "citations_resolved": RESOLVE_CITATIONS,
     }
 
 
