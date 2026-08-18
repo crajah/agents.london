@@ -93,3 +93,37 @@ async def test_events_survive_a_stop_flush():
     m.record(UsageEvent(org_id="org_a", kind="search_query", bytes=99))
     await m.stop()
     assert len(client.written) == 1
+
+
+def test_a_second_meter_in_one_process_does_not_explode():
+    """Two meters, or this module imported twice, must not fight over a name.
+
+    `Counter(...)` registers into a global registry and raises on a repeat. Both
+    happen here: every Meter builds a sink, and this module lives in the backend
+    as `backend.metering` and inside each service image as `metering`. The
+    second registration raised DuplicateTimeseries and took the process with it
+    — invisible until prometheus_client arrived as a transitive dependency and
+    the ImportError guard stopped swallowing everything.
+    """
+    from metering import PrometheusSink
+
+    first = PrometheusSink()
+    second = PrometheusSink()
+    third = PrometheusSink()
+
+    if not first.enabled:
+        pytest.skip("prometheus_client is not installed")
+    assert second.enabled and third.enabled
+    # The same collector, not a rival registration of the same name.
+    assert second.bytes is first.bytes
+    assert third.dropped is first.dropped
+
+
+def test_metrics_never_fail_the_caller():
+    """The ledger is what must not be lost; the counters are not."""
+    from metering import PrometheusSink
+
+    sink = PrometheusSink()
+    sink.enabled = False
+    sink.observe(UsageEvent(org_id="org", project_id="p", kind="llm_call",
+                            tokens_input=1, tokens_output=1))

@@ -44,6 +44,16 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
+            # Docling downloads its layout and OCR models on first use. Without
+            # a durable cache every pod restart re-downloads them and the first
+            # extraction afterwards pays for it. Pointing both caches at the
+            # shared volume is also what makes ReadWriteMany worth having:
+            # replicas read one copy of the models instead of each fetching its
+            # own, and the volume finally has a reader and a writer.
+            - name: HF_HOME
+              value: /app/cache/huggingface
+            - name: DOCLING_ARTIFACTS_PATH
+              value: /app/cache/docling
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -68,10 +78,10 @@ spec:
                   key: POSTGRES_DB
                   optional: true
           volumeMounts:
-            - name: document-registry-data
-              mountPath: /app/data
+            - name: document-registry-cache
+              mountPath: /app/cache
       volumes:
-        - name: document-registry-data
+        - name: document-registry-cache
           persistentVolumeClaim:
             claimName: document-registry-pvc
 ---
@@ -81,11 +91,25 @@ metadata:
   name: document-registry-pvc
   namespace: default
 spec:
+  # ReadWriteMany, so a rolling update does not deadlock. A ReadWriteOnce volume
+  # attaches to one node at a time, and a Deployment starts the replacement pod
+  # before stopping the original — so the new pod waits for a volume the old pod
+  # will not release until the new one is ready:
+  #
+  #   Multi-Attach error for volume "pvc-…": Volume is already used by pod(s) …
+  #
+  # That cannot resolve itself. Two cheaper routes to the same place, if the
+  # shared model cache is not wanted: set strategy {type: Recreate} on the
+  # Deployment and keep ReadWriteOnce, or drop the volume altogether.
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
+  # Filestore multishare carves shares out of one managed instance instead of
+  # provisioning a whole instance per claim, which is the difference between a
+  # small share and a terabyte minimum.
+  storageClassName: enterprise-multishare-rwx
   resources:
     requests:
-      storage: 5Gi
+      storage: 100Gi
 ---
 apiVersion: v1
 kind: Service
