@@ -296,3 +296,53 @@ def test_cache_counts_per_realm():
     cache.put("org_b", "mcp-y", "1.0.0", {}, {})
     assert cache.count("org_a") == 1
     assert cache.count() == 2
+
+
+# ------------------------------------------- the first-party catalogue seeder
+
+async def test_a_reseed_reuses_a_version_that_already_has_this_content():
+    """The bug that left a seeded tool with no discovery vector.
+
+    `register_or_bump` bumps the patch when the declared content changes. On a
+    later restart the same content hashes the same again, it bumped into the
+    version it had itself just published, and Rule 4.2 rejected the whole
+    registration — so the identity write that carries the discovery vector
+    never ran. The tool stayed published, and invisible to `/tools/search`.
+    """
+    from tool_store import register_or_bump
+
+    client = FakeClient()
+    first = identity(tool_id="mcp-web-search")
+    original = version(tool_id="mcp-web-search", endpoint_url="http://old/search",
+                       side_effects="external")
+    await register_or_bump(client, first, original, embedding=[0.1] * 8)
+
+    # The endpoint moves with the deployment: a patch bump (Rule 4.1).
+    moved = version(tool_id="mcp-web-search", endpoint_url="http://new/search",
+                    side_effects="external")
+    bumped = await register_or_bump(client, first, moved, embedding=[0.2] * 8)
+    assert bumped["version"] == "1.0.1"
+
+    # Restart. Same declared content, so the same hash — and it must resolve to
+    # the version already holding it rather than colliding with it.
+    again = await register_or_bump(client, first, moved, embedding=[0.3] * 8)
+    assert again["version"] == "1.0.1"
+    assert again["content_hash"] == bumped["content_hash"]
+
+
+async def test_the_reused_registration_still_writes_the_discovery_vector():
+    """Reusing the version is only useful if the vector lands."""
+    from tool_store import register_or_bump
+
+    client = FakeClient()
+    ident = identity(tool_id="mcp-web-search")
+    spec = version(tool_id="mcp-web-search", endpoint_url="http://search",
+                   side_effects="external")
+
+    await register_or_bump(client, ident, spec, embedding=None)
+    pk = client.vertices[("org_a", "mcp-web-search")]
+    assert client.payloads[pk]["embedding_status"] == "missing"
+
+    # A later seed, with the embedding service reachable this time.
+    await register_or_bump(client, ident, spec, embedding=[0.5] * 8)
+    assert client.payloads[pk]["embedding_status"] == "present"

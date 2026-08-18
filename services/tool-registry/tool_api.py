@@ -128,8 +128,15 @@ def _meter(request: Request):
     return getattr(request.app.state, "meter", None)
 
 
-async def _embedding(identity: ToolIdentity, version: ToolVersionSpec):
-    """Discovery vector, or None. Never fails a registration — see embedding.py."""
+async def discovery_embedding(identity: ToolIdentity, version: ToolVersionSpec):
+    """Discovery vector, or None. Never fails a registration — see embedding.py.
+
+    Public because the startup seeder needs the same vector the HTTP path
+    computes. It did not have it, and seeded tools were written with no vector
+    at all — present in `GET /tools`, invisible to `/tools/search`, which is
+    what `mcp-tool-discovery` calls. An agent looking for a capability found
+    nothing and concluded the realm did not have it.
+    """
     try:
         from embedding import embed
         return await embed(discovery_text(identity, version))
@@ -189,7 +196,7 @@ async def register_tool(body: Dict[str, Any], request: Request):
 
     try:
         record = await register_tool_version(
-            client, identity, version, embedding=await _embedding(identity, version))
+            client, identity, version, embedding=await discovery_embedding(identity, version))
     except RegistrationError as e:
         # A 400 naming the rule, not a 500: a caller that omitted side_effects
         # or collided a hash needs to know which, and the registry knows.

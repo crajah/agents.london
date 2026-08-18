@@ -200,6 +200,19 @@ async def register_or_bump(client, identity: ToolIdentity,
     pk = await resolve_vertex(client, realm, spec.tool_id)
     existing = await latest_versions(client, realm, pk) if pk else {}
 
+    # This exact content may already be published under another number — a
+    # previous seed that bumped, then a restart that computes the same hash
+    # again. Bumping into it collides with Rule 4.2 and the whole seed of that
+    # tool fails, which is how `mcp-web-search` ended up published but with no
+    # discovery vector: the identity write that carries the vector never ran.
+    # Reusing the version is what the rule's own error message advises.
+    same = next((v for v, body in existing.items()
+                 if body.get("content_hash") == digest), None)
+    if same and same != spec.version:
+        logger.info("default tool %s already published as %s; reusing it",
+                    spec.tool_id, same)
+        spec = spec.model_copy(update={"version": same})
+
     prior = existing.get(spec.version)
     if prior and prior.get("content_hash") != digest:
         newest = max(existing, key=_semver_key)
