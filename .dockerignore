@@ -45,6 +45,13 @@ secrets
 **/venv
 **/*.egg-info
 
+# Tests do not belong in a production image. `conftest.py` is also the last
+# place still indexing a fixed directory depth to find the repository root,
+# which is correct where tests run and wrong inside the image.
+**/test_*.py
+**/conftest.py
+**/pytest.ini
+
 # The end-to-end suite needs a live database and three running servers; it does
 # not belong in an image.
 tests

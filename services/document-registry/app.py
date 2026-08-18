@@ -19,7 +19,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 
 from post_graph import AsyncPostGraph
@@ -27,6 +26,7 @@ from post_graph import AsyncPostGraph
 import doc_rag
 import doc_store
 from doc_extract import extract
+from env_file import load_env_file
 from doc_model import (
     FAILED, INDEXED, WITHDRAWN, CreateSpaceRequest, DocumentError,
     ExtractionResult, RAGQueryRequest, SpaceKey, UploadTextRequest,
@@ -36,9 +36,10 @@ from doc_model import (
 logger = logging.getLogger(__name__)
 
 # This service runs in its own container and cannot import the backend package,
-# so it loads the same .env directly. Walking up to the repository root keeps
-# that working both in the image and from a checkout.
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# so it loads the same .env directly. It searches upward rather than indexing a
+# fixed depth: the image flattens this file to /app/app.py, where the old
+# `parents[2]` raised IndexError and the container could not start at all.
+load_env_file()
 
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not _OPENAI_API_KEY:
