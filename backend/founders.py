@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 # --------------------------------------------------------------------- model
 
@@ -114,7 +114,21 @@ def _bulleted(items: List[str]) -> str:
     return "\n".join(f"   - {text}" for text in items)
 
 
-def render_prompt(f: Founder) -> str:
+def available_tools(f: "Founder", published: Optional[Sequence[str]] = None) -> List[str]:
+    """The founder's tools, minus any this realm has not published.
+
+    A prompt that names a tool the realm does not have produces an agent that
+    calls something that 404s — or, worse, one that refuses a request it could
+    have served, because it reasons about its own tool list and concludes the
+    capability is absent. Both were happening.
+    """
+    if published is None:
+        return list(f.tools)
+    allowed = set(published)
+    return [line for line in f.tools if line.split(" — ")[0] in allowed]
+
+
+def render_prompt(f: Founder, published: Optional[Sequence[str]] = None) -> str:
     """The system prompt a founder is registered with.
 
     Long on purpose. These agents are asked to make decisions that commit
@@ -122,6 +136,7 @@ def render_prompt(f: Founder) -> str:
     agents out of circulation. The cost of a vague instruction is not a worse
     sentence, it is a wrong action nobody can trace back to a rule.
     """
+    tools = available_tools(f, published)
     emits = json.dumps({k: v for k, v in f.emits.items()}, indent=2)
     duty_section = ""
     if f.duty:
@@ -158,7 +173,7 @@ Telos: {f.telos}
    Read what you need; do not assume a key exists because it usually does.
 
 4. WHAT YOU MAY CALL
-{_bulleted(f.tools) if f.tools else "   - No tools. You reason over what you are given and hand on your answer."}
+{_bulleted(tools) if tools else "   - No tools. You reason over what you are given and hand on your answer."}
    Call tools by exactly these ids. A tool not listed here has not been
    published to you: ask {("the Toolwright" if f.id != "toolwright" else "the Boundary Warden")}
    to register it rather than guessing a name. Tools declaring side effects
@@ -194,6 +209,10 @@ INGEST = "mcp-document-ingest — file a text document into a document space (wr
 FIND_AGENT = "mcp-agent-discovery — find a registered agent or pipeline by describing what is needed"
 FIND_TOOL = "mcp-tool-discovery — find a registered tool by describing what it must do"
 INVOKE = "mcp-agent-invoke — call agent:{slug}@{version} or pipeline:{slug}@{version} (write; needs an idempotency key)"
+# Present only where the deployment has search credentials. A founder may name
+# it; `render_prompt` drops it from the prompt wherever it is not published, so
+# no agent is told about a tool it cannot call.
+WEB_SEARCH = "mcp-web-search — search the public web for anything outside this project's own documents (external; needs an idempotency key)"
 
 FOUNDERS: List[Founder] = [
 
@@ -216,7 +235,7 @@ FOUNDERS: List[Founder] = [
             "The project and organisation the request arrived in.",
             "Retrieved context from this project's documents, if any was found.",
         ],
-        tools=[RETRIEVE, FIND_AGENT, FIND_TOOL],
+        tools=[RETRIEVE, WEB_SEARCH, FIND_AGENT, FIND_TOOL],
         procedure=[
             "Read the prompt for what is actually being asked, not for keywords. "
             "A question containing the word 'pipeline' is not necessarily a "
@@ -238,9 +257,13 @@ FOUNDERS: List[Founder] = [
             "If the request is a greeting, an arithmetic question, a question "
             "about the platform itself, or anything answerable without tools or "
             "documents, route SIMPLE_CHAT and answer it yourself.",
-            "If the request would breach a guardrail, ask for capability the "
-            "realm has not granted, or target another tenant's data, route "
-            "REFUSE and say which rule refuses it.",
+            "Before refusing for a missing capability, search with "
+            "mcp-tool-discovery and mcp-agent-discovery. REFUSE is for a "
+            "request that breaches a guardrail or targets another tenant's "
+            "data — not for one this realm can serve through an agent or a "
+            "tool you happen not to hold yourself. Where the capability is "
+            "genuinely absent, say what is missing and that it is not "
+            "published here, so it can be registered.",
         ],
         emits={
             "route": "SIMPLE_CHAT | DIRECT_AGENT | PIPELINE | COMMISSION | REFUSE",
@@ -264,6 +287,11 @@ FOUNDERS: List[Founder] = [
             "An unroutable request is a real outcome.",
         ],
         never=[
+            "Never refuse a request for a capability without first checking "
+            "whether this realm has it. Your own tool list is not the "
+            "civilisation's: an agent in a pipeline may hold a tool you do not. "
+            "Refusing because *you* cannot do something, when a registered "
+            "agent can, is the most expensive mistake available to you.",
             "Never answer from your own knowledge a question that the project's "
             "documents are the authority on. Retrieve, or say you could not.",
             "Never route COMMISSION to avoid searching properly; a duplicate "
@@ -797,7 +825,7 @@ FOUNDERS += [
             "acted on."),
         inputs=["Raw payloads: uploads, feeds, API responses, files.",
                 "The schema the consumer expects, if one is declared."],
-        tools=[INGEST, RETRIEVE],
+        tools=[INGEST, RETRIEVE, WEB_SEARCH],
         procedure=[
             "Determine the actual structure before assuming the expected one.",
             "Report missing and malformed fields explicitly; a silently defaulted "
@@ -1148,7 +1176,7 @@ FOUNDERS += [
             "answer, and what the sub-problems are."),
         inputs=["The problem as stated.", "Retrieved context bearing on it.",
                 "The constraints: time, budget, what must not change."],
-        tools=[RETRIEVE, FIND_AGENT],
+        tools=[RETRIEVE, WEB_SEARCH, FIND_AGENT],
         procedure=[
             "Restate the problem in one sentence and state what would count as a "
             "good answer. Where these two disagree with the request as written, "
@@ -1749,17 +1777,29 @@ def founder(founder_id: str) -> Optional[Founder]:
     return None
 
 
-def founder_prompt(founder_id: str) -> Optional[str]:
-    """The rendered system prompt for a founder, or None if it is not one."""
+def founder_prompt(founder_id: str,
+                   published: Optional[Sequence[str]] = None) -> Optional[str]:
+    """The rendered system prompt for a founder, or None if it is not one.
+
+    `published` is the realm's actual toolbelt. Passing it keeps a founder from
+    being told about a tool this deployment does not have.
+    """
     f = founder(founder_id)
-    return render_prompt(f) if f else None
+    return render_prompt(f, published) if f else None
 
 
-def roster(project_id: str) -> List[Dict[str, Any]]:
+def roster(project_id: str,
+           published: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
     """The founding roster as registration payloads for one project.
 
     One list, used by both engines. The two engines previously kept their own,
     and the one that actually ran had four members.
+
+    `published` is what was actually seeded into the realm. A founder's declared
+    tools are what it *may* hold; the prompt and the registration only carry the
+    ones that exist, because the agent registry refuses to register an agent
+    pinning an unpublished tool (Rule 3.5) — and a realm without search
+    credentials would otherwise fail to found at all.
     """
     return [{
         "founder_id": f.id,
@@ -1770,8 +1810,8 @@ def roster(project_id: str) -> List[Dict[str, Any]]:
         "topo": f.topo,
         "telos": f"[{f.cog_func}/{f.topo}] {f.telos}",
         "role": "permanent_prime_scaffolding",
-        "system_prompt": render_prompt(f),
-        "tools": [t.split(" — ")[0] for t in f.tools],
+        "system_prompt": render_prompt(f, published),
+        "tools": [line.split(" — ")[0] for line in available_tools(f, published)],
         "capabilities": f.capabilities,
         "keywords": f.keywords,
         "token_balance": float(f.tokens),

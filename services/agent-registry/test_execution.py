@@ -54,7 +54,13 @@ async def test_usage_is_read_from_the_provider_not_estimated(monkeypatch):
     async def fake_latest(client, table, realm, pk):
         return {"1.0.0": {"version": "1.0.0", "status": "published",
                           "system_prompt": "s", "model": {"name": "m"}}}
-    async def fake_call(record, prompt):
+    seen = {}
+    async def fake_call(record, prompt, org_id=None, project_id=None, agent_id=None):
+        # The tenancy has to reach the model call, because that is where the
+        # agent's pinned tools are resolved and invoked. Without it the tool
+        # loop cannot reach the registry, and an agent that pinned a tool
+        # silently runs without it.
+        seen.update(org_id=org_id, project_id=project_id, agent_id=agent_id)
         return {"result": "ok", "model": "m",
                 "usage": {"input_tokens": 11, "output_tokens": 7}}
     monkeypatch.setattr(execution, "_latest_versions", fake_latest)
@@ -66,5 +72,6 @@ async def test_usage_is_read_from_the_provider_not_estimated(monkeypatch):
     out = await run_agent(FakeClient({}), "org", "agt_x", {"prompt": "hi"},
                           version="1.0.0", meter=Meter())
     assert out["usage"] == {"input_tokens": 11, "output_tokens": 7}
+    assert seen == {"org_id": "org", "project_id": "proj_default", "agent_id": "agt_x"}
     assert recorded[0].tokens_total == 18
     assert recorded[0].compute_units == 72

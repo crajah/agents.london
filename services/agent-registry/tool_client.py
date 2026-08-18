@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -23,6 +23,9 @@ TOOL_REGISTRY_URL = os.getenv(
     "TOOL_REGISTRY_URL",
     "http://tool-registry-service.default.svc.cluster.local:8002")
 TOOL_TIMEOUT = float(os.getenv("TOOL_REGISTRY_TIMEOUT", "10"))
+# A tool call is real work — a web search, an ingest — so it gets a longer
+# ceiling than a catalogue read.
+TOOL_CALL_TIMEOUT = float(os.getenv("TOOL_CALL_TIMEOUT", "120"))
 
 # When the tool registry cannot be reached, registration of a tool-using agent
 # fails rather than proceeding with unresolved names. Registering an agent whose
@@ -87,3 +90,88 @@ async def catalogue_or_none(org_id: str, project_id: Optional[str],
             "tool catalogue unavailable and TOOL_RESOLUTION_STRICT is off; "
             "registering with unresolved tool names")
         return None
+
+
+async def usable(org_id: str, project_id: Optional[str],
+                 tool_ids: List[str]) -> List[Dict[str, Any]]:
+    """The full record of each tool an agent pinned, for offering to a model.
+
+    A model can only call a tool it has been shown, and it can only be shown a
+    tool whose input schema is known. `catalogue()` above answers "does this
+    pin resolve"; this answers "what may this agent actually do", which is the
+    question the execution path was never asking.
+    """
+    params = {"org_id": org_id}
+    if project_id:
+        params["project_id"] = project_id
+    url = f"{TOOL_REGISTRY_URL.rstrip('/')}/tools"
+    try:
+        async with httpx.AsyncClient(timeout=TOOL_TIMEOUT) as http:
+            res = await http.get(url, params=params)
+    except httpx.HTTPError as e:
+        raise ToolResolutionError(f"tool registry unreachable: {e}") from e
+    if res.status_code != 200:
+        raise ToolResolutionError(
+            f"tool registry returned {res.status_code}: {res.text[:200]}")
+
+    wanted = {t if isinstance(t, str) else t.get("tool_id") for t in tool_ids}
+    return [tool for tool in res.json().get("tools", [])
+            if tool.get("tool_id") in wanted]
+
+
+def as_model_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pinned tools, in the shape a chat model is offered functions in.
+
+    The description carries the declared side effects, because whether a call
+    can be retried or repeated is something the caller has to know before it
+    makes one, and the model is the caller here (Rule 6.2).
+    """
+    offered = []
+    for tool in tools:
+        effects = tool.get("side_effects", "read")
+        note = ("" if effects == "read" else
+                f" This tool has {effects} side effects: call it once, "
+                f"deliberately, and never to explore.")
+        offered.append({
+            "type": "function",
+            "function": {
+                "name": tool["tool_id"],
+                "description": (tool.get("description") or tool.get("name") or "")[:900] + note,
+                "parameters": tool.get("input_schema")
+                              or {"type": "object", "properties": {}},
+            },
+        })
+    return offered
+
+
+async def invoke(tool_id: str, arguments: Dict[str, Any], org_id: str,
+                 project_id: Optional[str], caller: Optional[str] = None,
+                 version: Optional[str] = None,
+                 idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+    """Call one tool through the registry that owns it.
+
+    Returns `{ok, result}` or `{ok: False, error}`. A failure is handed back to
+    the model as a failure — never as an empty result, and never as a plausible
+    substitute. A model that receives fabricated tool output cannot tell it from
+    real output and will reason over it as evidence.
+    """
+    payload = {"arguments": arguments, "org_id": org_id,
+               "project_id": project_id, "caller": caller}
+    if version:
+        payload["version"] = version
+    if idempotency_key:
+        payload["idempotency_key"] = idempotency_key
+    url = f"{TOOL_REGISTRY_URL.rstrip('/')}/tools/{tool_id}/call"
+    try:
+        async with httpx.AsyncClient(timeout=TOOL_CALL_TIMEOUT) as http:
+            res = await http.post(url, json=payload)
+    except httpx.HTTPError as e:
+        return {"ok": False, "error": f"{tool_id} is unreachable: {e}"}
+    if res.status_code != 200:
+        detail = res.text[:400]
+        try:
+            detail = res.json().get("detail", detail)
+        except ValueError:
+            pass
+        return {"ok": False, "error": f"{tool_id} failed ({res.status_code}): {detail}"}
+    return {"ok": True, "result": res.json().get("result")}

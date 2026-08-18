@@ -1082,6 +1082,13 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
                 "registration will refuse to pin these tools.",
                 org_id, seeded["failed"])
 
+        # The roster is built from what was actually published, not from what
+        # the founders would like to hold. A deployment without search
+        # credentials seeds no web-search tool, and a founder pinning one would
+        # be refused registration by Rule 3.5.
+        published = [pin.get("tool_id") for pin in seeded["registered"]
+                     if pin.get("tool_id")]
+
         guardrails = [
             {"guardrail_id": f"g-{idx}", "source": "constitution",
              "level": "project", "rule": rule}
@@ -1089,7 +1096,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
         ]
 
         provisioned, failed = [], []
-        for member in roster(project_id):
+        for member in roster(project_id, published):
             agent_id = member["agent_id"]
             payload = {
                 "agent_id": agent_id,
@@ -1156,7 +1163,7 @@ class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
             # Kept for callers that read it; now the whole roster by caste
             # rather than one agent per caste.
             "permanent_agents": {m["founder_id"]: m["agent_id"]
-                                 for m in roster(project_id)},
+                                 for m in roster(project_id, published)},
             "status": "created" if not failed else "created_with_failures",
         }
 

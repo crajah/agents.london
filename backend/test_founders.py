@@ -12,7 +12,8 @@ import pytest
 from founders import (AUTONOMOUS, BY_ID, CORE_DIRECTIVES, FOUNDERS,
                       NO_FABRICATION, founder, founder_prompt, render_prompt,
                       roster)
-from platform_tools import PLATFORM_TOOL_IDS, platform_tools
+from platform_tools import (ALL_TOOL_IDS, OPTIONAL_TOOL_IDS,
+                            PLATFORM_TOOL_IDS, platform_tools)
 
 
 def test_the_roster_is_one_roster():
@@ -78,19 +79,74 @@ def test_the_prompts_are_operational_not_atmospheric():
         assert f.stops_when and f.never, f.id
 
 
-def test_a_founder_only_names_tools_that_are_actually_published():
+def test_a_founder_only_declares_tools_the_platform_knows_about():
     """A prompt naming a tool nobody registered is a prompt whose agent guesses."""
+    known = set(ALL_TOOL_IDS)
     for f in FOUNDERS:
         for tool_line in f.tools:
             tool_id = tool_line.split(" — ")[0]
-            assert tool_id in PLATFORM_TOOL_IDS, f"{f.id} names {tool_id}"
+            assert tool_id in known, f"{f.id} names {tool_id}"
 
 
-def test_the_seeded_toolbelt_is_exactly_what_the_founders_pin():
+def test_a_prompt_never_names_a_tool_the_realm_does_not_have():
+    """The property that matters, and the one that produced a false refusal.
+
+    An agent reasons about its own tool list. Told about a tool this deployment
+    never published, it either calls something that 404s or — what actually
+    happened — refuses a request on the grounds that the capability is absent,
+    while a different agent in the same realm holds it.
+    """
+    without = list(PLATFORM_TOOL_IDS)          # a deployment with no search
+    for f in FOUNDERS:
+        rendered = render_prompt(f, without)
+        for optional in OPTIONAL_TOOL_IDS:
+            assert optional not in rendered, f"{f.id} was told about {optional}"
+
+
+def test_an_optional_tool_appears_once_the_realm_publishes_it():
+    with_search = list(PLATFORM_TOOL_IDS) + ["mcp-web-search"]
+    praetor = BY_ID["intake-praetor"]
+    assert "mcp-web-search" not in render_prompt(praetor, list(PLATFORM_TOOL_IDS))
+    assert "mcp-web-search" in render_prompt(praetor, with_search)
+
+
+def test_someone_can_reach_the_web_when_the_deployment_can():
+    """A civilisation that cannot search is one that can only introspect."""
+    searchers = [f.id for f in FOUNDERS
+                 if any(line.startswith("mcp-web-search") for line in f.tools)]
+    assert searchers, "no founder can reach outside the project's own documents"
+    # The founder that receives every request is one of them, because it is the
+    # one that decides whether a request is servable at all.
+    assert "intake-praetor" in searchers
+
+
+def test_the_seeded_toolbelt_is_what_the_founders_may_pin(monkeypatch):
+    """What is seeded depends on what the deployment can support."""
+    monkeypatch.delenv("GOOGLE_SEARCH_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_SEARCH_CX", raising=False)
     seeded = {t["identity"]["tool_id"] for t in platform_tools("org_x")}
     assert seeded == set(PLATFORM_TOOL_IDS)
+
+    # With credentials, search is published too, and a registration built from
+    # that toolbelt may pin it.
+    monkeypatch.setenv("GOOGLE_SEARCH_API_KEY", "k")
+    monkeypatch.setenv("GOOGLE_SEARCH_CX", "c")
+    with_search = {t["identity"]["tool_id"] for t in platform_tools("org_x")}
+    assert with_search == set(ALL_TOOL_IDS)
+
     pinned = {line.split(" — ")[0] for f in FOUNDERS for line in f.tools}
-    assert pinned <= seeded
+    assert pinned <= with_search
+
+
+def test_a_registration_only_pins_what_the_realm_published():
+    """Rule 3.5: an agent pinning an unpublished tool is refused registration.
+
+    A realm without search credentials must still found successfully, which it
+    does only if the roster is built from the seeded toolbelt.
+    """
+    without = list(PLATFORM_TOOL_IDS)
+    for member in roster("proj_test", without):
+        assert set(member["tools"]) <= set(without), member["founder_id"]
 
 
 def test_seeded_tools_declare_their_side_effects_honestly():

@@ -28,6 +28,15 @@ CALL_TIMEOUT = float(os.getenv("AGENT_CALL_TIMEOUT", "120"))
 # whole system via DEFAULT_LLM_MODEL; the literal is only the fallback.
 DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gemini-3.5-flash-lite")
 
+# How many times an agent may go round the ask-a-tool loop before it has to
+# answer. Bounded because a model that keeps calling tools is a cost with no
+# ceiling; generous enough that a search-then-read-then-answer sequence fits.
+MAX_TOOL_ROUNDS = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "6"))
+
+# A tool result larger than this is truncated, and the truncation is stated in
+# the text handed to the model.
+MAX_TOOL_RESULT_CHARS = int(os.getenv("AGENT_MAX_TOOL_RESULT_CHARS", "24000"))
+
 
 class ExecutionError(RuntimeError):
     """A version could not be resolved or the model call failed."""
@@ -64,24 +73,8 @@ async def resolve_version(client, realm: str, table: str, business_id: str,
     return body
 
 
-async def call_model(record: Dict[str, Any], prompt: str) -> Dict[str, Any]:
-    """One model call for one agent version, returning output and usage.
-
-    Usage is read from the provider response rather than estimated. The ledger
-    records what was charged; a token estimate in a billing record is a number
-    that looks authoritative and is not.
-    """
-    model = (record.get("model") or {})
-    name = model.get("name") or DEFAULT_MODEL
-    base = model.get("api_base") or MODEL_ROUTER_URL
-    body = {
-        "model": name,
-        "messages": [
-            {"role": "system", "content": record.get("system_prompt", "")},
-            {"role": "user", "content": prompt},
-        ],
-        **(model.get("params") or {}),
-    }
+async def _chat(base: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """One round trip to the model router."""
     try:
         async with httpx.AsyncClient(timeout=CALL_TIMEOUT) as http:
             res = await http.post(f"{base.rstrip('/')}/chat/completions",
@@ -91,19 +84,145 @@ async def call_model(record: Dict[str, Any], prompt: str) -> Dict[str, Any]:
         raise ExecutionError(f"model router unreachable: {e}") from e
     if res.status_code != 200:
         raise ExecutionError(f"model router returned {res.status_code}: {res.text[:200]}")
+    return res.json()
 
-    data = res.json()
-    usage = data.get("usage") or {}
-    return {
-        "result": data["choices"][0]["message"]["content"],
-        "model": name,
-        # Normalised to the names the meter and the runtime both expect, so a
-        # provider that renames these does not silently zero the accounting.
-        "usage": {
-            "input_tokens": usage.get("prompt_tokens", 0),
-            "output_tokens": usage.get("completion_tokens", 0),
-        },
-    }
+
+async def call_model(record: Dict[str, Any], prompt: str,
+                     org_id: Optional[str] = None,
+                     project_id: Optional[str] = None,
+                     agent_id: Optional[str] = None) -> Dict[str, Any]:
+    """Run one agent version: the model, and the tools that version pinned.
+
+    An agent's `tools` were inside its content hash and resolved at
+    registration, and then never offered to anything. The model was called with
+    a system prompt and a user turn and no tools at all, so a published agent
+    that pinned a search tool could not search — it could only describe not
+    being able to. That is what produced refusals like "web search is not
+    granted to this realm" from an agent that had been given a search tool.
+
+    The loop below is bounded. Each round the model may ask for tool calls;
+    each call goes to the registry that owns the tool, and its real result — or
+    its real failure — is handed back. Nothing is summarised on the way through
+    and nothing is substituted when a call fails, because a model cannot tell a
+    fabricated tool result from a real one and will cite either.
+
+    Usage is summed across every round, read from the provider rather than
+    estimated: a token estimate in a billing record is a number that looks
+    authoritative and is not.
+    """
+    model = (record.get("model") or {})
+    name = model.get("name") or DEFAULT_MODEL
+    base = model.get("api_base") or MODEL_ROUTER_URL
+
+    messages: List[Dict[str, Any]] = [
+        {"role": "system", "content": record.get("system_prompt", "")},
+        {"role": "user", "content": prompt},
+    ]
+    totals = {"input_tokens": 0, "output_tokens": 0}
+    calls: List[Dict[str, Any]] = []
+
+    offered = await _offer_tools(record, org_id, project_id)
+
+    for round_index in range(MAX_TOOL_ROUNDS + 1):
+        body = {"model": name, "messages": messages, **(model.get("params") or {})}
+        # On the last permitted round the tools are withdrawn, so the model is
+        # required to answer with what it has rather than asking for another
+        # call it will not get.
+        if offered and round_index < MAX_TOOL_ROUNDS:
+            body["tools"] = offered
+            body["tool_choice"] = "auto"
+
+        data = await _chat(base, body)
+        usage = data.get("usage") or {}
+        totals["input_tokens"] += usage.get("prompt_tokens", 0)
+        totals["output_tokens"] += usage.get("completion_tokens", 0)
+
+        message = data["choices"][0]["message"]
+        requested = message.get("tool_calls") or []
+        if not requested:
+            return {
+                "result": message.get("content") or "",
+                "model": name,
+                "tool_calls": calls,
+                # Normalised to the names the meter and the runtime both expect,
+                # so a provider that renames these does not silently zero the
+                # accounting.
+                "usage": totals,
+            }
+
+        messages.append({"role": "assistant", "content": message.get("content"),
+                         "tool_calls": requested})
+        for request in requested:
+            outcome = await _run_tool_call(request, org_id, project_id, agent_id)
+            calls.append(outcome["record"])
+            messages.append({"role": "tool", "tool_call_id": request.get("id"),
+                             "name": outcome["record"]["tool_id"],
+                             "content": outcome["content"]})
+
+    # Unreachable in practice: the final round withdraws the tools.
+    raise ExecutionError("agent did not finish within its tool-call budget")
+
+
+async def _offer_tools(record: Dict[str, Any], org_id: Optional[str],
+                       project_id: Optional[str]) -> List[Dict[str, Any]]:
+    """The tools this version pinned, in the shape a model is offered them.
+
+    An unreachable tool registry is logged and the agent runs without tools
+    rather than failing outright — it can still answer from what it knows, and
+    it is told nothing that would let it claim otherwise. Its prompt already
+    forbids inventing a result it did not obtain.
+    """
+    pinned = record.get("tools") or []
+    if not pinned or not org_id:
+        return []
+    try:
+        import tool_client
+        available = await tool_client.usable(org_id, project_id, pinned)
+        return tool_client.as_model_tools(available)
+    except Exception:
+        logger.exception("could not offer pinned tools to %s; running without them",
+                         record.get("agent_id"))
+        return []
+
+
+async def _run_tool_call(request: Dict[str, Any], org_id: Optional[str],
+                         project_id: Optional[str],
+                         agent_id: Optional[str]) -> Dict[str, Any]:
+    """Execute one tool call the model asked for, and report what happened."""
+    import tool_client
+
+    function = request.get("function") or {}
+    tool_id = function.get("name") or ""
+    raw = function.get("arguments") or "{}"
+    try:
+        arguments = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except json.JSONDecodeError as e:
+        message = f"arguments were not valid JSON: {e}"
+        return {"content": f"ERROR: {message}",
+                "record": {"tool_id": tool_id, "ok": False, "error": message}}
+
+    # A side-effecting tool requires an idempotency key (tool-registry Rule
+    # 6.2). It is derived from the call id so a retried round does not repeat
+    # the effect.
+    outcome = await tool_client.invoke(
+        tool_id, arguments, org_id or "", project_id, caller=agent_id,
+        idempotency_key=f"{agent_id or 'agent'}:{request.get('id') or tool_id}")
+
+    if not outcome["ok"]:
+        # The model is told the truth: this call failed, and how. It is not
+        # given a plausible substitute to reason over.
+        return {"content": f"ERROR: {outcome['error']}",
+                "record": {"tool_id": tool_id, "ok": False,
+                           "error": outcome["error"], "arguments": arguments}}
+
+    result = outcome["result"]
+    text = result if isinstance(result, str) else json.dumps(result, default=str)
+    if len(text) > MAX_TOOL_RESULT_CHARS:
+        # Truncated, and said so. A silently cut result reads as a complete one.
+        text = (text[:MAX_TOOL_RESULT_CHARS]
+                + f"\n… [truncated at {MAX_TOOL_RESULT_CHARS} characters]")
+    return {"content": text,
+            "record": {"tool_id": tool_id, "ok": True, "arguments": arguments}}
 
 
 def prompt_from_payload(payload: Dict[str, Any]) -> str:
@@ -121,7 +240,8 @@ async def run_agent(client, realm: str, agent_id: str, payload: Dict[str, Any],
                     meter=None, project_id: str = "proj_default") -> Dict[str, Any]:
     """Execute one agent version. The unit both MCP and A2A ultimately call."""
     record = await resolve_version(client, realm, AGENTS, agent_id, version, space)
-    output = await call_model(record, prompt_from_payload(payload))
+    output = await call_model(record, prompt_from_payload(payload),
+                              org_id=realm, project_id=project_id, agent_id=agent_id)
     if meter is not None:
         try:
             from metering import UsageEvent
@@ -152,7 +272,8 @@ def step_runner_for(client, realm: str, space: Optional[str] = None):
     async def _run(step_id: str, version_id: str, payload: Dict[str, Any], context):
         agent_id, version = _split(version_id)
         record = await resolve_version(client, realm, AGENTS, agent_id, version, space)
-        out = await call_model(record, prompt_from_payload(payload))
+        out = await call_model(record, prompt_from_payload(payload),
+                               org_id=realm, project_id=space, agent_id=agent_id)
         out["step_id"] = step_id
         out["agent_id"] = agent_id
         out["agent_version"] = version
