@@ -122,15 +122,14 @@ def test_someone_can_reach_the_web_when_the_deployment_can():
 
 def test_the_seeded_toolbelt_is_what_the_founders_may_pin(monkeypatch):
     """What is seeded depends on what the deployment can support."""
-    monkeypatch.delenv("GOOGLE_SEARCH_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_SEARCH_CX", raising=False)
+    # Web search off: no model named to ground with.
+    monkeypatch.setenv("WEB_SEARCH_MODEL", "")
     seeded = {t["identity"]["tool_id"] for t in platform_tools("org_x")}
     assert seeded == set(PLATFORM_TOOL_IDS)
 
-    # With credentials, search is published too, and a registration built from
-    # that toolbelt may pin it.
-    monkeypatch.setenv("GOOGLE_SEARCH_API_KEY", "k")
-    monkeypatch.setenv("GOOGLE_SEARCH_CX", "c")
+    # Named, so search is published too, and a registration built from that
+    # toolbelt may pin it.
+    monkeypatch.setenv("WEB_SEARCH_MODEL", "gemini-3.5-flash-lite")
     with_search = {t["identity"]["tool_id"] for t in platform_tools("org_x")}
     assert with_search == set(ALL_TOOL_IDS)
 

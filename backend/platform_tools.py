@@ -37,11 +37,18 @@ DOCUMENT_REGISTRY_URL = os.getenv("DOCUMENT_REGISTRY_URL", "http://localhost:800
 def web_search_configured() -> bool:
     """Whether this deployment can actually reach the web.
 
-    Read here rather than assumed, so the difference between "this realm has no
-    web search" and "this deployment was never given search credentials" is a
-    fact the system knows about itself and can say out loud.
+    Search runs through the model router's grounding rather than the Google
+    Custom Search API — Google withdrew "search the entire web" for new
+    Programmable Search engines on 20 January 2026 and ends it for existing
+    ones on 1 January 2027, so that route could not be set up and would not
+    have lasted.
+
+    The router is already a hard requirement of this system, so the only thing
+    left to decide is whether a grounding-capable model is named. Setting
+    WEB_SEARCH_MODEL empty turns web search off, and then no realm is seeded
+    with it and no agent is told it has it.
     """
-    return bool(os.getenv("GOOGLE_SEARCH_API_KEY") and os.getenv("GOOGLE_SEARCH_CX"))
+    return bool(os.getenv("WEB_SEARCH_MODEL", "gemini-3.5-flash-lite").strip())
 
 
 def _object(properties: Dict[str, Any], required: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -84,24 +91,25 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
 
     tools = []
 
-    # Web search is seeded only when it is configured. The tool registry's
-    # search endpoint returns 503 without GOOGLE_SEARCH_API_KEY and
-    # GOOGLE_SEARCH_CX, and publishing a tool that cannot work is worse than
-    # publishing none: an agent plans around it and fails at the moment it
-    # calls, which is the most expensive moment to find out.
+    # Web search is seeded only when it is configured. Publishing a tool that
+    # cannot work is worse than publishing none: an agent plans around it and
+    # fails at the moment it calls, which is the most expensive moment to find
+    # out.
     if web_search_configured():
         tools.append(body(
             "mcp-web-search", "Web search",
-            "Search the public web and return titles, snippets and links. Use "
-            "it for anything outside this project's own documents — current "
-            "events, external facts, other organisations.",
-            f"{tool}/tools/google-search", "external",
+            "Search the public web and return a summary with the sources that "
+            "support it. Use it for anything outside this project's own "
+            "documents — current events, external facts, other organisations.",
+            f"{tool}/tools/web-search", "external",
             _object({
                 "query": {"type": "string", "description": "What to search for"},
                 "num_results": {"type": "integer",
                                 "description": "How many results, 1 to 10"},
             }, ["query"]),
-            _object({"results": {"type": "array",
+            _object({"summary": {"type": "string",
+                                 "description": "What the sources say"},
+                     "results": {"type": "array",
                                  "description": "Titles, snippets and links"},
                      "count": {"type": "integer"}}),
             ["web_search", "internet", "current_events", "external_research"],
