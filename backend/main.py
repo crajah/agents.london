@@ -259,6 +259,106 @@ async def create_email_session(req: EmailSessionRequest):
     }
 
 
+MS_JWKS_URL = os.getenv(
+    "MS_JWKS_URL", "https://login.microsoftonline.com/common/discovery/v2.0/keys")
+
+# Cached across calls: fetching the key set on every sign-in is a request to
+# Microsoft on the critical path, and the keys rotate on the order of weeks.
+_ms_jwks_client = None
+
+
+def _verify_microsoft_id_token(id_token: str, accepted: List[str]) -> Dict[str, Any]:
+    """Check a Microsoft ID token, signature and all.
+
+    This used to base64-decode the middle segment of the JWT and read the email
+    out of it. No signature check, no issuer, no expiry, no audience — so a
+    string anyone could type by hand was accepted as proof of identity:
+
+        header = {"alg": "RS256"}                      (ignored)
+        payload = {"email": "anyone@anywhere.com"}     (believed)
+        signature = "not-a-signature"                  (never looked at)
+
+    and the endpoint answered `verified: true` for whatever address the payload
+    named — which then decided the organisation the session landed in. The
+    signature is the only thing that makes a JWT evidence of anything.
+    """
+    global _ms_jwks_client
+    try:
+        import jwt
+        from jwt import PyJWKClient
+    except ImportError as e:                       # pragma: no cover
+        # Refusing is the only safe answer: the alternative is the behaviour
+        # this replaced.
+        raise HTTPException(
+            status_code=500,
+            detail="PyJWT is not installed, so Microsoft tokens cannot be "
+                   "verified. Sign-in is refused rather than assumed.") from e
+
+    if _ms_jwks_client is None:
+        _ms_jwks_client = PyJWKClient(MS_JWKS_URL, cache_keys=True)
+
+    try:
+        key = _ms_jwks_client.get_signing_key_from_jwt(id_token).key
+        claims = jwt.decode(
+            id_token, key, algorithms=["RS256"], audience=accepted,
+            options={"require": ["exp", "iss", "aud"]})
+    except Exception as e:
+        logger.warning("Microsoft token rejected: %s", e)
+        raise HTTPException(status_code=401,
+                            detail=f"Invalid Microsoft ID Token: {e}") from e
+
+    # The `common` endpoint issues per-tenant, so the tenant is not fixed — but
+    # the issuer must still be Microsoft rather than anyone who can serve a JWKS.
+    issuer = str(claims.get("iss", ""))
+    if not (issuer.startswith("https://login.microsoftonline.com/")
+            and issuer.endswith("/v2.0")):
+        raise HTTPException(status_code=401,
+                            detail=f"Unexpected token issuer {issuer!r}.")
+    return claims
+
+
+# ------------------------------------------------------------------- sign-in
+
+def _accepted_client_ids(primary: str, extra_var: str) -> List[str]:
+    """Every OAuth client whose tokens this deployment will accept.
+
+    A list rather than one value because the browser bundle and the backend are
+    configured in different places — a GitHub Actions build argument and a
+    Kubernetes secret — and they can hold different clients. During a migration
+    both are legitimate; the point is that the set is stated, not that anything
+    signed by the provider is waved through.
+    """
+    accepted = [c.strip() for c in
+                ([primary] + os.getenv(extra_var, "").split(",")) if c.strip()]
+    if not accepted:
+        raise HTTPException(
+            status_code=500,
+            detail="No OAuth client is configured, so no token can be checked "
+                   "against one.")
+    return accepted
+
+
+def _require_audience(token_info: Dict[str, Any], accepted: List[str],
+                      provider: str) -> None:
+    """The check that decides whether this token was minted for us.
+
+    Without it, any token the provider signed is accepted — including one
+    issued to somebody else's application entirely. An attacker registers their
+    own OAuth client, signs a user in to it, and presents the resulting token
+    here; it is genuinely signed, genuinely unexpired, and grants a session for
+    whatever address it names. Google's own documentation calls this out.
+    """
+    audience = token_info.get("aud")
+    if audience not in accepted:
+        logger.warning("%s token rejected: audience %r is not one of this "
+                       "deployment's clients", provider, audience)
+        raise HTTPException(
+            status_code=401,
+            detail=(f"This {provider} token was issued to a different "
+                    f"application, so it does not prove anything about who is "
+                    f"calling here."))
+
+
 @app.post("/api/auth/google/verify")
 async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
     client_id = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -289,14 +389,37 @@ async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
         if not id_token:
             raise HTTPException(status_code=400, detail="Missing id_token or code")
 
-        info_resp = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+        # tokeninfo validates the signature and the expiry at Google. What it
+        # does not do is say the token was meant for us — that is the caller's
+        # job, and it was not being done.
+        info_resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token})
         if info_resp.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid Google ID Token")
 
         token_info = info_resp.json()
+        _require_audience(token_info,
+                          _accepted_client_ids(client_id, "GOOGLE_ADDITIONAL_CLIENT_IDS"),
+                          "Google")
+
+        if token_info.get("iss") not in ("accounts.google.com",
+                                         "https://accounts.google.com"):
+            raise HTTPException(status_code=401,
+                                detail="This token was not issued by Google.")
+
         email = token_info.get("email")
         if not email:
             raise HTTPException(status_code=400, detail="No email associated with Google account")
+
+        # Google returns this as the string "true". An unverified address is an
+        # address the holder has not shown they control, and tenancy is derived
+        # from the domain.
+        if str(token_info.get("email_verified", "")).lower() not in ("true", "1"):
+            raise HTTPException(
+                status_code=401,
+                detail=f"Google has not verified {email}, so it cannot be used "
+                       f"to identify an organisation.")
 
         tenancy = resolve_tenancy_from_email(email)
         return {
@@ -345,16 +468,11 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
         if not id_token:
             raise HTTPException(status_code=400, detail="Missing id_token or code")
 
-        try:
-            parts = id_token.split(".")
-            import base64
-            padding = "=" * (4 - len(parts[1]) % 4)
-            payload_json = base64.b64decode(parts[1] + padding).decode("utf-8")
-            token_info = json.loads(payload_json)
-        except Exception as e:
-            raise HTTPException(status_code=401, detail=f"Invalid Microsoft ID Token payload: {e}")
+        token_info = _verify_microsoft_id_token(
+            id_token, _accepted_client_ids(client_id, "MS_ADDITIONAL_CLIENT_IDS"))
 
-        email = token_info.get("email") or token_info.get("preferred_username") or token_info.get("upn")
+        email = (token_info.get("email") or token_info.get("preferred_username")
+                 or token_info.get("upn"))
         if not email:
             raise HTTPException(status_code=400, detail="No email found in Microsoft ID Token")
 
@@ -362,7 +480,9 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
         return {
             "status": "verified",
             "verified": True,
-            "method": "google",
+            # This said "google". A session that misreports which provider
+            # authenticated it cannot be audited afterwards.
+            "method": "microsoft",
             "email": email,
             "org_id": tenancy["org_id"],
             "user_id": tenancy["user_id"],
