@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/document-registry/*.py ./
 # One canonical copy of the shared meter, not a vendored duplicate that drifts.
-COPY backend/metering.py ./
+COPY shared/metering.py ./
 
 EXPOSE 8003
 

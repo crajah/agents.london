@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/agent-registry/*.py ./
 # One canonical copy of the shared runtime, not a vendored duplicate that
 # drifts from the original.
-COPY backend/metering.py backend/pipeline_runtime.py backend/embedding.py ./
+COPY shared/metering.py shared/pipeline_runtime.py shared/embedding.py ./
 
 EXPOSE 8001
 

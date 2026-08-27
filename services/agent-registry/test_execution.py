@@ -1,7 +1,7 @@
 """Invocation tests: name parsing, version resolution, and the guarantee that
 a halted pipeline is never reported as a completed A2A task."""
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "shared"))
 
 import pytest
 

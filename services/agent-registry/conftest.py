@@ -8,4 +8,4 @@ application code — which would be load-bearing in production and invisible.
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "shared"))

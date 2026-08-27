@@ -57,7 +57,9 @@ jobs:
             context: .
             dockerfile: services/document-registry/Dockerfile
           - name: agent-london-backend
-            context: backend
+            # Root context: this image copies backend/ and shared/.
+            context: .
+            dockerfile: backend/Dockerfile
           - name: agent-london-frontend
             context: frontend
 
