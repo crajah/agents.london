@@ -9,6 +9,21 @@ spec:
 ---
 # BackendConfig for WebSocket support — increases timeout so GCE LB
 # does not terminate long-lived WebSocket connections prematurely
+# GCE's default health check probes "/" and requires 200. grafana-proxy answers
+# "/" with a 301 (Grafana redirects to its login), so the backend was marked
+# UNHEALTHY and /telemetry returned 502 while the pod itself was fine.
+# /api/health is Grafana's own health endpoint and returns 200.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: grafana-proxy-backendconfig
+  namespace: default
+spec:
+  healthCheck:
+    type: HTTP
+    requestPath: /api/health
+    port: 3000
+---
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
@@ -130,6 +145,10 @@ kind: Service
 metadata:
   name: grafana-proxy-service
   namespace: default
+  annotations:
+    # Without this the GCE backend uses the default "/" health check, which
+    # this proxy answers with a 301, and /telemetry 502s.
+    cloud.google.com/backend-config: '{"default": "grafana-proxy-backendconfig"}'
 spec:
   type: ClusterIP
   selector:
