@@ -52,6 +52,56 @@ spec:
                   name: postgres-secrets
                   key: POSTGRES_DB
                   optional: true
+            # External providers. Every ref is optional: when a key is absent
+            # the provider is simply not catalogued (spec Rule 7.3), so the
+            # service starts and agents are never offered a tool that can only
+            # answer 503. Create with:
+            #   kubectl create secret generic external-tool-keys \
+            #     --from-literal=SERPER_API_KEY=... \
+            #     --from-literal=TAVILY_API_KEY_1=... \
+            #     --from-literal=RAPIDAPI_KEY=...
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: TAVILY_API_KEY
+                  optional: true
+            - name: TAVILY_API_KEY_1
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: TAVILY_API_KEY_1
+                  optional: true
+            - name: TAVILY_API_KEY_2
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: TAVILY_API_KEY_2
+                  optional: true
+            - name: TAVILY_API_KEY_3
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: TAVILY_API_KEY_3
+                  optional: true
+            - name: TAVILY_API_KEY_4
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: TAVILY_API_KEY_4
+                  optional: true
+            - name: SERPER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: SERPER_API_KEY
+                  optional: true
+            - name: RAPIDAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: external-tool-keys
+                  key: RAPIDAPI_KEY
+                  optional: true
 ---
 apiVersion: v1
 kind: Service

@@ -85,3 +85,68 @@ The image builds from the **repository root**, not this directory:
 ```bash
 docker build -f services/tool-registry/Dockerfile -t tool-registry .
 ```
+
+## External provider tools
+
+Three providers are catalogued as `kind: "builtin"` tools, implemented in
+`external_tools.py`. All of them obey Rule 7.2 — a call that did not obtain a
+result raises rather than returning one — and Rule 7.3: a provider with no
+credential is **not registered at all**, so discovery never offers an agent a
+tool that can only answer 503.
+
+| `tool_id` | Endpoint | Credential |
+| :--- | :--- | :--- |
+| `mcp-tavily-search` | `POST /tools/tavily-search` | `TAVILY_API_KEY[_n]` |
+| `mcp-serper-search` | `POST /tools/serper-search` | `SERPER_API_KEY` |
+| `mcp-rapidapi-deezer` | `POST /tools/rapidapi/deezer` | `RAPIDAPI_KEY` |
+| `mcp-rapidapi-yahoo-finance` | `POST /tools/rapidapi/yahoo-finance` | `RAPIDAPI_KEY` |
+
+### Tavily key rotation
+
+Supply as many keys as you hold, as `TAVILY_API_KEY` and `TAVILY_API_KEY_1..n`.
+`TavilyKeyRing` does two separate things that a plain retry does not:
+
+- **Spreads load.** Each call starts at the next key, so *n* keys carry roughly
+  1/*n* of the traffic rather than the first key absorbing all of it.
+- **Fails over within a call.** A key that reports an auth or quota problem is
+  stepped over and the next tried, up to the number of usable keys.
+
+The two failure classes are treated differently on purpose. A revoked key (401)
+fails identically forever, so it is **quarantined** and leaves the rotation —
+keeping it would turn one dead key into a fixed fraction of failed searches. An
+exhausted key (429/432) recovers on the provider's clock, so it is only
+**benched** for `TAVILY_QUOTA_COOLDOWN_SECS` (default 900).
+
+`GET /tools/tavily-search/keys` reports per-key state by *variable name* and
+never returns a key's value, so an operator can see which key is quarantined
+without access to the secret.
+
+### Adding a RapidAPI service
+
+Append a `RapidApiService` to `RAPIDAPI_SERVICES`. Each becomes its own
+`tool_id`, deliberately: a single generic "call RapidAPI" tool taking a host
+and path would push the choice of endpoint onto the model, which is the
+guessing Rule 3.2 exists to prevent.
+
+Only services this account is subscribed to **and** that still answer are
+listed. Three subscribed APIs are deliberately excluded as dead upstreams —
+`linkedin-api8` (HTTP 200 with `{"success": false, "message": "This service is
+no longer available at this location"}`), `google-translate1`
+(`{"message": "API doesn't exists"}`) and `numbersapi` (404 on every path).
+Cataloguing them would advertise capabilities that fail at call time. The
+linkedin case is the dangerous one — a 200 with a falsy body is the shape most
+easily mistaken for a result — so `rapidapi_call` checks for it explicitly.
+
+Note also that RapidAPI returns the **same** HTTP 403 for an invalid key and
+for a valid key that is not subscribed, so the error raised here says both are
+possible rather than guessing one.
+
+### Creating the secret
+
+```bash
+kubectl create secret generic external-tool-keys \
+  --from-literal=SERPER_API_KEY=... \
+  --from-literal=TAVILY_API_KEY_1=... \
+  --from-literal=TAVILY_API_KEY_2=... \
+  --from-literal=RAPIDAPI_KEY=...
+```
