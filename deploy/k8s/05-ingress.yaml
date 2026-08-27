@@ -47,6 +47,25 @@ spec:
                 name: agent-london-backend-service
                 port:
                   number: 8000
+          # litellm model router. The litellm Deployment sets
+          # SERVER_ROOT_PATH=/proxy, because GCE Ingress forwards the path
+          # unchanged and the backend would otherwise receive /proxy/v1/... and
+          # 404. litellm keeps serving the unprefixed routes too, so in-cluster
+          # callers on http://litellm-service/v1 are unaffected.
+          #
+          # This rule lives here because THIS manifest owns agents-london-ingress
+          # and CI applies it on every push to main. It was previously added to
+          # marty's infra/ingress/ingresses.yaml, which claims the same Ingress
+          # object; the next pipeline run applied this file and silently deleted
+          # the rule, leaving agents.london/proxy answering 404 from the
+          # frontend's nginx while litellm itself was perfectly healthy.
+          - path: /proxy
+            pathType: Prefix
+            backend:
+              service:
+                name: litellm-service
+                port:
+                  number: 80
           - path: /telemetry
             pathType: Prefix
             backend:
