@@ -75,7 +75,7 @@ setup: install-backend install-services install-frontend
 .PHONY: dev dev-backend dev-frontend dev-agent-registry dev-tool-registry dev-document-registry
 
 dev-backend: $(VENV_DIR)
-	cd backend && PYTHONPATH=. $(UVICORN) main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload
+	cd backend && PYTHONPATH=..:.:../shared $(UVICORN) main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload
 
 dev-frontend: $(NODE_DIR)
 	cd frontend && npx vite --port $(FRONTEND_PORT) --host
@@ -102,10 +102,10 @@ $(NODE_DIR):
 .PHONY: test lint
 
 test: $(VENV_DIR)
-	PYTHONPATH=backend $(PYTHON) test_civilization.py
+	PYTHONPATH=backend:shared $(PYTHON) test_civilization.py
 
 lint: $(VENV_DIR)
-	@$(PYTHON) -c "import ast, glob; [ast.parse(open(f).read()) or print(f'  {f}: OK') for f in glob.glob('backend/*.py') + glob.glob('services/*/app.py')]"
+	@$(PYTHON) -c "import ast, glob; [ast.parse(open(f).read()) or print(f'  {f}: OK') for f in glob.glob('backend/*.py') + glob.glob('shared/*.py') + glob.glob('services/*/app.py')]"
 
 # ─── Deploy (full pipeline: build → push to GCR → apply K8s) ───────────────
 

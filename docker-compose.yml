@@ -44,7 +44,10 @@ services:
 
   agent-registry:
     build:
-      context: ./services/agent-registry
+      # Root context: these images copy shared/*.py alongside their own
+      # sources, and their COPY paths are repo-root relative.
+      context: .
+      dockerfile: services/agent-registry/Dockerfile
     container_name: agent-london-local-agent-registry
     ports:
       - "8001:8001"
@@ -58,7 +61,10 @@ services:
 
   tool-registry:
     build:
-      context: ./services/tool-registry
+      # Root context: these images copy shared/*.py alongside their own
+      # sources, and their COPY paths are repo-root relative.
+      context: .
+      dockerfile: services/tool-registry/Dockerfile
     container_name: agent-london-local-tool-registry
     ports:
       - "8002:8002"
@@ -71,7 +77,10 @@ services:
 
   document-registry:
     build:
-      context: ./services/document-registry
+      # Root context: these images copy shared/*.py alongside their own
+      # sources, and their COPY paths are repo-root relative.
+      context: .
+      dockerfile: services/document-registry/Dockerfile
     container_name: agent-london-local-document-registry
     ports:
       - "8003:8003"
