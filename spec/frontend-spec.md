@@ -1,6 +1,6 @@
 # The frontend
 
-Specification for the agent.london web client (`frontend/`). React 18 with
+Specification for the agent.london web client (`apps/civilization/frontend/`). React 18 with
 Material UI, built by Vite, served as static assets and proxied to the backend
 at `/api` and `/ws`.
 

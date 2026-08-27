@@ -11,10 +11,27 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Walk up from this file to the repository root so the same .env is found
-# whether a service is started from the repo root, from backend/, or by uvicorn
-# with a different working directory.
-_ROOT = Path(__file__).resolve().parent.parent
+# Find the nearest .env at or above this file, rather than assuming a fixed
+# depth. The previous `parent.parent` encoded "backend/ sits directly in the
+# repository root", which stopped being true the moment the app moved under
+# apps/civilization/ — and the failure surfaced as "OPENAI_API_KEY is not set",
+# naming a .env path that had never existed. services/document-registry/
+# env_file.py carries the same fix for the same reason; worth folding into
+# shared/ so there is one implementation rather than two.
+def _find_root(start: Path) -> Path:
+    """The nearest directory at or above `start` holding a .env, else the
+    repository root, else `start`. Never raises: a missing .env is normal in a
+    container, where the environment is supplied directly."""
+    for directory in (start, *start.parents):
+        if (directory / ".env").is_file():
+            return directory
+    for directory in (start, *start.parents):
+        if (directory / ".git").is_dir():
+            return directory
+    return start
+
+
+_ROOT = _find_root(Path(__file__).resolve().parent)
 load_dotenv(_ROOT / ".env")
 
 

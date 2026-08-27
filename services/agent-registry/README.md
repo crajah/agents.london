@@ -60,7 +60,7 @@ Specification: [`spec/agent-graph-spec.md`](../../spec/agent-graph-spec.md).
 
 `POST /agents/register`, `/agents/verify`, `/agents/{id}/audit`, `/agents/{id}/allocate-tokens`, `GET /agents`, `/agents/{id}`, `/agents/{id}/progeny`, `/agents/{id}/kagent-manifest`, `/agents/rag-documents`, `/pipelines/{id}/graph`.
 
-Same requests, same responses — `backend/main.py` and the frontend need no change. Underneath, `legacy_shim.py` translates them onto the graph, so there is one store rather than two that can disagree. Progeny is derived from the `spawns` edges rather than kept as a list; auditing patches the identity vertex and does not produce a new version, because it does not change what the agent does.
+Same requests, same responses — `apps/civilization/backend/main.py` and the frontend need no change. Underneath, `legacy_shim.py` translates them onto the graph, so there is one store rather than two that can disagree. Progeny is derived from the `spawns` edges rather than kept as a list; auditing patches the identity vertex and does not produce a new version, because it does not change what the agent does.
 
 ---
 
@@ -76,7 +76,7 @@ Same requests, same responses — `backend/main.py` and the frontend need no cha
 | `legacy_shim.py` | The original surface, translated onto the graph. |
 | `app.py` | Host, lifespan, the original endpoints. |
 
-`metering.py`, `pipeline_runtime.py` and `embedding.py` come from `backend/` and are copied into the image — one canonical copy, not vendored duplicates.
+`metering.py`, `pipeline_runtime.py` and `embedding.py` come from `shared/` and are copied into the image — one canonical copy, not vendored duplicates.
 
 ---
 

@@ -48,7 +48,7 @@ DB_URI = os.getenv("POSTGRES_URI", DEFAULT_DB_URI)
 # difference nobody notices until it matters.
 SCHEMA_PER_REALM = os.getenv("SCHEMA_PER_REALM", "1").lower() in ("1", "true", "yes")
 
-# The realm an unscoped read falls back to. Matches backend/main.py's
+# The realm an unscoped read falls back to. Matches apps/civilization/backend/main.py's
 # DEFAULT_ORG_ID: a realm is a PostgreSQL schema, so the two disagreeing means
 # reading an empty schema and reporting "not found" for an agent that exists.
 DEFAULT_ORG = os.getenv("DEFAULT_ORG_ID", "org_london_meta")

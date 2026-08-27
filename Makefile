@@ -17,7 +17,7 @@ VENV_BIN       := $(VENV_DIR)/bin
 PYTHON         := $(VENV_BIN)/python
 PIP            := $(VENV_BIN)/pip
 UVICORN        := $(VENV_BIN)/uvicorn
-NODE_DIR       := frontend/node_modules
+NODE_DIR       := apps/civilization/frontend/node_modules
 
 BACKEND_PORT   ?= 8000
 FRONTEND_PORT  ?= 3000
@@ -55,7 +55,7 @@ $(VENV_DIR): _check-pyenv
 
 install-backend: $(VENV_DIR)
 	@echo "Installing backend deps..."
-	@$(PIP) install -r backend/requirements.txt -q
+	@$(PIP) install -r apps/civilization/backend/requirements.txt -q
 
 install-services: $(VENV_DIR)
 	@for svc in services/agent-registry services/tool-registry services/document-registry; do \
@@ -65,7 +65,7 @@ install-services: $(VENV_DIR)
 
 install-frontend:
 	@echo "Installing frontend deps..."
-	@cd frontend && npm install --silent
+	@cd apps/civilization/frontend && npm install --silent
 
 setup: install-backend install-services install-frontend
 	@echo "Setup complete. Run 'make dev' to start."
@@ -75,10 +75,10 @@ setup: install-backend install-services install-frontend
 .PHONY: dev dev-backend dev-frontend dev-agent-registry dev-tool-registry dev-document-registry
 
 dev-backend: $(VENV_DIR)
-	cd backend && PYTHONPATH=..:.:../shared $(UVICORN) main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload
+	cd apps/civilization/backend && PYTHONPATH=../../..:.:../../../shared $(UVICORN) main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload
 
 dev-frontend: $(NODE_DIR)
-	cd frontend && npx vite --port $(FRONTEND_PORT) --host
+	cd apps/civilization/frontend && npx vite --port $(FRONTEND_PORT) --host
 
 dev:
 	@$(MAKE) dev-backend &
@@ -95,17 +95,17 @@ dev-document-registry: $(VENV_DIR)
 	cd services/document-registry && $(UVICORN) app:app --host 0.0.0.0 --port 8003 --reload
 
 $(NODE_DIR):
-	@cd frontend && npm install --silent
+	@cd apps/civilization/frontend && npm install --silent
 
 # ─── Testing ────────────────────────────────────────────────────────────────
 
 .PHONY: test lint
 
 test: $(VENV_DIR)
-	PYTHONPATH=backend:shared $(PYTHON) test_civilization.py
+	PYTHONPATH=apps/civilization/backend:shared $(PYTHON) test_civilization.py
 
 lint: $(VENV_DIR)
-	@$(PYTHON) -c "import ast, glob; [ast.parse(open(f).read()) or print(f'  {f}: OK') for f in glob.glob('backend/*.py') + glob.glob('shared/*.py') + glob.glob('services/*/app.py')]"
+	@$(PYTHON) -c "import ast, glob; [ast.parse(open(f).read()) or print(f'  {f}: OK') for f in glob.glob('apps/civilization/backend/*.py') + glob.glob('shared/*.py') + glob.glob('services/*/app.py')]"
 
 # ─── Deploy (full pipeline: build → push to GCR → apply K8s) ───────────────
 
@@ -122,13 +122,13 @@ build: _check-gcloud
 	docker build -t agent-registry:$$TAG -f services/agent-registry/Dockerfile . && \
 	docker build -t tool-registry:$$TAG services/tool-registry && \
 	docker build -t document-registry-service:$$TAG services/document-registry && \
-	docker build -t agent-london-backend:$$TAG backend && \
+	docker build -f apps/civilization/backend/Dockerfile -t agent-london-backend:$$TAG . && \
 	\
-	if [ -f frontend/.env ]; then set -a; . frontend/.env; set +a; fi && \
+	if [ -f apps/civilization/frontend/.env ]; then set -a; . apps/civilization/frontend/.env; set +a; fi && \
 	docker build \
 		--build-arg VITE_GOOGLE_CLIENT_ID="$${VITE_GOOGLE_CLIENT_ID:-}" \
 		--build-arg VITE_MS_CLIENT_ID="$${VITE_MS_CLIENT_ID:-}" \
-		-t agent-london-frontend:$$TAG frontend && \
+		-t agent-london-frontend:$$TAG apps/civilization/frontend && \
 	\
 	echo "All 5 images built: $$TAG"
 
@@ -187,7 +187,7 @@ docker-down:
 .PHONY: clean
 
 clean:
-	rm -rf $(VENV_DIR) frontend/node_modules frontend/dist .docker_tag
+	rm -rf $(VENV_DIR) apps/civilization/frontend/node_modules apps/civilization/frontend/dist .docker_tag
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache
 	@echo "Clean."

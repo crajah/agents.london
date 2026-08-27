@@ -1,6 +1,6 @@
 # The Founding Agents
 
-**Status:** implemented · `backend/founders.py`, `backend/platform_tools.py`, `backend/autonomy.py`
+**Status:** implemented · `apps/civilization/backend/founders.py`, `apps/civilization/backend/platform_tools.py`, `apps/civilization/backend/autonomy.py`
 **Depends on:** agent-graph-spec (registration, versions, lineage), tool-registry-spec (publication, side effects), document-registry-spec (spaces, retrieval)
 
 ---
@@ -46,7 +46,7 @@ nothing invocable. This was invisible for as long as it existed.
 
 ## 3. One roster
 
-**Rule 3.1** — `backend/founders.py` is the only definition of the founding
+**Rule 3.1** — `apps/civilization/backend/founders.py` is the only definition of the founding
 roster. Both engines and the discovery archetype list derive from it. A second
 list is a second civilisation.
 
@@ -255,7 +255,7 @@ discovered:
 
 Holds today, verified 14 August 2026 against a live stack:
 
-- One roster of 36, both engines, derived archetypes (`backend/test_founders.py`, 23 assertions).
+- One roster of 36, both engines, derived archetypes (`apps/civilization/backend/test_founders.py`, 23 assertions).
 - Prompts 3.1k–5.8k chars, all nine sections, no-fabrication and the four directives in every one.
 - A fresh realm seeds 5 tools and registers 36 founders — previously 0 and 0.
 - Intake routes real prompts: arithmetic to `SIMPLE_CHAT`, a four-stage request to `PIPELINE`, with its reasoning recorded.

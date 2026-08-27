@@ -1,7 +1,7 @@
 """Test-only path setup.
 
 In the image, metering.py is copied alongside these modules, so it imports as a
-sibling. In the checkout it lives in backend/, and this bridges that difference
+sibling. In the checkout it lives in shared/, and this bridges that difference
 for tests without a sys.path hack inside application code — which would be
 load-bearing in production and invisible.
 """

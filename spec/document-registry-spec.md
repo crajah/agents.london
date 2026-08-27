@@ -63,7 +63,7 @@ confusion in this service, and a name that says which space it means costs
 nothing.
 
 **Rule 2.0** — `space_name` remains an accepted alias on every request and is
-still emitted in every response, because the frontend and `backend/main.py`
+still emitted in every response, because the frontend and `apps/civilization/backend/main.py`
 read it. One canonical field with one alias beats two fields that can disagree,
 and beats a coordinated rename across three services.
 
@@ -453,7 +453,7 @@ section recorded is closed:
 bodies, query parameters and responses — rather than `space_name` doing double
 duty one level away from post-graph's `space`. `space_name` is retained
 everywhere as an accepted alias and is still emitted in responses, because the
-frontend and `backend/main.py` read it. One canonical field with one alias beats
+frontend and `apps/civilization/backend/main.py` read it. One canonical field with one alias beats
 two fields that can disagree.
 
 The rule that made this worth doing is Rule 2.1: every post-graph call uses

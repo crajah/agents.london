@@ -981,7 +981,7 @@ Two further defects were found while implementing and are fixed:
 
 The two surfaces are reconciled. `services/agent-registry/legacy_shim.py`
 translates the older registration shape onto the graph: `POST /agents/register`
-keeps its exact request and response, and the frontend and `backend/main.py`
+keeps its exact request and response, and the frontend and `apps/civilization/backend/main.py`
 need no change, but the data lands in `agents` and `agents_data` like everything
 else. The economic and attestation fields — `token_balance`,
 `reputation_score`, `hash_digest`, `public_key`, `uaid`, `x509_certificate` —
