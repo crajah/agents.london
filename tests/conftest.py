@@ -56,13 +56,17 @@ for name in ("post-graph", "post-graph-rag"):
     if (local / name.replace("-", "_")).is_dir():
         sys.path.insert(0, str(local))
 
-BACKEND = ROOT / "backend"
+# The civilization app's BFF. shared/ goes on the path too: metering,
+# embedding and pipeline_runtime moved out of the app so the registry services
+# could import them without reaching into an application directory.
+BACKEND = ROOT / "apps" / "civilization" / "backend"
+SHARED = ROOT / "shared"
 SERVICES = {
     "agent": ROOT / "services" / "agent-registry",
     "tool": ROOT / "services" / "tool-registry",
     "document": ROOT / "services" / "document-registry",
 }
-for path in (BACKEND, *SERVICES.values()):
+for path in (BACKEND, BACKEND.parent, SHARED, *SERVICES.values()):
     sys.path.insert(0, str(path))
 
 # `.env` names both the database and the router as the *containers* see them —

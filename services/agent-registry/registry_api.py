@@ -79,7 +79,7 @@ async def _embed_identity(identity: Dict[str, Any],
 
     Computed from name, telos, description and capability names — which is what
     makes "find me an agent that can summarise filings" resolve without a
-    keyword index. Never fails a registration: see backend/embedding.py.
+    keyword index. Never fails a registration: see shared/embedding.py.
     """
     try:
         from embedding import discovery_text, embed

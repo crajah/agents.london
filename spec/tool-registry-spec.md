@@ -459,7 +459,7 @@ section recorded is closed:
 ### 12.1 Compatibility
 
 `POST /tools/register` accepts both the versioned body (`{identity, version}`)
-and the original flat body, so `backend/main.py` and any deployment manifest
+and the original flat body, so `apps/civilization/backend/main.py` and any deployment manifest
 keep working — and a caller that has not been updated still produces a properly
 versioned, hashed, pinnable tool rather than an unversioned vertex.
 

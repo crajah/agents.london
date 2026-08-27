@@ -1,7 +1,7 @@
 """Tests for the legacy surface translated onto the graph (spec §13.3).
 
 The contract these protect: `POST /agents/register` keeps its request and
-response shape, so `backend/main.py` and the frontend need no change, while the
+response shape, so `apps/civilization/backend/main.py` and the frontend need no change, while the
 data lands in the one graph store instead of a second parallel table.
 """
 import pytest

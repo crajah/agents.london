@@ -39,8 +39,8 @@ jobs:
       matrix:
         service:
           - name: agent-registry
-            # Root context: this image copies backend/metering.py and
-            # backend/pipeline_runtime.py, which a service-scoped context
+            # Root context: this image copies shared/metering.py and
+            # shared/pipeline_runtime.py, which a service-scoped context
             # cannot reach. Building it from services/agent-registry shipped
             # an image containing only app.py, which then died on
             # `import registry_api` at startup.
@@ -48,20 +48,20 @@ jobs:
             dockerfile: services/agent-registry/Dockerfile
           - name: tool-registry
             # Root context, for the same reason as the agent registry: this
-            # image copies backend/metering.py and backend/embedding.py, and a
+            # image copies shared/metering.py and shared/embedding.py, and a
             # service-scoped context cannot see outside its own directory.
             context: .
             dockerfile: services/tool-registry/Dockerfile
           - name: document-registry-service
-            # Root context: this image copies backend/metering.py.
+            # Root context: this image copies shared/metering.py.
             context: .
             dockerfile: services/document-registry/Dockerfile
           - name: agent-london-backend
-            # Root context: this image copies backend/ and shared/.
+            # Root context: this image copies apps/civilization/backend/ and shared/.
             context: .
-            dockerfile: backend/Dockerfile
+            dockerfile: apps/civilization/backend/Dockerfile
           - name: agent-london-frontend
-            context: frontend
+            context: apps/civilization/frontend
 
     steps:
       - name: Checkout Repository

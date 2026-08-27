@@ -76,7 +76,7 @@ Two document spaces in one project **share a knowledge graph** — entities from
 | `doc_rag.py` | post-graph-rag indexing, chunk removal, retrieval. |
 | `app.py` | Host and HTTP surface. |
 
-`metering.py` comes from `backend/` and is copied into the image.
+`metering.py` comes from `shared/` and is copied into the image.
 
 ---
 

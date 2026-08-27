@@ -8,7 +8,7 @@ registered through one was invisible to the other, with different tables,
 different id conventions and different notions of a version.
 
 This module removes the second store. `POST /agents/register` keeps its exact
-request and response shape, because the frontend and `backend/main.py` call it,
+request and response shape, because the frontend and `apps/civilization/backend/main.py` call it,
 and it now writes the graph:
 
     AgentRegistrationRequest  ->  AgentIdentity  (the stable vertex)

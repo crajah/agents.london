@@ -20,7 +20,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: apps/civilization/backend/Dockerfile
     container_name: agent-london-local-backend
     ports:
       - "8000:8000"

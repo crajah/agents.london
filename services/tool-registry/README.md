@@ -69,7 +69,7 @@ Specification: [`spec/tool-registry-spec.md`](../../spec/tool-registry-spec.md).
 | `tool_api.py` | HTTP surface. |
 | `app.py` | Host, lifespan, default catalogue, builtin tools. |
 
-`metering.py` and `embedding.py` come from `backend/` and are copied into the image — one canonical copy, not a vendored duplicate.
+`metering.py` and `embedding.py` come from `shared/` and are copied into the image — one canonical copy, not a vendored duplicate.
 
 ---
 

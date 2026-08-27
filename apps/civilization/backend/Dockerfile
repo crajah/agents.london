@@ -6,11 +6,11 @@ WORKDIR /app
 # (metering, embedding, pipeline_runtime) live in shared/ because all three
 # registry services import them too, so this image has to reach outside its own
 # directory to get them. The CI build context was widened to match; building
-# this Dockerfile with `context: backend` will fail on the shared/ COPY.
-COPY backend/requirements.txt .
+# this Dockerfile with a narrower context will fail on the shared/ COPY.
+COPY apps/civilization/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ /app/backend/
+COPY apps/civilization/backend/ /app/backend/
 COPY shared/*.py /app/shared/
 
 # backend is imported as a package (`from backend.registry_contract import …`)

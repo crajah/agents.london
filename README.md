@@ -43,7 +43,7 @@
 ### 1. 🤖 Google Agent Development Kit (ADK) Engine & Dual Strategy Architecture
 - **Primary Engine Strategy (`GOOGLE_ADK`)**: Leverages Google GenAI SDK & Agent Development Kit (ADK) agent specs (`ADKAgentNode`), multi-agent delegation, and structured tool calling.
 - **Native Python Strategy (`NATIVE`)**: High-performance Python engine with zero framework dependencies.
-- **Dynamic Factory Switcher (`backend/civilization_factory.py`)**: Seamless hot-swapping controlled by `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` or `"NATIVE"`).
+- **Dynamic Factory Switcher (`apps/civilization/backend/civilization_factory.py`)**: Seamless hot-swapping controlled by `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` or `"NATIVE"`).
 
 ---
 
@@ -79,21 +79,28 @@ Every backend component provides interactive Swagger & ReDoc API documentation:
 
 ```
 agents.london/
-├── frontend/                     # Modern React + Vite Frontend UI
-│   ├── src/components/           # Playground, Detector-Renderer, Document Registry, Visualizer
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── backend/                      # Backend for Frontend (BFF) FastAPI Service
-│   ├── main.py                   # FastAPI app, OpenAPI tags, WebSocket broadcast, LLM Router
-│   ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
-│   ├── civilization_adk.py       # Google ADK Engine Implementation & Prime Nodes
-│   ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
-│   ├── civilization.py           # Native Python Engine & PostGraph persistence
-│   ├── prompts.py                # 6-Section Production System Prompts
-│   ├── redis_bus.py              # Redis Pub/Sub & Task Queues per project
-│   ├── requirements.txt
-│   └── Dockerfile
+├── apps/                         # Applications. One folder per app; they share
+│   │                             # services/ and shared/, and never each other.
+│   └── civilization/             # The 1B Agent Civilization app
+│       ├── frontend/             # Modern React + Vite Frontend UI
+│       │   ├── src/components/   # Playground, Detector-Renderer, Document Registry, Visualizer
+│       │   ├── index.html
+│       │   ├── package.json
+│       │   └── vite.config.js
+│       └── backend/              # Backend for Frontend (BFF) FastAPI Service
+│           ├── main.py           # FastAPI app, OpenAPI tags, WebSocket broadcast, LLM Router
+│           ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
+│           ├── civilization_adk.py       # Google ADK Engine Implementation & Prime Nodes
+│           ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
+│           ├── civilization.py           # Native Python Engine & PostGraph persistence
+│           ├── prompts.py        # 6-Section Production System Prompts
+│           ├── redis_bus.py      # Redis Pub/Sub & Task Queues per project
+│           ├── requirements.txt
+│           └── Dockerfile
+├── shared/                       # Imported by BOTH apps and services
+│   ├── metering.py               # Usage events (all three services + pipeline_runtime)
+│   ├── embedding.py              # Discovery vectors (agent-registry, tool-registry)
+│   └── pipeline_runtime.py       # Pipeline execution (agent-registry, civilization BFF)
 ├── services/                     # Kubernetes Microservices
 │   ├── agent-registry/           # UAID, X.509 Attestation & Kagent Materialization Service
 │   ├── tool-registry/            # MCP Tool Registry Microservice (GCP Search, SQL, pgvector)

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Built from the repository root, not from this directory: the registry meters
-# ingestion and retrieval, and that module lives in backend/. A service-scoped
+# ingestion and retrieval, and that module lives in shared/. A service-scoped
 # build context cannot reach it.
 #   docker build -f services/document-registry/Dockerfile -t document-registry .
 

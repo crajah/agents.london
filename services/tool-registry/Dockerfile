@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Built from the repository root, not from this directory: the registry meters
-# tool calls and embeds tool descriptions, and those modules live in backend/.
+# tool calls and embeds tool descriptions, and those modules live in shared/.
 # A service-scoped build context cannot reach them.
 #   docker build -f services/tool-registry/Dockerfile -t tool-registry .
 

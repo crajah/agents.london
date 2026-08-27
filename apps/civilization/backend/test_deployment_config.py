@@ -17,7 +17,24 @@ import re
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+def _repo_root(start: pathlib.Path) -> pathlib.Path:
+    """The nearest ancestor holding deploy/k8s, else holding .git.
+
+    Not `parent.parent`: that encoded "this file sits one level below the
+    repository root", which stopped being true when the app moved under
+    apps/civilization/ and turned every manifest assertion into a
+    FileNotFoundError pointing at a path that had never existed.
+    """
+    for directory in (start, *start.parents):
+        if (directory / "deploy" / "k8s").is_dir():
+            return directory
+    for directory in (start, *start.parents):
+        if (directory / ".git").is_dir():
+            return directory
+    return start
+
+
+ROOT = _repo_root(pathlib.Path(__file__).resolve().parent)
 CONFIGMAP = ROOT / "deploy" / "k8s" / "00-litellm-configmap.yaml"
 
 # Settings the deployment supplies that no Python module reads by name: URLs
@@ -43,11 +60,29 @@ def configmap_keys() -> set:
     return keys
 
 
+def code_directories():
+    """Every directory whose modules may read settings by name.
+
+    Enumerated rather than hard-coded as ROOT/"backend": that path stopped
+    existing when the app moved to apps/civilization/, and the test did not
+    fail loudly — it reported CIVILIZATION_ENGINE_TYPE and
+    DOCUMENT_REGISTRY_URL as "set in the cluster and read by nothing", which
+    reads like a deployment bug rather than a stale glob. Any new app under
+    apps/ is picked up without editing this.
+    """
+    directories = [ROOT / "shared"]
+    for app in sorted((ROOT / "apps").glob("*")):
+        if app.is_dir():
+            directories.extend(sorted(d for d in app.glob("*") if d.is_dir()))
+    directories.extend(sorted((ROOT / "services").glob("*")))
+    return [d for d in directories if d.is_dir()]
+
+
 def env_names_read_by_code() -> set:
     """Every environment variable the backend and services look up by name."""
     names = set()
     pattern = re.compile(r'(?:getenv|optional_env|require_env)\(\s*"([A-Z][A-Z0-9_]*)"')
-    for directory in (ROOT / "backend", *sorted((ROOT / "services").glob("*"))):
+    for directory in code_directories():
         if not directory.is_dir():
             continue
         for source in directory.glob("*.py"):
@@ -150,8 +185,9 @@ def test_no_workload_mounts_a_volume_nothing_writes_to():
 
     sources = " ".join(
         path.read_text()
-        for directory in ("backend", "services")
-        for path in (ROOT / directory).rglob("*.py"))
+        for directory in (ROOT / "apps", ROOT / "services", ROOT / "shared")
+        if directory.is_dir()
+        for path in directory.rglob("*.py"))
 
     unused = []
     for name, doc in load_manifests():
