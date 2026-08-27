@@ -17,6 +17,11 @@ from pydantic import BaseModel, Field
 
 from post_graph import AsyncPostGraph
 
+from external_tools import (
+    EXTERNAL_TIMEOUT, RAPIDAPI_BY_SLUG, RAPIDAPI_SERVICES, NotConfigured,
+    ProviderError, TavilyKeyRing, rapidapi_call, rapidapi_key, serper_key,
+    serper_search, tavily_search,
+)
 from tool_api import discovery_embedding, router as tool_router
 from tool_cache import ToolCache
 from tool_model import DORMANT, ToolIdentity, ToolVersionSpec
@@ -68,6 +73,16 @@ BACKEND_MCP = os.getenv(
 SELF_URL = os.getenv(
     "TOOL_REGISTRY_URL",
     "http://tool-registry-service.default.svc.cluster.local:8002")
+
+# External providers. Each is catalogued only when its credential is present
+# (Rule 7.3): a tool that is listed but 503s teaches an agent to plan around a
+# capability it does not have, which is worse than not offering it.
+TAVILY_KEYS = TavilyKeyRing()
+
+# The Kubernetes Secret the catalogue points at. Only the name and the key name
+# are recorded in a tool version; the value never enters the registry, because
+# a registry row is readable by every service in the realm (Rule 6.3).
+EXTERNAL_KEYS_SECRET = os.getenv("EXTERNAL_KEYS_SECRET", "external-tool-keys")
 
 
 @asynccontextmanager
@@ -162,6 +177,106 @@ DEFAULT_TOOLS = [
              output_schema=_obj({"output": {"type": "string"}}, [])),
     ),
 ]
+
+
+def _external_tools():
+    """Catalogue entries for the providers whose credentials are configured.
+
+    Rule 7.3 is the whole point of the conditionals. A provider with no key is
+    not registered at all, so discovery (Rule 5.1) never offers an agent a tool
+    whose only possible answer is 503. Note that `mcp-web-search` above is
+    seeded unconditionally even when WEB_SEARCH_MODEL is empty, which is the
+    gap this avoids repeating rather than one it fixes.
+    """
+    entries = []
+
+    # ---- Tavily, over a rotating pool of keys ----------------------------
+    if TAVILY_KEYS.configured:
+        entries.append((
+            ToolIdentity(
+                tool_id="mcp-tavily-search", name="Tavily web search",
+                description="Searches the web through Tavily and returns ranked "
+                            "results with snippets, links and an optional "
+                            "synthesised answer. Built for retrieval by agents.",
+                scope_type="org", org_id=SEED_REALM, kind="builtin",
+                capabilities=["web_search", "internet", "retrieve", "research"]),
+            dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/tavily-search",
+                 side_effects="external",
+                 auth={"mode": "secret_ref",
+                       "secret_ref": {"name": EXTERNAL_KEYS_SECRET,
+                                      "key": "TAVILY_API_KEY_1"}},
+                 input_schema=_obj({
+                     "query": {"type": "string", "description": "What to search for"},
+                     "max_results": {"type": "integer", "description": "How many results, 1 to 20"},
+                     "search_depth": {"type": "string", "description": "'basic' (fast) or 'advanced' (deeper)"},
+                     "include_answer": {"type": "boolean", "description": "Include a synthesised answer"}},
+                     ["query"]),
+                 output_schema=_obj({
+                     "answer": {"type": "string", "description": "Synthesised answer, when requested"},
+                     "results": {"type": "array", "description": "Titles, snippets and links"},
+                     "count": {"type": "integer"},
+                     "key_used": {"type": "string", "description": "Which key variable served the call"}}, []),
+                 limits={"timeout_secs": EXTERNAL_TIMEOUT},
+                 cost_hint={"kind": "search_query"}),
+        ))
+
+    # ---- Serper ----------------------------------------------------------
+    if serper_key():
+        entries.append((
+            ToolIdentity(
+                tool_id="mcp-serper-search", name="Serper Google search",
+                description="Searches Google through Serper and returns organic "
+                            "results with titles, snippets and links, plus the "
+                            "answer box when Google shows one.",
+                scope_type="org", org_id=SEED_REALM, kind="builtin",
+                capabilities=["web_search", "internet", "retrieve", "google"]),
+            dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/serper-search",
+                 side_effects="external",
+                 auth={"mode": "secret_ref",
+                       "secret_ref": {"name": EXTERNAL_KEYS_SECRET,
+                                      "key": "SERPER_API_KEY"}},
+                 input_schema=_obj({
+                     "query": {"type": "string", "description": "What to search Google for"},
+                     "num_results": {"type": "integer", "description": "How many results, 1 to 20"},
+                     "country": {"type": "string", "description": "Two-letter country code, e.g. gb"},
+                     "language": {"type": "string", "description": "Two-letter language code, e.g. en"}},
+                     ["query"]),
+                 output_schema=_obj({
+                     "answer": {"type": "string", "description": "Answer box text, when Google returned one"},
+                     "results": {"type": "array", "description": "Titles, snippets and links"},
+                     "count": {"type": "integer"},
+                     "credits_used": {"type": "integer"}}, []),
+                 limits={"timeout_secs": EXTERNAL_TIMEOUT},
+                 cost_hint={"kind": "search_query"}),
+        ))
+
+    # ---- RapidAPI: one tool per service ----------------------------------
+    if rapidapi_key():
+        for service in RAPIDAPI_SERVICES:
+            entries.append((
+                ToolIdentity(
+                    tool_id=service.tool_id, name=service.name,
+                    description=service.description,
+                    scope_type="org", org_id=SEED_REALM, kind="builtin",
+                    capabilities=list(service.capabilities)),
+                dict(endpoint_url=f"{SELF_URL.rstrip('/')}/tools/rapidapi/{service.slug}",
+                     side_effects="external",
+                     auth={"mode": "secret_ref",
+                           "secret_ref": {"name": EXTERNAL_KEYS_SECRET,
+                                          "key": "RAPIDAPI_KEY"}},
+                     input_schema=_obj(dict(service.schema_properties),
+                                       list(service.required)),
+                     output_schema=_obj({
+                         "service": {"type": "string"},
+                         "data": {"type": "object", "description": "The provider's response, unaltered"}}, []),
+                     limits={"timeout_secs": EXTERNAL_TIMEOUT},
+                     cost_hint={"kind": "api_call"}),
+            ))
+
+    return entries
+
+
+DEFAULT_TOOLS += _external_tools()
 
 
 async def seed_default_tools(client, cache: ToolCache) -> int:
@@ -487,3 +602,94 @@ async def execute_web_search(req: WebSearchRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8002)
+
+
+# -------------------------------------------------- external provider tools
+
+class TavilySearchRequest(BaseModel):
+    query: str
+    max_results: int = Field(5, ge=1, le=20)
+    search_depth: str = "basic"
+    include_answer: bool = True
+    project_id: Optional[str] = None
+
+
+class SerperSearchRequest(BaseModel):
+    query: str
+    num_results: int = Field(5, ge=1, le=20)
+    country: str = "us"
+    language: str = "en"
+    project_id: Optional[str] = None
+
+
+def _as_http_error(e: ProviderError) -> HTTPException:
+    """Map a provider failure onto a response without softening it.
+
+    Rule 7.2: the caller is an agent, and an agent that receives a synthesised
+    "no results found" cannot tell it apart from a real empty result set. The
+    status and the provider's own message both survive.
+    """
+    return HTTPException(status_code=e.status_code, detail=str(e))
+
+
+@app.post("/tools/tavily-search", tags=["Builtin Tools"])
+async def execute_tavily_search(req: TavilySearchRequest):
+    """Search the web via Tavily, rotating automatically across the key pool.
+
+    Rotation is handled by `TavilyKeyRing`: each call starts at the next key so
+    load is spread, and a key that reports an auth or quota failure is stepped
+    over and the next one tried within the same call. A revoked key leaves the
+    rotation permanently; an over-quota key is benched and returns later.
+    """
+    try:
+        return await tavily_search(
+            TAVILY_KEYS, query=req.query, max_results=req.max_results,
+            search_depth=req.search_depth, include_answer=req.include_answer)
+    except ProviderError as e:
+        raise _as_http_error(e) from e
+
+
+@app.get("/tools/tavily-search/keys", tags=["Builtin Tools"])
+async def tavily_key_health():
+    """Per-key rotation state, by variable name.
+
+    Deliberately reports names and never values: this endpoint exists so an
+    operator can see that, say, TAVILY_API_KEY is quarantined while the four
+    prod keys are healthy, and that diagnosis needs no access to the secrets.
+    """
+    return {"configured": TAVILY_KEYS.configured,
+            "key_count": len(TAVILY_KEYS),
+            "keys": TAVILY_KEYS.status()}
+
+
+@app.post("/tools/serper-search", tags=["Builtin Tools"])
+async def execute_serper_search(req: SerperSearchRequest):
+    """Search Google via Serper."""
+    try:
+        return await serper_search(
+            query=req.query, num_results=req.num_results,
+            country=req.country, language=req.language)
+    except ProviderError as e:
+        raise _as_http_error(e) from e
+
+
+@app.post("/tools/rapidapi/{slug}", tags=["Builtin Tools"])
+async def execute_rapidapi(slug: str, arguments: Dict[str, Any]):
+    """Call one catalogued RapidAPI service.
+
+    `slug` is closed over the catalogue rather than free-form: an unknown slug
+    is a 404 here, not a request forwarded to an arbitrary host. A tool whose
+    input chose the upstream host would let a model reach any API on RapidAPI,
+    including ones this account is not subscribed to, and the failure would
+    surface as a confusing 403 from somewhere the caller never named.
+    """
+    service = RAPIDAPI_BY_SLUG.get(slug)
+    if service is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(f"No RapidAPI service '{slug}' is catalogued. "
+                    f"Available: {', '.join(sorted(RAPIDAPI_BY_SLUG))}."))
+    try:
+        return await rapidapi_call(service, arguments or {})
+    except ProviderError as e:
+        raise _as_http_error(e) from e
