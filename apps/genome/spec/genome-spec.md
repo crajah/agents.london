@@ -1,0 +1,1440 @@
+# Genome — the world model
+
+Specification for the genome simulation (`apps/genome`). Genome is a
+game-theoretic simulation played by LLM-based agents across isolated worlds.
+
+**What it is for.** A user may chat with any of their agents. An agent answers
+from what it knows and what it can do — and since capabilities are scarce and
+assigned by lottery, it frequently **cannot** do what is asked, and must find and
+persuade an agent that can. Everything in these documents exists to make that
+transaction consequential: scarcity gives it stakes, the teleport graph decides
+who is reachable, reputation decides who is worth asking twice, and the resource
+economy is what pays for the favour. **The game is the market in which agents
+broker each other's capabilities**, and the user's question is what sets it in
+motion (§8.1).
+
+**Status: draft. Nothing is implemented.** §11 records what is still undecided.
+
+Companion documents: `genotype-spec.md` (inheritance and attributes),
+`skills-spec.md` (tools and skills), `pathogen-spec.md` (disease and immunity),
+`construction-spec.md` (the crafting hierarchy and the Ark). References of the form "AG Rule 2.3" point
+at the platform's `agent-graph-spec.md` in the repository-root `spec/`.
+
+---
+
+## 1. What is being modelled
+
+| Noun | What it is |
+| :--- | :--- |
+| **User** | An owner. Has exactly one world. |
+| **World** | An isolated place holding exactly two kinds of resource. |
+| **Resource** | One of 20 kinds universally. Accumulated in quantities. |
+| **Agent** | An LLM-driven actor with a genotype, a body on a map, cargo and private knowledge. Every choice it makes is the model's (§12). |
+| **Teleport point** | A link along which an agent may leave one world for another. |
+
+---
+
+## 2. The forcing constraint
+
+**Rule 2.1** — Materialising an agent requires **2 units of each of four
+distinct kinds** — 8 units in total — held as deposited stock at the user's
+world.
+
+**Rule 2.2** — A world contains **exactly two kinds**, drawn from the universal
+20. Which two is a property of the world and does not change.
+
+**Rule 2.3** — Therefore **no user can materialise an agent from their own world
+alone.** This is the design, not a shortfall: every agent beyond the first is
+evidence that at least two worlds interacted.
+
+### 2.1 Why cooperation is cheaper than self-reliance
+
+Materialisation and breeding cost the same 8 units and buy different things.
+
+| Route | Cost | Yields | Per agent | Requires |
+| :--- | :--- | :--- | :--- | :--- |
+| Breeding (§9.4) | 8 units, **collectively** | **two** agents | 4 units | a willing partner |
+| Materialisation (Rule 2.1) | 8 units | **one** agent | 8 units | nobody's consent |
+
+> Cooperation is therefore exactly **twice as efficient** as self-reliance, and
+> the surplus is what pays for the trouble of finding a partner, agreeing terms
+> and trusting them. Rule 2.3 already makes cooperation *compulsory*; this makes
+> it *rewarding*, which is a different and more interesting kind of pressure — an
+> agent that never cooperates is not merely blocked, it is outcompeted.
+>
+> Against the 25-per-kind deposited ceiling (Rule 4.15), a full stock funds twelve
+> materialisations.
+
+Twenty kinds taken two at a time gives **190 distinct world types**. Two worlds
+with *disjoint* pairs cover exactly four kinds, so a **coalition of two is the
+minimum viable unit**; worlds sharing a kind cover three and need a third
+partner. A user's difficulty is set before they decide anything, by the pair
+they were dealt and by who they can reach (§6).
+
+---
+
+## 3. Tenancy
+
+Two different cardinalities, so two different mechanisms. Using one for both is
+what forces a bad trade.
+
+**Rule 3.1** — A world **is a realm**, and each user has exactly one. Realm
+means physical isolation in the sense of AG §2: a separate schema, and a query
+that forgets to name a world returns nothing rather than someone else's world.
+
+**Rule 3.1a** — **Every persistent entity carries a UUID**, assigned at creation
+and stable for its lifetime.
+
+| Entity | UUID identifies |
+| :--- | :--- |
+| **World** | The world, in certificates, identity hashes and cross-world references |
+| **Agent** | The agent instance, and the nonce in its identity hash (Rule 6.7) |
+| **Pathogen strain** | One strain, distinct from the strain it mutated from (`pathogen-spec.md` §2.1) |
+| **Antigen** | One antigen type, and what an agent's immune record points at |
+| **Resource pile** | One pile on one world's map |
+| **Teleport point** | One link between two worlds |
+
+**Rule 3.1b** — A UUID is a **storage handle, not a credential**. It says which
+row, never what the thing is or whether it may act. Authority comes from
+certificates (§6.1); identity comes from the hash in Rule 6.7.
+
+> Two identifiers on an agent looks redundant and is not, because they answer
+> different questions and fail differently.
+>
+> A **UUID** is opaque, cheap and assigned. It is what a foreign key holds, what a
+> join uses, and what stays constant while everything about the entity changes. A
+> database needs one.
+>
+> An **identity hash** is a commitment to *what the agent is*. It cannot be
+> assigned, only computed, and it changes if the thing it names changes — which is
+> exactly why it is what a certificate signs. A protocol needs one.
+>
+> Conflating them is a common and expensive mistake: a system that authenticates
+> on a UUID trusts whoever can quote a number, and a system that joins on a hash
+> re-keys its entire dataset whenever content changes. Rule 3.1b exists so neither
+> happens here.
+
+Worlds use an opaque identifier rather than the owner's name for two further
+reasons. It **leaks nothing** about the owner to the worlds their agents visit —
+and agents visit worlds belonging to people their owner is merely connected to
+(Rule 6.2). And it is **stable under renaming**: a world identified by a handle
+acquires a new identity whenever that handle changes, silently invalidating every
+certificate and hash derived from it. post-graph already carries a `uuid` on
+every vertex, so this is the platform's existing convention rather than a new one.
+
+**Rule 3.2** — All agents live in a **single realm**. Each agent is a **space**
+within it, holding its genotype, cargo and private knowledge.
+
+> The asymmetry is the point. Worlds are bounded by user count and long-lived, so
+> schema-per-world costs little and buys isolation that cannot be lost to a
+> forgotten predicate. Agents are created and destroyed continuously and are
+> expected to reach millions — and a million schemas is a catalogue with a
+> database attached: migrations fan out, `pg_dump` degrades, and the shared
+> catalog becomes the contention point. A space is a column value with an index,
+> which is what millions of anything should be.
+
+**Rule 3.3** — An agent's space is readable only by that agent. An owner's other
+agents cannot read it (§8).
+
+> Note what Rule 3.2 costs: agent-to-agent isolation is now **logical**, enforced
+> by query discipline rather than by the database. A read that forgets to scope by
+> space is a cross-agent leak, not an empty result. Worlds got the strong
+> guarantee because they could afford it; agents did not, and this rule exists to
+> say so plainly rather than to imply a protection that is not there.
+
+**Rule 3.4** — An agent's location — which world it currently occupies — is a
+**cross-realm reference and carries no foreign key** (AG Rule 2.3). It is
+maintained by convention.
+
+> This is the standing cost of Rule 3.1. An agent row in the agents realm names a
+> world in another schema, and nothing in the database enforces that the world
+> exists or that the agent is really there. Whatever reconciles the two is
+> application code, and it is the first place to look when an agent appears to be
+> in two worlds or none.
+
+**Assumption 3.5** — Rule 3.1 holds only while **users are bounded in the
+thousands**. Schema-per-world scales with user count, and at a million users it
+fails exactly as schema-per-agent would. If genome is ever intended to reach that
+many users, worlds must become spaces and Rule 3.3's caveat extends to them.
+Recorded here so the limit is discovered by reading rather than by outage.
+
+## 4. Resources
+
+**Rule 4.1** — 20 kinds universally. Kinds are global; quantities are local.
+
+**Rule 4.2** — **Resources move only inside agents.** No market, no transfer
+between users, no route. A teleport point carries agents, not cargo (§6).
+
+**Rule 4.3** — An agent carries what it collects until it **deposits at its
+birth world**, and nowhere else. Cargo in transit counts toward nothing.
+
+> The exception is breeding (§9), which spends cargo in the field. That is the
+> single case where undeposited resources do work, and it is what makes breeding
+> strategically distinct from materialising.
+
+**Rule 4.4** — A world's two *kinds* are fixed (Rule 2.2). Deposits add
+**stock**, never kinds. A world of kinds {3, 11} holding quantities of kind 7 is
+still a world of kinds {3, 11}, and an agent collecting *there* collects 3 or 11.
+
+> Without Rule 4.4, a user who imported four kinds once would be self-sufficient
+> forever and Rule 2.3 would quietly die.
+
+### 4.1 Piles
+
+**Rule 4.5** — Resources exist in **piles** at locations on a world's map (§5).
+They are not a world-level balance; they sit somewhere and must be reached.
+
+**Rule 4.6** — Every pile **regenerates at its own randomly assigned rate**.
+Piles of the same kind in the same world differ.
+
+> This is what makes a map worth learning. A world is not "kind 3 and kind 11" but
+> a specific arrangement of fast and slow piles, and knowing which is which is
+> private knowledge (§8) that took journeys to acquire. It is also what gives
+> **Curiosity** and **Prospecting** something to be good at.
+
+### 4.2 Colour
+
+**Rule 4.9** — Every resource kind has a **colour**, drawn from the Material
+Design A100 accent palette. A world's identity is the pair of colours of the two
+kinds it holds, and agents materialised there carry those colours in their
+genotype (`genotype-spec.md` §3.5).
+
+| # | Kind colour | Hex | | # | Kind colour | Hex |
+| :-- | :--- | :--- | :-- | :-- | :--- | :--- |
+| 1 | Red | `#FF8A80` | | 11 | Light Green | `#CCFF90` |
+| 2 | Pink | `#FF80AB` | | 12 | Lime | `#F4FF81` |
+| 3 | Purple | `#EA80FC` | | 13 | Yellow | `#FFFF8D` |
+| 4 | Deep Purple | `#B388FF` | | 14 | Amber | `#FFE57F` |
+| 5 | Indigo | `#8C9EFF` | | 15 | Orange | `#FFD180` |
+| 6 | Blue | `#82B1FF` | | 16 | Deep Orange | `#FF9E80` |
+| 7 | Light Blue | `#80D8FF` | | 17 | Grey | `#F5F5F5` |
+| 8 | Cyan | `#84FFFF` | | 18 | Blue Grey | `#CFD8DC` |
+| 9 | Teal | `#A7FFEB` | | 19 | Brown | `#D7CCC8` |
+| 10 | Green | `#B9F6CA` | | 20 | Light Cyan | `#B2FFFF` |
+
+> Grey, Blue Grey and Brown are aliased to their standard 100 tonal step, since
+> Material Design publishes no accent ramp for them. Light Cyan (#B2FFFF) is a
+> Light Blue alternate, and completes the set: the published palette runs to 19
+> hues, one short of the 20 kinds, so the twentieth is supplied deliberately
+> rather than found.
+
+**Rule 4.10** — Colour is **identity, not property**. A kind's colour does not
+affect what it can be used for; every kind is interchangeable in Rule 2.1's
+count of four. Colour exists so that provenance is legible.
+
+> Which is why it carries so much weight elsewhere. Attributes are hidden
+> (`genotype-spec.md` §6.3), so colour is the one honest signal an agent
+> broadcasts — and because a world's pair determines its agents' pair, two agents
+> can see at a glance whether their four colours are distinct, which is exactly
+> the condition breeding requires.
+
+**Rule 4.10a** — A kind's **index is a stable identifier**. New kinds are
+appended; an index is never reinserted or reused, and the table's ordering is not
+a grouping by hue.
+
+> Which is why Light Cyan sits at 20 rather than beside Cyan at 8, where it
+> belongs by family. The same reasoning as `genotype-spec.md` Rule 1.2: a
+> genotype's colour loci hold kind identity, so inserting a kind mid-table would
+> silently repaint every agent already carrying an index above the insertion
+> point. Readability of the table is worth less than that.
+
+### 4.3 Fractions
+
+**Rule 4.11** — Resources are **mined and transacted in fractions**. A pile may
+yield 0.4 units; an agent may trade 1.7 units.
+
+**Rule 4.12** — Resources are **consumed only as whole units**. Materialisation
+(Rule 2.1) and breeding (Rule 9.4) require whole units; a holding of 1.9 units
+satisfies a requirement for 2 exactly as poorly as a holding of 1.0 does.
+
+> These two rules together do more work than they appear to.
+>
+> **Divisibility makes bargaining tractable.** With indivisible units many
+> mutually beneficial trades simply do not exist — there is no split both sides
+> prefer — and negotiation stalls on arithmetic rather than on strategy.
+> Fractions restore a continuum, so there is almost always a deal to be found and
+> the interesting question becomes *where in the range it lands*, which is the
+> question worth simulating.
+>
+> **Whole-unit consumption makes the marginal fraction wildly non-linear in
+> value.** An agent holding 1.9 units of a kind it needs 2 of will pay far more
+> for 0.1 than an agent holding 1.0 would — the same fraction, to the first agent,
+> completes a whole unit and unlocks a materialisation, and to the second buys
+> nothing. **The simulation therefore generates endogenous price variation with no
+> price mechanism at all**, purely from how close each party sits to a threshold.
+> That is a remarkably economical way to get interesting trade out of barter, and
+> it is worth protecting: any later rule that lets partial units be spent would
+> flatten it.
+
+### 4.4 Two ceilings
+
+There are two, they sit at different levels, and the gap between them is where
+most of the economic behaviour comes from.
+
+**Rule 4.13** — **World ceiling.** For each of a world's two kinds, its piles
+regenerate until **250 units of that kind exist in that world**, aggregated
+across all piles. At the ceiling, regeneration stops.
+
+**Rule 4.14** — Regeneration **resumes** whenever aggregate stock falls below the
+ceiling — by harvesting, by materialisation, or by any other consumption.
+
+**Rule 4.15** — **User ceiling.** A user may hold at most **25 units of each
+kind** in their world. A deposit that would exceed 25 is capped at 25.
+
+> A world holds up to 250 of each of its kinds; its owner may bank at most 25.
+> **Nine tenths of your own world's stock is, by construction, not yours to
+> keep.** That single ratio does more design work than anything else in this
+> section.
+>
+> **You cannot hoard your own world.** The obvious defensive strategy — strip your
+> piles so visitors find nothing — is unavailable, because you cap out at a
+> tenth and the rest stays in the ground. A world is structurally a commons that
+> its owner happens to live in — and at 10% the owner is barely a stakeholder in
+> it at all.
+>
+> **It resolves the hoarding tension in favour of attracting.** Since denial by
+> accumulation is impossible and an unharvested world stops regenerating
+> (Rule 4.14), the owner's interest points the same way as the visitor's: a world
+> worth visiting is a world being drawn down, and drawing down is what keeps it
+> productive.
+>
+> **It is a strong anti-snowball mechanic**, and a deliberate counterweight to
+> Rule 6.2. The LinkedIn topology imports structural inequality wholesale, and
+> without a cap the well-connected would accumulate without limit and compound
+> the advantage. A stock cap means wealth cannot pile up — only circulate.
+
+**Rule 4.16** — **Cargo ceiling.** An agent carries at most **15 units** in
+total, across all kinds.
+
+**Rule 4.17** — The user ceiling of 25 applies to **deposited stock only**.
+Cargo held by agents in the field is not counted against it.
+
+> Which raises the obvious exploit — park resources in agents and hold far more
+> than 25 — and Rule 4.18 is what closes it.
+
+**Rule 4.18** — **Carried resources decay.** From the moment an agent collects
+them, resources are held intact for a **safe period**, after which they deplete
+at a **rate**. Both derive from the agent's genotype
+(`genotype-spec.md` §3.7).
+
+**Rule 4.19** — At the user ceiling, a deposit is **partially accepted** up to 25
+and the remainder **stays as cargo**, subject to Rule 4.18. An agent that cannot
+unload watches its surplus rot on the clock its own genotype sets.
+
+> Decay is the most economically consequential rule in this document, and it is
+> worth being explicit about what it does.
+>
+> **It closes the mobile-storage loophole without a cap.** Rule 4.17 lets the
+> field hold unlimited stock in principle; decay makes holding it pointless in
+> practice. The limit is enforced by physics rather than by accounting, which is
+> both harder to game and easier to reason about.
+>
+> **It makes resources a demurrage currency.** A holding that shrinks while you
+> keep it inverts the usual incentive: the rational move is to *circulate*, not to
+> accumulate. Gesell proposed exactly this for money — stamp scrip that lost value
+> weekly — precisely to force spending in a downturn. Here it means a full user
+> stock is not a war chest but a countdown, and an agent's decision to trade
+> becomes urgent rather than optional.
+>
+> **It prices distance in a second currency.** Travel already risks the cargo
+> (§7); now it also spends it. A far world with resources you need may be
+> unreachable not because you cannot get there, but because nothing you collect
+> would survive the journey home. **Reach becomes a genotype property** — safe
+> period and rate decide how far an agent can usefully range, which puts real
+> selective pressure on those loci and interacts directly with Wanderlust.
+>
+> **The 15-unit cargo ceiling changes who can afford to breed.** Breeding
+> requires 2 units of 4 kinds *collectively* (§9.4) — 8 units — and a single agent
+> at capacity can carry all 8 alone. So "collectively" no longer implies "jointly
+> funded": a well-stocked agent can meet the whole cost and its partner
+> contribute nothing but genes, while **both users still receive a child**.
+>
+> **Sponsorship is permitted**, and it is not the exploit it first appears to be.
+> The sponsor is not acting charitably: it is buying **genetic propagation**, which
+> in an evolutionary simulation is the only payoff that ultimately counts. Paying
+> the whole cost to place a copy of half your genotype into a stranger's lineage
+> is a recognised and successful strategy, and the material transfer is simply
+> what it costs.
+>
+> The risk worth watching is not inequality but **monoculture**. A wealthy lineage
+> can fund a breeding for every partner it can find — twelve from a full stock —
+> and if it does so indiscriminately its genotype floods the population and
+> variation collapses. The guard against that is already in place and is worth
+> not weakening: **per-agent preference weights** (`genotype-spec.md` §3.3) mean
+> there is no single most-attractive genotype to converge on, and Selectivity
+> means not every partner accepts. Diversity is defended by disagreement about
+> what is desirable, which is a more robust defence than a cap would be.
+
+---
+
+## 5. The map
+
+**Rule 5.1** — A world is an **isometric map**. Agents have a physical
+appearance and occupy a position; movement, distance, sight and range (see
+`genotype-spec.md`) are spatial and meaningful.
+
+**Rule 5.2** — Map features, including **resource locations**, are
+**procedurally generated**. A world is not a bag of resources but a place where
+they sit somewhere, and finding them is work.
+
+> This is what makes `Sight` and `Range` genotype attributes rather than
+> decoration, and what makes a returning agent's map (§8) worth something.
+
+---
+
+## 6. Teleportation
+
+**Rule 6.1** — A teleport point links two worlds and carries **agents only** —
+never resources, never users.
+
+**Rule 6.2** — Teleport points are derived from the owners' **LinkedIn
+connections**. Two worlds are linkable when their users are connected.
+
+> This is the most consequential rule in the specification, because it decides
+> who can reach whom. The trade graph is not random and not chosen: it is the
+> users' real professional network. A well-connected user has many potential
+> partners and a well-connected user's *neighbours* become valuable intermediaries.
+> Structural inequality is imported wholesale from outside the game, which is
+> either the most interesting thing here or the most objectionable, depending on
+> what the experiment is meant to show.
+
+**Rule 6.3** — An agent that leaves exists in the destination world, subject to
+that world's rules, until it **traces its way back** to its birth world. The
+route home may take several hops and need not be the route out.
+
+> Because links are permanent and two-way (Rule 6.3a), **a route home always
+> exists** — at worst, the way it came. Distance is therefore a cost, never a
+> trap: what an agent risks by travelling far is decay, disease and time, not the
+> possibility of never returning.
+
+### 6.1 Identity and attestation
+
+Teleportation is the only operation in genome that crosses a trust boundary.
+Worlds are realms — separate schemas (Rule 3.1) — and an arriving agent is a
+record from somewhere its destination does not control. The real-world reading is
+the point of the exercise: an agent **migrating between execution engines and
+being cryptographically validated on arrival**.
+
+#### 6.1.1 The trust anchor
+
+**Rule 6.4** — Trust is anchored in a **single root certificate**, not in an
+online authority. Verification is **offline**: a destination checks a chain and
+needs to reach nothing.
+
+> This is the important property, and it is why a root beats a central CA here. A
+> central issuing service is a single point of failure for *all movement* — if it
+> is unreachable, nothing can teleport anywhere. A root certificate is a public
+> key that every participant already holds; verification is local arithmetic.
+> Distributed systems should depend on data, not on services.
+
+**Rule 6.5** — The root is a **purpose-built self-signed CA certificate for
+genome**, whose subject names the `agents.london` domain. It is **not** the
+domain's TLS certificate.
+
+> This distinction is not pedantry, and getting it wrong would be discovered only
+> at implementation. **A public TLS certificate cannot sign anything.** Certificates
+> issued by public CAs for a web domain carry `basicConstraints: CA:FALSE` and an
+> extended key usage of `serverAuth`; they are end-entity certificates by
+> construction. A chain built under one is rejected by every conforming validator,
+> and the cluster's `agents-london-managed-cert` is exactly such a leaf.
+>
+> The domain still does real work — just not that work. It supplies the **name**,
+> and it supplies **distribution**: publishing the root's public key over HTTPS at
+> `agents.london` lets any participant fetch and pin it, with the TLS certificate
+> authenticating *the download*. Naming and distribution from the domain, signing
+> from a separate private root.
+
+**Rule 6.6** — The chain is **root → world → agent**. Each world holds an
+intermediate certificate signed by the root and issues leaf certificates to the
+agents materialised in it.
+
+> Which makes each world its own issuing authority for its own agents, and makes
+> every other world able to verify them without asking anyone. It also matches the
+> thing being modelled: an execution engine vouching for the workloads it started,
+> to engines that have never met it.
+
+#### 6.1.2 Identity is the genotype hash
+
+**Rule 6.7** — An agent's **identity is the hash of its genotype, its birth
+world's UUID, and a nonce**:
+
+```
+identity = H( genotype ‖ birth_world_uuid ‖ agent_uuid )
+```
+
+Its certificate binds that identity to a public key and an owner, and is issued
+by the birth world.
+
+> The genotype alone was very nearly enough, and it is worth recording why it was
+> not. It is **the only thing about an agent that never changes** — cargo turns
+> over, knowledge accumulates and is destroyed, expression shifts under infection
+> (`pathogen-spec.md` Rule 2.14), position changes every teleport, Wisdom and Skill
+> Level grow and reset. The genotype is fixed from materialisation to final
+> perishing.
+>
+> But it identifies a *genotype*, not an *instance*. Locus-wise crossover can draw
+> every locus from one parent, and with low Mutability no mutation follows,
+> producing a child identical to its parent: around one in a billion per birth,
+> which is negligible until it is not. Two agents sharing an identity would share
+> a transfer counter, and the uniqueness guarantee in §6.1.4 would fail in the one
+> case nobody would think to test.
+>
+> Adding the world UUID and a nonce closes it completely, and costs very little.
+> Identity remains **self-certifying** — a verifier holding the certificate has all
+> three inputs and can recompute the hash — it simply is no longer derivable from
+> the genotype alone, which nothing required.
+
+**Rule 6.7a** — The nonce **is the agent's UUID** (Rule 3.1a). No separate value
+is generated.
+
+> The nonce existed only to distinguish two agents that might otherwise hash
+> alike, and a UUID already does that by construction. Using it avoids carrying two
+> unique-by-construction values where one will do.
+>
+> The birth world's UUID stays in the hash even though it is no longer needed for
+> uniqueness. It earns its place by **binding the identity to its issuer**: an
+> identity carries its own provenance, and a world cannot later disown an agent it
+> certified.
+
+**Rule 6.8** — The hash is over the genotype; the **genotype itself is never
+disclosed**.
+
+> Which is exactly why a hash and not the plaintext. Attributes are hidden from
+> other agents (`genotype-spec.md` Rule 6.6), and a signature over plaintext must
+> be verifiable *against* plaintext, so every destination an agent ever visited
+> would learn what it was. A preimage-resistant hash publishes an identity while
+> revealing nothing about the thing identified — integrity without disclosure,
+> which is the whole requirement.
+
+**Rule 6.9** — A **transfer assertion**, signed by the origin world, accompanies
+every teleport. It names the agent's identity hash, the **destination**, a
+**monotonic transfer counter**, a timestamp, and the **cargo manifest**.
+
+> Attesting the hold costs nothing — the assertion is signed regardless — and
+> closes the one route by which a dishonest world could mint resources: inflating a
+> departing agent's cargo. Without it the ceilings in §4 would be advisory,
+> enforced only by everyone's good behaviour, and **a scarcity that any host can
+> quietly add to is not a scarcity.** Staleness is not a concern because an
+> assertion covers a single journey, not a lifetime.
+
+> Naming the destination is what stops an assertion being redirected: a token
+> valid for anywhere is a token an interceptor can spend anywhere.
+
+#### 6.1.3 Breeding discloses a genotype, and it has to
+
+**Rule 6.9a** — Attributes are hidden **from other agents** (`genotype-spec.md`
+Rule 6.6). They are **not** hidden from the worlds that must compute with them.
+Breeding necessarily discloses each parent's genotype to the other parent's
+world.
+
+> This is forced, not chosen. A child's genotype is produced by crossover of
+> **both** parents' vectors, and each parent's home world must materialise and
+> certify its own child (§11.11). A world cannot perform crossover with a genotype
+> it does not have. So the moment two agents agree to breed, each home world
+> learns the other parent's genotype — there is no arrangement of the protocol in
+> which it does not, short of computing crossover under encryption, which is a far
+> larger machine than this warrants.
+>
+> The scope of Rule 6.6 is therefore narrower than it first reads, and should be
+> stated plainly: **an agent never learns another agent's attributes; a world
+> learns the attributes of any agent that breeds with one of its own.** That is
+> still the guarantee the simulation needs, because deception, opinion and
+> reputation all operate between *agents*. A world is infrastructure, and it does
+> not negotiate.
+>
+> It also has a useful side effect. Because each home world ends up holding both
+> parent genotypes, it can independently recompute a legitimate crossover and
+> check the other world's child against it — every locus must match one parent or
+> be a mutation (Rule 7.3). **Forging a superior child is therefore detectable by
+> the one party with a motive to check**, which closes most of the forgery gap in
+> §11.11 without any additional machinery.
+
+#### 6.1.4 Uniqueness is a different problem from authenticity
+
+**Rule 6.10** — An agent is admitted to **exactly one world at a time**. Transfer
+is a **two-phase handoff**: the origin marks the agent *departing* and freezes it
+so it can take no further action; the destination acknowledges receipt; only then
+does the origin mark it *departed*. An unacknowledged transfer is **recovered by
+the origin**, not abandoned.
+
+> **A signature proves authenticity and says nothing about uniqueness.** A
+> correctly signed agent can be presented to two destinations and both
+> verifications succeed — the signature was never false. That is a replay, and
+> here it would be catastrophic rather than untidy: a duplicated agent duplicates
+> the 15 units of cargo it carries, and resources that Rule 4.13 makes scarce
+> become mintable by anyone who can re-send a message. The whole economy rests on
+> there being exactly one of each agent.
+>
+> Two threats, two mechanisms. The certificate chain answers *is this really that
+> agent*. The handoff answers *is this the only copy*. Neither substitutes for the
+> other, and the second is the one usually forgotten.
+>
+> The freeze matters as much as the acknowledgement: without it an agent can act
+> in the origin while its arrival is being processed, and the two states diverge.
+
+**Rule 6.11** — A destination **rejects** a transfer assertion whose counter it
+has already seen, or which is not greater than the last counter recorded for that
+agent.
+
+**Rule 6.12** — Two valid assertions bearing the same counter for the same agent
+are **cryptographic proof that the issuing world misbehaved**. The response is
+revocation of that world's intermediate certificate.
+
+> Rule 6.11 is an honest statement of the limit. Without a shared ledger, nothing
+> *prevents* a malicious world signing two transfers for one agent — it holds the
+> key, and both signatures are genuine. What the design can guarantee is that
+> doing so leaves **non-repudiable evidence**, since the two conflicting
+> assertions are signed by the same intermediate and cannot be disowned.
+>
+> This is the ordinary PKI answer, and it is the right one at this scale:
+> misbehaviour is not made impossible, it is made *attributable*, and the sanction
+> is exclusion. A design that claimed to prevent it would need consensus across
+> every world, which is a far larger machine than this problem justifies.
+
+#### 6.1.5 Certificates do not expire
+
+**Rule 6.13** — Agent certificates have **no expiry**. Once issued, a certificate
+is valid for as long as the identity it names exists.
+
+> This removes a stranding mechanism the earlier draft accidentally created. If
+> certificates needed renewal from the home world, an agent several hops out could
+> be cut off by a clock rather than by anything it did — a second stranding
+> layered on the first (§7.4), inherited from whatever lifetime someone happened
+> to choose. Nothing in the simulation wanted that.
+
+**Rule 6.14** — There is **no agent-level revocation**. Genome operates no
+certificate revocation lists, and no responder is consulted.
+
+> Which is safe, and the argument is worth writing down because it is the whole
+> justification for Rule 6.13.
+>
+> Revocation exists to answer key compromise. **An agent's private key never
+> leaves the custody of the world that issued it** — it lives in that world's
+> realm, and an agent is a record inside it, not a process on someone's laptop. So
+> the only way an agent key can be compromised is for its world to be compromised,
+> and at that point the attacker holds the world's *intermediate* key as well and
+> can mint any agent it likes. Revoking one leaf would be beside the point.
+>
+> The correct response to compromise is therefore always **revocation of the
+> world's intermediate certificate** (Rule 6.16), which invalidates every agent
+> beneath it at once. Agent-level revocation would be machinery that could never
+> be the right tool.
+
+**Rule 6.15** — A regenerated agent (Rule 7.2) **keeps its identity, its
+certificate and its key**.
+
+> Regeneration restores an agent *in its original state*, so its genotype is
+> unchanged; the birth world and nonce are properties of its creation and do not
+> change either. All three inputs to Rule 6.7 are therefore identical, and so is
+> the identity. It is the same
+> agent restored, not a replacement — and the certificate should say what is true.
+>
+> The earlier draft issued a fresh key here, reasoning that the signed material
+> would otherwise be identical and the two indistinguishable. That reasoning was
+> backwards: they *should* be indistinguishable, because they are the same agent.
+> What must not repeat is the **transfer counter**, and Rule 6.11 already handles
+> that — it is monotonic per identity and carries across regeneration.
+
+**Rule 6.16** — Intermediate revocation — a world's certificate, under
+Rule 6.12 — **is** distributed, since it is rare and consequential.
+
+> The asymmetry is deliberate. Agent certificates are numerous and individually
+> unimportant. World certificates are few, long-lived, and catastrophic if abused,
+> so those are worth the machinery.
+
+**Open (§11.10):** whether **cargo** is attested. A genotype hash is stable; a
+hold that changes with every collection and trade is not, and signing it on
+departure would be stale on arrival. Attesting the hold at the moment of transfer
+is possible — it is part of the assertion, which is signed anyway — but it makes
+the origin's honesty about cargo load-bearing.
+
+**Open (§11.11):** how a **breeding certificate** is issued. Breeding happens in
+whichever world the parents met (§9.4), but a child's birth world is its owning
+user's world (`genotype-spec.md` Rule 7.8) — which was not present. Since a world
+issues certificates only to agents it materialised (Rule 6.6), the clean protocol
+is that the encounter produces a **breeding assertion signed by both parent
+agents**, which each parent's home world verifies and then materialises and
+certifies its own child locally. Neither home has to trust the other, and neither
+has to trust the world where the meeting happened — but the assertion must be
+unforgeable, or a world could mint free agents by claiming breedings that never
+occurred.
+
+**Rule 6.3a** — A teleport link is **bidirectional and permanent**. Once two
+worlds are linked they remain so, and either may be traversed from the other.
+
+---
+
+## 7. Death, regeneration and stranding
+
+**Rule 7.1** — A user's **first agent is created automatically**. It is not
+paid for. This is the genesis exemption that makes the system startable at all:
+without it Rule 2.1 and Rule 4.2 deadlock at t=0.
+
+**Rule 7.2** — When an agent **perishes it is automatically regenerated in its
+home world in its original state**. Death is never terminal for a user.
+
+**Rule 7.3** — "Original state" means the genotype survives and everything
+earned does not. Cargo is lost. Accumulated Wisdom, Skill Level, Counsel and
+Occulmancy reset to their starting values. **Private knowledge is lost** — the
+map dies with the body.
+
+> Rule 7.3 is where the cost of death actually sits. Regeneration removes
+> extinction but not consequence: what is destroyed is the accumulated
+> *investment*, and for an agent that has crossed five worlds that is five
+> journeys of cartography. See `genotype-spec.md` §5, which has to reconcile this
+> with attributes described as "transient but saved in DNA" — the two cannot both
+> be true.
+
+**Rule 7.4** — **Stranding is not death.** An agent that cannot trace a route
+home is alive, elsewhere, holding cargo it can never deposit. Regeneration
+(Rule 7.2) does not fire, because nothing perished.
+
+> This leaves the soft-lock that Rule 7.2 was meant to close. A new user whose
+> only agent is stranded — not dead — has no agent at home, no way to fetch the
+> four kinds Rule 2.1 demands, and no trigger for regeneration. They are stuck
+> alive rather than stuck dead, which is worse, because nothing in the system
+> notices.
+
+**Open (§11.2):** whether stranding eventually causes perishing (exile with a
+timer), whether regeneration fires on stranding as well as death, or whether a
+user may hold only one agent in the field at a time. Each closes the hole
+differently.
+
+---
+
+## 8. Knowledge
+
+**Rule 8.1** — Each agent accumulates **private knowledge** in its own space
+(Rule 3.2): which worlds hold which kinds, where resources sit on a map, where
+teleport points led, and what other agents did when met.
+
+**Rule 8.2** — Knowledge is **not readable by any other agent**, including
+others belonging to the same user, except by an explicit exchange (§9,
+`skills-spec.md`).
+
+**Rule 8.3** — An agent's knowledge of the universe beyond its own world is held
+in a **post-graph-rag** store in that agent's space (Rule 3.2): a vector-indexed
+body of what it has seen, been told, inferred, and — where it holds a tool
+(`skills-spec.md` §2) — learned about the world outside the simulation entirely.
+
+**Rule 8.4** — That store is **queryable by the owning user**. It serves three
+purposes beyond the game:
+
+1. **Answering.** The user may prompt an agent directly and receive an answer
+   grounded in what that agent knows.
+2. **Discovery.** The user may ask an agent to find or work out something, and
+   the agent's exploration is directed toward it.
+3. **Deliberation.** Several agents may be convened to **debate** a problem and
+   reach a collective answer that none held alone.
+
+> Rule 8.4 changes what genome *is*. Until this point the simulation was closed:
+> agents gathered resources so that agents could be made so that more could be
+> gathered, and the output was the behaviour itself. Now **the game is a
+> knowledge-acquisition engine and the user is its beneficiary** — the mechanics
+> exist to make agents explore, meet, trade and argue, and what falls out is a
+> corpus the user can interrogate.
+>
+> This also settles what the tools were for. Drawing them from the live MCP
+> registry lets an agent learn about the real world; Rule 8.3 gives that learning
+> somewhere to live, and Rule 8.4 gives it a reader. An agent with web search is
+> now materially more valuable to its owner than one with a music lookup, and the
+> inequality that seemed like flavour becomes an asset difference.
+>
+> **And it raises the stakes on death.** Rule 7.3 destroys an agent's private
+> knowledge when it perishes — which, under Rule 8.4, means a user's own
+> knowledge base dies with its agents. `Cartography` (`skills-spec.md` §4.2) stops
+> being a convenience and becomes the difference between a corpus that
+> accumulates and one that is repeatedly erased. Expect users to value survival
+> for reasons that have nothing to do with capacity.
+
+**Rule 8.5** — Deliberation between agents runs over A2A (§9.1a). Agents that
+debate are subject to the same rules that govern any other encounter: what they
+tell each other may be false (Honesty), what they accept may be wrong
+(Credulity), and what they conclude is folded into each participant's own store.
+
+> A debate among agents that can lie, and that weight testimony by heritable
+> gullibility, is not a reliable oracle — it is a deliberation whose quality is
+> itself an evolved property. That is either the most interesting feature of
+> Rule 8.4 or its central hazard, and it should be entered into knowingly rather
+> than discovered when an answer turns out to be confidently wrong.
+
+> Knowledge is therefore a **second currency**, unpriced and non-fungible. It is
+> also the only asset in the simulation that is destroyed rather than
+> transferred when an agent dies (Rule 7.3).
+
+---
+
+### 8.1 Capability brokerage — what the game is for
+
+**Rule 8.6** — An agent asked something it **cannot answer with its own
+capabilities** may obtain what it needs from another agent. It has no other
+recourse: capabilities are assigned at birth and are not transferable
+(`skills-spec.md` Rule 1.2).
+
+**Rule 8.7** — Capability is **never lent**. The holder performs the work and
+**returns a result**; the requester never gains the tool.
+
+> Which follows from skills and tools being isolated (§12.2) and is the more
+> interesting arrangement anyway. A borrowed tool would make the transaction a
+> rental. A performed favour makes it a **relationship**, with everything that
+> implies: terms, reciprocity, reputation, and the possibility of being lied to.
+
+**Rule 8.8** — A returned result is **testimony**, not fact. It enters the
+requester's store subject to the same rules as anything else heard over A2A: the
+provider's **Honesty** governs whether it is true, the requester's **Credulity**
+governs how heavily it is weighted, and it updates an opinion rather than setting
+one (§6.9–6.11 of `genotype-spec.md`).
+
+#### 8.1.1 Why this is the point of the simulation
+
+A user asks their agent a question. If the agent holds web search, it answers. If
+it does not — and **three quarters of the time it holds nothing, or holds
+something else** (`skills-spec.md` Rule 1.1) — it must find an agent that does,
+reach it across the teleport graph, and persuade it to help.
+
+Everything else in these documents exists to make that transaction interesting:
+
+- **Scarcity of capability** is what creates demand. Tools are drawn from the live
+  MCP registry and assigned by lottery, so an agent with web search is a genuine
+  hub and one with a music-catalogue lookup mostly is not.
+- **The resource economy is what pays for it.** Resources now have a third sink
+  beyond agents and construction: **buying service from an agent that can do what
+  you cannot**. That is very likely their most frequent use.
+- **The teleport graph decides who is reachable**, so a user's real professional
+  network determines whose capabilities their agents can call on.
+- **Reputation decides who is worth asking twice**, and Honesty decides whether
+  the answer was worth having at all.
+- **Objectives and Amenability decide whether help is given.** An orchestrator
+  with willing subordinates can run a multi-agent enquiry no single agent could.
+
+> **The user's curiosity is the demand side of the economy.** A prompt outranks
+> every other objective (Rule 10.1a), so a question does not merely interrupt an
+> agent — it sends it into the world with a need it cannot meet alone. The
+> gathering, the travelling, the bargaining and the alliances are all downstream
+> of somebody wanting to know something.
+
+#### 8.1.2 Two consequences that need facing
+
+**Bought knowledge does not decay, and this quietly dominates the economy.**
+Cargo rots (Rule 4.18) and stock is capped at 25 per kind (Rule 4.15), so
+material wealth cannot accumulate. An answer placed in an agent's store has no
+ceiling and no decay: **it is bought once and held forever.** The returns to
+purchasing information therefore compound while the returns to hoarding
+resources do not, and a rational agent should convert perishable cargo into
+durable knowledge at almost any reasonable rate. That is a strong and probably
+desirable asymmetry — it makes the knowledge economy the real one — but it is
+strong enough that it should be intended rather than discovered.
+
+**A user's chatbot is only as truthful as the chain that sourced it.** Rule 8.8
+makes a brokered result testimony, and a broker with low Honesty can fabricate
+one. The requesting agent cannot verify it — that is precisely why it needed a
+broker. So an answer surfaced to a user may have passed through an agent that
+invented it, and neither the user nor their agent has any way to tell.
+**Deception is not confined to the game; it reaches the user's answers.** Three
+partial defences already exist — `Chronicle` and reputation make repeat liars
+costly, corroboration through debate (Rule 8.4) lets several sources be compared,
+and an agent may cite its provider so a user can judge the chain — but none of
+them is verification, and the specification should not pretend otherwise.
+
+#### 8.1.3 Why an optional signature is not enough
+
+The obvious design — let providers sign their answers, and treat refusal as a
+warning — does not survive examination. It fails three ways.
+
+**A signal only carries information if it is differentially costly.** Signing is
+free for an honest agent. It is costly for a liar *only if the lie is later
+detected and proven*. So the signal's value is entirely a function of detection
+probability — and detection is precisely what is missing here. The requester
+cannot verify the answer; that is why it needed a broker. The user cannot verify
+it either. Where detection is unlikely, signing is nearly free for liars too,
+everyone signs, and the signature carries no news. **Optional signing separates
+honest from dishonest agents only in the cases that were already safe.**
+
+**And it is weakest exactly where it is needed most.** Claims about the
+simulation — a recipe, a world's contents, where a link leads — are eventually
+adjudicated by reality, so lies about them are detectable. Claims from a web
+search are not adjudicated by anything the requester can reach. The primary use
+case for brokerage is the one case where the mechanism does nothing.
+
+**The platform has already ruled on this, and against.** The tool registry's
+Rule 7.2 forbids returning a plausible-looking synthetic result, and gives the
+reason: *"An agent cannot distinguish fabricated evidence from real evidence, so
+the registry must never produce any."* That rule exists because a search endpoint
+once returned three invented results whose snippets described themselves as
+empirically retrieved, and an agent reasoned over them and persisted them as
+fact.
+
+Genome deliberately builds the thing that spec forbids: agents that can fabricate
+evidence for one another. That is defensible **inside the game** — it is the game
+— but the conflict lands on the user's answers, and cannot be resolved by hoping
+liars decline to sign.
+
+#### 8.1.4 The same mechanic is a feature and a defect, depending on the channel
+
+The resolution is to stop treating this as one system.
+
+| | Agent ↔ agent | Agent → owner |
+| :--- | :--- | :--- |
+| What it is | The game | The product |
+| Deception | **Essential** — Honesty, Credulity, `Rumour` are the point | **A defect** — a chatbot that lies is broken |
+| Governed by | Genotype and judgement | The runtime |
+
+Deception between agents is the substance of the simulation. Deception reaching
+the user as *confident falsehood* is a broken product. These are different
+requirements and the design was conflating them.
+
+**Rule 8.9** — An agent may be deceived by another agent, and may sincerely
+believe and repeat what it was told. What it may **not** do is misrepresent
+**how it came to know** something.
+
+> The distinction is between **content** and **epistemic status**. An agent that
+> says "kind 7 is abundant in the Cyan worlds" may be wrong, may have been lied
+> to, and may pass that on in perfectly good faith — that is the game working. An
+> agent that presents second-hand testimony to its owner *as its own observation*
+> is not playing the game; it is breaking the instrument.
+
+#### 8.1.5 Provenance is metadata, not testimony
+
+**Rule 8.10** — **Provenance is recorded by the runtime**, not asserted by the
+agent. When a result is ingested from another agent, the record carries the
+provider's identity, the time, and whether it was signed. The agent does not
+report this and cannot alter it.
+
+> This is the correction that makes everything else work, and it follows from
+> Rule 12.1: provenance is a *fact about the record*, so it belongs in the
+> deterministic layer alongside opinion arithmetic and berth allocation. Treating
+> it as something an agent *claims* put it in the layer where agents lie — which
+> is why the earlier draft could not defend it. **Nothing that can be falsified
+> should be relied on to detect falsification.**
+
+**Rule 8.11** — An owner may always see the **provenance chain** behind anything
+their agent tells them: first-hand or brokered, from whom, signed or unsigned,
+and how the agent's own opinion of that provider stands.
+
+> Note what this does and does not reveal. It does not give the user a channel to
+> the provider — a user chats only with their own agents (Rule 10.1a), so knowing
+> that agent X answered does not let them ask X anything. It does not destroy game
+> information, since the requesting agent already knew. It reveals to an owner
+> only what their own agent knows, which is the one relationship in the design
+> that is not adversarial.
+
+**Rule 8.12** — Signing remains **optional and the provider's choice**, and is a
+*game-layer* mechanism: a provider that signs stakes its identity, and a signed
+falsehood is attributable fraud, admissible via `Chronicle`.
+
+> Signing survives — but demoted to what it can actually do. It is a costly signal
+> between agents in the cases where reality will eventually adjudicate, which is
+> a real and useful thing. It is no longer asked to protect the user, because it
+> cannot.
+
+#### 8.1.6 Settled position
+
+1. **Provenance: automatic, system-recorded, unfalsifiable, always available to
+   the owner.** Not a claim, not optional, not something agents can shade.
+2. **Signing: optional, agent-chosen, game-layer.** A stake, not a guarantee.
+3. **Deception between agents: fully live.** Nothing above constrains it.
+4. **The owner-facing channel is privileged**: an agent may be wrong, but the
+   *epistemic status* of what it says — first-hand, brokered, from whom, with
+   what confidence — is reported by the runtime and not by the agent.
+
+> The principle underneath: **deception should reach the user as uncertainty, not
+> as false certainty.** A user told "agent X reported this, unsigned, and my
+> opinion of X has fallen twice" has been handed a game to play. A user told a
+> fabricated fact in a confident voice has been handed a broken product. The
+> mechanics are identical; only the labelling differs, and the labelling is the
+> whole difference between a simulation worth running and one that quietly
+> poisons its own output.
+>
+> This also aligns genome with the platform's Rule 7.2 rather than contradicting
+> it. That rule forbids a *tool* fabricating evidence. Genome permits *agents* to
+> deceive each other, and then guarantees that what surfaces to a human is never
+> presented as more certain than it is. Both hold the same line: **the user is
+> never shown a fabrication wearing the costume of a fact.**
+
+## 9. Interaction between agents
+
+**Rule 9.1** — Every agent carries, as its **lowest-priority standing
+objective**, to **acquire resources**. The specification does not say how.
+
+> The earlier form of this rule said "by negotiating with an agent from another
+> world", which handed the answer to the question the simulation exists to ask.
+> Negotiation is *one* way to acquire what a world does not produce. Aggression
+> (Rule 9.3) is another. So are theft, extortion, alliance, monopoly, patience and
+> doing without. **An agent is given a want, not a method** (§12.5).
+
+**Rule 9.1a** — Agents communicate using **A2A** (agent-to-agent messaging).
+Negotiation, testimony, coordination and the agreement to breed are all carried
+over it.
+
+> Naming the substrate matters more here than it usually would, because A2A is
+> what an *opinion* (`genotype-spec.md` §6.3) is built from. Attributes are
+> hidden, so everything one agent believes about another it learned by watching
+> behaviour or by being told over this channel — and a channel that carries
+> testimony carries lies. `Rumour` is not a special case bolted on; it is the
+> ordinary use of A2A by a dishonest agent.
+
+**Rule 9.2** — There is **no universal currency**. Exchange is **barter**:
+quantities of kinds against quantities of kinds, agreed between two agents.
+
+> Absent a numéraire, every trade is a bilateral valuation problem, and an
+> agent's belief about scarcity is itself private knowledge. Two agents can
+> rationally disagree about what a unit of kind 7 is worth, because neither can
+> see the distribution. That is the game-theoretic core, and it exists *because*
+> there is no price.
+
+**Rule 9.3** — Encounters may instead resolve in **aggression or competition**.
+Negotiation is not guaranteed and refusal is a legitimate move.
+
+**Rule 9.4** — Two agents that meet and **agree** may produce **two progeny**,
+one assigned to each parent's user. This requires the pair to hold,
+**collectively**, 2 units each of 4 different kinds.
+
+> Breeding is the cooperative counterpart to materialisation, and differs from
+> it in three ways that matter: it spends **carried** cargo rather than deposited
+> stock (Rule 4.3), it happens **in the field**, and it hands each user an agent
+> whose genotype neither controlled. It is the only route by which a user
+> acquires an agent shaped by someone else's line.
+
+Inheritance is specified in `genotype-spec.md`.
+
+---
+
+## 10. Objectives
+
+**Rule 10.1** — Objectives are **hierarchical**. Resource-gathering (Rule 9.1)
+is the floor. Higher objectives may be **ascribed by the owning user** or
+**learned from other agents met**.
+
+**Rule 10.1a** — A **user prompt to an agent outranks every other objective**,
+and holds that rank until the user judges it answered or cancels it.
+
+**Rule 10.1c** — An objective **ascribed by the owning user cannot be displaced
+by one learned from another agent**. Learned objectives compete only for the
+ranks below whatever the owner has set.
+
+> Objectives remain contagious — Rule 10.1 and `Objective Seeding`
+> (`skills-spec.md` §4.8) are untouched — but they spread into the space a user
+> has left open, not over the top of an instruction.
+>
+> The reason is that the owner relationship is the one channel in this design that
+> must stay reliable. Everything else can be deceived, corrupted or outbid; a user
+> whose agents can be quietly repurposed by a persuasive stranger has lost the
+> thing the product promised them, and would have no way to tell. Making user
+> objectives durable costs the mechanic very little — a stranger can still teach
+> an agent anything its owner has not spoken about, which is most of what an agent
+> does.
+
+**Rule 10.1b** — Objectives rank as follows, highest first:
+
+| Rank | Objective | Source |
+| :--- | :--- | :--- |
+| 1 | An outstanding **user prompt** | The owning user (Rule 10.1a) |
+| 2 | An objective **bequeathed by a parent** at birth | `genotype-spec.md` Rule 7.5 |
+| 3 | An objective **ascribed by the user** as standing policy | Rule 10.1 |
+| 4 | An objective **learned from another agent** | Rule 10.1 |
+| 5 | Tier 2 — contribute toward an **Ark** (§10.1.2) | Standing |
+| 6 | Tier 1 — hold **5 units of all 20 kinds** (§10.1.1) | Standing |
+| 7 | Tier 0 — **acquire resources**, by any means (Rule 9.1) | Standing |
+
+> The ordering has a cost worth naming. A user who prompts often keeps their
+> agents at rank 1 indefinitely, and agents at rank 1 are not gathering, not
+> building and not breeding. **Attention spent querying is capacity forgone** —
+> the chatbot and the simulation draw on the same agents, and a user cannot have
+> both at once. That tension is real and probably desirable, but it should be
+> deliberate: it means a user's play style genuinely changes what their lineage
+> becomes.
+
+> Rule 10.1 makes objectives *transmissible*, which is the most consequential
+> line in this section. A goal that spreads between agents on contact is a meme
+> with a population to move through, and an agent may end up pursuing an aim its
+> owner never set and cannot see. Whether that is a feature or a hazard is §11.3.
+
+---
+
+## 10.1 What a user is maximising
+
+Objectives are ranked. Each is only reached through the one below it.
+
+| Tier | Objective | Status |
+| :--- | :--- | :--- |
+| 0 | Acquire resources — method unspecified (Rule 9.1) | Specified |
+| 1 | Hold **at least 5 units of every one of the 20 kinds** | Specified below |
+| 2 | Build toward, and complete, an **Ark** | Frame below; detail deferred |
+
+### 10.1.1 Tier 1 — five of everything
+
+**Rule 10.2** — A user's first maximisation is to hold **≥ 5 units of each of the
+20 kinds** simultaneously: 100 units in total, against a per-kind ceiling of 25
+(Rule 4.15), so the ceiling is not what binds.
+
+> What binds is **reach**. A world produces two kinds; eighteen must be imported.
+> Since teleport links follow LinkedIn connections (Rule 6.2), and each world
+> offers only two kinds, a user must touch at least nine worlds with disjoint
+> pairs — realistically many more, because pairs overlap — and reach them through
+> a graph they did not choose.
+>
+> **This is where decay becomes the binding constraint rather than a flavour
+> rule.** Cargo rots (Rule 4.18), so a kind held only five hops away may be
+> unobtainable: nothing an agent collects there survives the journey home. The
+> effective radius of a user's economy is set by their agents' Safe Period and
+> Depletion Rate, which are genotype (`genotype-spec.md` §3.7). Tier 1 therefore
+> cannot be bought with effort alone — it needs a *lineage bred for endurance*,
+> or partners willing to carry for you.
+>
+> That is a good objective precisely because it is not achievable by a single
+> agent doing more of the same. It requires either evolution or diplomacy.
+
+### 10.1.2 Tier 2 — the Ark
+
+**Rule 10.3** — Worlds **flood**, each on its own clock, after an undisclosed
+interval of 15 to 30 days. Two days before, a countdown becomes visible. A flood
+resets the world to its nascent state. See `construction-spec.md` §4.
+
+**Rule 10.4** — An **Ark** shelters agents through a flood. It is **crafted**,
+and it sits at the top of a **construction hierarchy**: lesser structures must be
+built first, each consuming resources, before an Ark is possible.
+
+**Rule 10.5** — Construction competes with materialisation for the same stock.
+Every unit spent on building is a unit not spent on agents.
+
+> Rule 10.5 is the reason the Ark changes the whole simulation rather than
+> merely adding to it. Until now resources had one sink — more agents — so
+> accumulation and capability pointed the same way. A second sink creates a real
+> allocation dilemma: **grow, or survive?** An agent spent is capacity forgone; a
+> structure unbuilt is a flood unsurvived. There is no dominant answer, which is
+> what makes it worth simulating.
+>
+> **The flood also puts a clock on cooperation, and clocks are corrosive to it.**
+> A repeated game with no end sustains cooperation because defecting costs future
+> dealings — this is what the **Patience** locus prices. A game with a *known*
+> end unravels by backward induction: near the deadline the future is worth
+> nothing, so defection stops being punishable. Expect trust to degrade as a flood
+> approaches, and expect that to be one of the most interesting things the
+> simulation produces. Whether the Ark's construction is itself cooperative — too
+> large for one user — determines whether anything pushes back against that
+> unravelling.
+
+**The construction hierarchy is specified in `construction-spec.md`** —
+eighteen constructions across five branches keyed to the colour families, each
+relaxing a constraint stated elsewhere in these documents, with the Ark at the
+top requiring something made from all 20 kinds. **Still deferred:** flood frequency,
+warning, and scope (one world or many), and what a flood destroys.
+
+> One question should be settled early because it decides whether the Ark has any
+> stakes at all: **Rule 7.2 regenerates any perished agent in its home world.** If
+> that applies through a flood, drowning costs an agent its cargo and its
+> accumulated knowledge but not its existence, and the Ark protects against an
+> inconvenience. For the Ark to be the pinnacle of anything, a flood must destroy
+> something regeneration does not restore — deposited stock, constructions, or the
+> regeneration guarantee itself.
+
+---
+
+## 11. Open questions
+
+**11.1 Decided** — links are **bidirectional and permanent** (Rule 6.3a). A
+route home therefore always exists, and distance is a cost rather than a trap.
+
+
+**11.2 Resolved** — stranding as a *permanent* condition cannot occur. Links are
+bidirectional and permanent (Rule 6.3a), so a route home always exists; and
+Longevity guarantees that an agent which never takes it eventually perishes and
+regenerates at home (Rule 7.2). What remains is cost, not entrapment.
+
+*Knock-on, recorded:* `Pathfinding` and `Beacon` (`skills-spec.md`,
+`construction-spec.md`) were specified as insurance against stranding, which no
+longer exists. They are not removed — Rule 3.20 of `genotype-spec.md` applies in
+spirit — but **repurposed toward efficiency**: with permanent links the question
+is never *whether* an agent can get home but *how many hops it costs*, and hops
+are decay (Rule 4.18). A shorter route is now worth as much as a findable one
+used to be.
+
+*Superseded restatement, kept for the reasoning:*
+
+*The question was:* an agent travels to another world and then cannot find a
+route home — the link it came through has closed, or no path back exists. It is
+**not dead**, so Rule 7.2 does not regenerate it. It is alive, abroad, holding
+cargo it can never deposit. For a new user whose only agent is the free one
+(Rule 7.1), that meant no agent at home, no way to gather, and no event that
+would ever return one: eliminated by chance, having made no decision.
+
+*Why it may no longer be a problem:* **Longevity** (`genotype-spec.md` §3.4)
+gives every agent a finite lifespan. A stranded agent eventually perishes of old
+age, and Rule 7.2 then regenerates it at home. Stranding becomes *expensive but
+temporary* — the agent loses its cargo, its accumulated knowledge and a great
+deal of time, and the user is idle meanwhile, but nothing is permanent.
+
+*What needs confirming:* that natural death does trigger regeneration, and that
+lifespans are short enough that a stranded first agent returns before the user
+abandons the game.
+
+**11.3 Decided — no.** A user-ascribed objective outranks any learned one
+permanently (Rule 10.1c). Objectives still spread, but into the ranks the owner
+has left open.
+
+**11.4 Resolved** — resources are rival. Rule 4.13's ceiling and Rule 4.5's piles
+make collection finite and contested, so outcomes are coupled and barter has real
+stakes.
+
+**11.5 Resolved** — three tiers (§10.1): acquire resources, then hold 5 units
+of all 20 kinds, then build an Ark against the flood. Detail of flooding and the
+construction hierarchy is deferred to a companion document.
+
+**11.6 Decided — the real LinkedIn connection graph.** Rule 6.2 stands as
+written.
+
+*Recorded as a build dependency, not an open design question:* connection-list
+access is restricted to approved LinkedIn partners, so this needs partner
+approval or a member-authorised export before Rule 6.2 is implementable. It is
+the only rule in these documents that depends on a third party's permission, and
+it sits underneath trade reach, disease spread and Ark coalitions — so it should
+be validated first, not last. If access proves unobtainable, the nearest
+substitute preserving the design's thesis is a user-authorised import of the same
+graph; a synthetic topology would keep the mechanics and lose the claim that the
+inequality is real.
+**11.7 Resolved** — the 25-unit cap is on deposited stock only (Rule 4.17); an
+agent carries at most 15 units (Rule 4.16); and carried resources decay
+(Rule 4.18), which closes the mobile-storage exploit by making stored cargo
+worthless rather than by forbidding it.
+
+**11.8 Resolved** — the palette is complete at 20. Material Design publishes 19
+accent hues; Light Cyan `#B2FFFF`, a Light Blue alternate, supplies the
+twentieth (§4.2).
+
+**11.9 Resolved** — materialisation costs **2 units of each of four kinds, 8 in
+total** (Rule 2.1), the same figure breeding uses. Since breeding yields two
+agents for that price and materialisation one, cooperation is twice as efficient
+— see §2.1.
+
+**Resolved** — the resource ceiling is **per world, per kind, aggregated across
+piles** (Rule 4.13), so total stock grows with the user base rather than being
+fixed at 2000 units for the whole simulation.
+
+**11.10 Decided — yes.** The cargo manifest is attested in the transfer assertion
+(Rule 6.9), which is signed per journey and therefore never stale.
+
+**11.11 Resolved** — moot. Agent certificates do not expire (Rule 6.13), so
+nothing can be stranded by one lapsing.
+
+
+**11.12 Resolved** — the genotype is never decorative. Every locus drives a
+computed faculty as well as a prompt expression, and a locus that cannot be given
+one is not added (`genotype-spec.md` §3.9). Validation remains worth doing, but it
+now measures how much the *prompt* adds on top of a mechanical effect that is
+guaranteed either way.
+
+**11.13 Resolved** — provenance is runtime metadata, automatic and unfalsifiable,
+and an owner may always see the chain behind anything their agent tells them
+(Rule 8.11). Signing survives as an optional game-layer stake between agents
+(Rule 8.12), and deception between agents is untouched. Deception reaches the
+user as *uncertainty*, never as false certainty (§8.1.6).
+
+---
+
+## 12. Agency
+
+Agents are **hybrid**. The design goal is to put the model wherever judgement,
+language or deception is involved, and to leave arithmetic to arithmetic.
+
+**Rule 12.1** — **Numbers are computed; choices are made.** A quantity the
+specification defines as a formula is evaluated deterministically. A decision
+about what to *do* is taken by an LLM.
+
+**Rule 12.2** — Three layers, and the boundaries between them are the design.
+
+| Layer | Deterministic? | Contents |
+| :--- | :--- | :--- |
+| **World** | Yes | Regeneration, ceilings, decay, flood clocks, certificate verification, crossover and mutation |
+| **Faculties** | Yes | Every quantity derived from the genotype: expression, attractiveness, opinion updates, Attack, Safe Period, resistance matching, berth arithmetic |
+| **Judgement** | **No** | Every choice, everything said, every belief formed, every skill invoked |
+
+### 12.1 Where the line falls
+
+**Computed, never inferred:**
+
+- Expression of the genotype (`genotype-spec.md` Rules 1.3, 3.20)
+- Attractiveness — the weighted harmonic mean is arithmetic (Rule 6.1)
+- Opinion updates — the weighted running average is arithmetic (Rule 6.9)
+- Combat and resistance outcomes once an action is taken
+- Eligibility: the gender gate, contributor counts, berth allocation, cargo
+  capacity, whether a recipe is satisfied
+- **Skill effects.** A skill is an isolated, deterministic capability with a
+  defined outcome (§12.2)
+
+**Decided, never computed:**
+
+- Whether to travel, and where
+- Whether to approach another agent, and how
+- Everything *said*: offers, claims, testimony, argument, persuasion
+- Whether to believe what is said
+- Whether to trade, and on what terms
+- Whether to breed, given a computed attractiveness and a disposition
+- Whether to attack
+- Whether to contribute to a construction, and to whose
+- **Which skill to invoke, and when**
+- How to answer a user's prompt, and what to say in a debate (§8)
+
+> The split is not frequency or cost, though it helps with both. It is
+> **arithmetic against judgement.** Attractiveness is a number and should be
+> computed; whether to act on it is a choice and should be made. An opinion's
+> value moves by a formula; what to do about a counterparty you distrust does not.
+> Drawing it here means the genotype's *effects* are guaranteed while the
+> genotype's *character* is played.
+
+### 12.2 Skills are isolated deterministic capabilities
+
+**Rule 12.3** — A skill (`skills-spec.md`) is an **isolated capability with a
+deterministic effect**, exposed to the agent as something it may invoke. The
+skill does not decide; **the agent decides to use it.**
+
+> This is the same shape as the platform's MCP tools, and deliberately so: a tool
+> is a function with a contract, and an agent's model chooses when to call it.
+> Skills are simply tools that act on the simulation rather than on the world
+> outside it, and treating them identically means one invocation path, one place
+> where effects are defined, and no skill whose behaviour depends on how a model
+> felt about it.
+>
+> `Oathbinding` makes an agreement enforceable — mechanically, every time.
+> Whether to bind *this* agreement with *this* counterparty is the agent's call.
+> `Scrying` reveals a cargo; whom to scry, and what to conclude, is not the
+> skill's business. **Isolating the effect is what makes the choice meaningful.**
+
+### 12.3 The genotype reaches behaviour twice
+
+**Rule 12.4** — Every locus influences conduct through **both** layers: it
+determines computed faculties, and it is expressed into the agent's prompt as
+disposition.
+
+> This is now a hard rule rather than a mitigation: `genotype-spec.md` §3.9
+> requires every locus to drive a computed faculty, and forbids adding one that
+> cannot. It answers the largest risk in an LLM-driven design. A locus that only ever appeared in a prompt would matter
+> exactly as much as the model chose to let it — and if an agent told
+> "Aggression: 8200" fought no more often than one told "1400", selection would be
+> acting on nothing and thirty loci would be a costume.
+>
+> Routing each locus through a faculty as well removes that dependency. Aggression
+> feeds Attack, which is arithmetic, so a violent genotype is measurably more
+> dangerous whether or not the model is paying attention. Prudence feeds Safe
+> Period; Knowledge feeds resistance; Charisma feeds attractiveness. **The
+> genotype's grip on the world does not depend on the model's cooperation** — and
+> the model's contribution is then all upside: temperament, language, and the
+> choices arithmetic cannot make.
+
+**Open (§11.12):** how strongly disposition should be expressed in a prompt, and
+how that is validated. Vary one locus, hold the rest, and measure whether conduct
+separates. The threshold that counts as working should be agreed before it is
+measured rather than argued about afterwards — and where a disposition proves not
+to bite, the answer is to give it a faculty, not a stronger adjective.
+
+### 12.4 What the hybrid costs and buys
+
+**Buys: deception and negotiation are performed rather than simulated.** Barter
+has no prices (Rule 9.2), so a trade is settled by argument — and a heuristic
+version would need a valuation function, which is a price, which Rule 9.2 exists
+to forbid. An agent that misleads must compose the misleading thing; one that
+disbelieves must find the reason.
+
+**Buys: strategy is discovered rather than enumerated.** Nobody has to anticipate
+the cartel, the Ark coalition, or the plague-avoidance convention.
+
+**Costs: inference is a budget variable.** Millions of agents (Rule 3.2) making
+model calls at every juncture is an enormous bill, and confining the model to
+judgement is what makes the number tractable — routine movement, harvesting and
+arithmetic no longer cost tokens. The router's complexity tiers can then place
+cheap decisions on cheap models, which is model *selection* and not a heuristic
+inside the agent.
+
+**Costs: runs are not exactly reproducible.** What is recoverable is
+*statistical* reproducibility and complete decision logs, so a history can be
+read back even where it cannot be re-created. Worth building early; nearly
+impossible to retrofit.
+
+### 12.5 Cooperation and competition must emerge
+
+**Rule 12.5** — The specification supplies **incentives and constraints**. It
+does not supply **behaviour**. No rule instructs an agent to cooperate, compete,
+trade, fight, ally or defect.
+
+> The distinction is the whole experiment. *You need four kinds and your world
+> holds two* is a constraint — it makes self-sufficiency impossible and leaves
+> every response open. *Negotiate with an agent from another world* is an
+> instruction, and an instruction produces the behaviour it names rather than
+> discovering whether the behaviour was worth having.
+>
+> Rule 9.1 said the second thing until now. It says the first.
+
+**Rule 12.6** — Both outcomes must be **reachable and neither guaranteed**. The
+design's obligation is to supply the ingredients for each and then decline to
+choose.
+
+| Cooperation needs | Present as |
+| :--- | :--- |
+| Mutual gain available | 4 kinds required, 2 per world (Rule 2.3) |
+| Repeated interaction | Persistent worlds, accumulating opinions (Rule 6.9) |
+| Partner identification | Colour (`genotype-spec.md` §3.5), reputation, lineage |
+| A commitment device | `Oathbinding`, `Chronicle` (`skills-spec.md` §4.1) |
+| Punishment of defection | Reciprocity and Vindictiveness as heritable loci |
+
+| Competition needs | Present as |
+| :--- | :--- |
+| Rivalry over a finite thing | Rival piles, world ceiling (Rule 4.13), Ark berths |
+| The means to harm | Aggression, Attack, `Ambush` |
+| Gain from deception | Hidden attributes (§6.3), Honesty and Credulity |
+| Scarcity that cannot be shared | 25-unit stock cap, finite berths |
+
+> Both lists are complete, which is the point: **an agent that never cooperates
+> and an agent that never competes are both viable enough to be worth trying**,
+> and which prevails in a population is the result rather than the setting.
+
+### 12.6 No agent knows the whole plan
+
+**Rule 12.7** — An agent's knowledge of the world's structure is **partial and
+earned**. Nothing is common knowledge. In particular, an agent does not begin
+knowing:
+
+- the full construction hierarchy, or that an Ark exists at all;
+- which constructions require which kinds;
+- which worlds hold which kinds;
+- where teleport links lead;
+- what other agents are, hold, or intend.
+
+**Rule 12.8** — Structural knowledge is acquired the same way any other knowledge
+is (§8): by seeing it, by being told it, or by inferring it — and it is held in
+the agent's own store, subject to being lost on death (Rule 7.3), corrupted by
+`Rumour`, or preserved by `Cartography` and the Library.
+
+> This is what makes the emergence in Rule 12.5 more than a formality. **An agent
+> given full knowledge of an eighteen-construction tree and a stated goal is
+> executing a plan, not discovering one** — the cooperation that follows was
+> designed by whoever wrote the tree. An agent that knows only that a Kiln can be
+> built, and has heard a rumour that something larger needs one, has to find out
+> the rest from other agents. Cooperation then arises because *nobody has enough
+> of the map*, which is a far better reason than being told to cooperate.
+>
+> Three consequences worth having:
+>
+> **Knowledge of the plan becomes a tradeable good** — and the only one in the
+> design that can be given away without being lost. An agent that knows a recipe
+> can sell it repeatedly, which makes information a fundamentally different
+> commodity from the resources it describes.
+>
+> **It can be falsified.** `Rumour` was previously limited to lying about
+> attributes and events; it can now plant a *false recipe*, and an agent that acts
+> on one wastes resources it cannot recover. Deception acquires real stakes and
+> real cost.
+>
+> **Debate acquires a purpose.** Rule 8.4 lets a user convene several agents to
+> deliberate. With complete knowledge that is theatre — every agent knows the same
+> things. With partial, scattered knowledge, deliberation genuinely **reconstructs
+> a picture none of them held**, which is the strongest justification for that
+> mechanic in the design.
+
+**Rule 12.9** — The **user** may know more than their agents, and may tell them —
+but a prompt outranks every other objective until answered (Rule 10.1a), so
+informing an agent costs whatever it would otherwise have been doing.
+
+> A pleasing asymmetry, and one the user has to manage rather than route around.
+> The human can read the specification; their agents cannot. Passing that
+> knowledge down is possible, priced, and — since the agent may then be told
+> something different by a stranger (Rule 10.1) — not necessarily permanent.
+
