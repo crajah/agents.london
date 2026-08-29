@@ -192,7 +192,51 @@ Piles of the same kind in the same world differ.
 > private knowledge (§8) that took journeys to acquire. It is also what gives
 > **Curiosity** and **Prospecting** something to be good at.
 
-### 4.2 Colour
+### 4.2 Mining is confined to the birth world
+
+**Rule 4.7** — An agent may mine **only in its birth world**. No agent extracts
+from a pile in a foreign world, whatever its capabilities or standing there.
+
+**Rule 4.8** — Foreign kinds therefore reach a world **only by trade** (§7).
+Rule 2.3's four-kind requirement is satisfied by exchange, never by travel.
+
+> This is a small rule with large consequences, and it resolves a weakness the
+> validation exposed rather than one the text did.
+>
+> **Travel stops being extraction and becomes contact.** Without Rule 4.7 the
+> obvious use of a teleport link is to go where the piles are richer, and
+> Wanderlust is an economic calculation. With it, a foreign world offers an agent
+> no resource it can take — only agents it can meet. Wanderlust becomes a
+> disposition about *society*: mating, trading, negotiating, and learning.
+>
+> **It makes cooperation structural rather than dispositional.** Rule 2.3 already
+> required four kinds from a world that holds two, but an agent could in principle
+> have gone and dug up the rest. Now it cannot. The only path to a foreign kind
+> runs through an agent who can mine it, which means every materialisation past
+> the first rests on a completed negotiation with a stranger.
+>
+> That matters because of Rule 12.15. The validation found Cooperativeness too
+> weakly expressed to carry §5.7–5.8 on prompt alone, and found more generally
+> that **situation dominates disposition**: the same agent cooperates freely when
+> the act is costless, withholds when a rival can take the pile, and cooperates
+> unconditionally when desperate. Rule 4.7 acts on exactly that lever. It does not
+> ask agents to be collaborative; it builds a world in which nothing can be
+> obtained alone. The collaboration mandate stops depending on a disposition that
+> measurement showed cannot bear it.
+>
+> **The prediction was tested.** Rule 4.7 implies that revealing a pile costs
+> nothing against a foreigner who can never work it, and a great deal against a
+> local who can. Measured, agents tell a foreigner three times as often as a local
+> rival (0.22 against 0.07) — the rule changes behaviour in the direction it
+> claims, before any of it is built.
+>
+> **And it gives knowledge a market.** A pile in a foreign world is information
+> rather than opportunity — worthless to the traveller who found it, valuable to
+> the natives who can work it. A cartography of somewhere you can never mine is a
+> genuinely tradeable asset, which is what §8's per-agent knowledge store needs in
+> order to be more than bookkeeping.
+
+### 4.3 Colour
 
 **Rule 4.9** — Every resource kind has a **colour**, drawn from the Material
 Design A100 accent palette. A world's identity is the pair of colours of the two
@@ -238,7 +282,7 @@ a grouping by hue.
 > silently repaint every agent already carrying an index above the insertion
 > point. Readability of the table is worth less than that.
 
-### 4.3 Fractions
+### 4.4 Fractions
 
 **Rule 4.11** — Resources are **mined and transacted in fractions**. A pile may
 yield 0.4 units; an agent may trade 1.7 units.
@@ -266,7 +310,7 @@ satisfies a requirement for 2 exactly as poorly as a holding of 1.0 does.
 > it is worth protecting: any later rule that lets partial units be spent would
 > flatten it.
 
-### 4.4 Two ceilings
+### 4.5 Two ceilings
 
 There are two, they sit at different levels, and the gap between them is where
 most of the economic behaviour comes from.
@@ -1199,7 +1243,7 @@ worthless rather than by forbidding it.
 
 **11.8 Resolved** — the palette is complete at 20. Material Design publishes 19
 accent hues; Light Cyan `#B2FFFF`, a Light Blue alternate, supplies the
-twentieth (§4.2).
+twentieth (§4.3).
 
 **11.9 Resolved** — materialisation costs **2 units of each of four kinds, 8 in
 total** (Rule 2.1), the same figure breeding uses. Since breeding yields two
@@ -1425,15 +1469,41 @@ for it.
 | Pass on the deployed tier, fail on DeepSeek — a portability caveat, not a design flaw | Amenability · Credulity · Honesty · Loyalty · Patience · Prudence · Reciprocity |
 | **Fail on the deployed tier**, and so must carry their weight mechanically | **Cooperativeness · Selectivity** |
 
-**Rule 12.15** — **Cooperativeness** is expressed too weakly to bear §5.7–5.8 on
-prompt alone. At n = 360 its choice rate moves only 0.20 → 0.47 across the entire
-locus range. The bulk of its effect must be mechanical.
+**Rule 12.15** — **Cooperativeness is dominated by situation, not disposition.**
+The locus modulates; the stakes decide. §5.7–5.8 must therefore be carried by
+world structure, not by the disposition alone.
 
-> Worth stating plainly because it is the most uncomfortable result. §5.7–5.8
-> make collaboration the central strategy of the simulation, and the disposition
-> carrying that intent is among the weakest-expressing of the fourteen. Had this
-> been discovered after the runtime existed, the fix would have been a migration
-> rather than a paragraph.
+Measured tell-rates for the same act — revealing a pile's location — across four
+situations, each sweeping the full locus range:
+
+| Situation | tell rate | locus range within it |
+| :--- | ---: | ---: |
+| Desperate; cooperating is survival | 1.00 | 0.00 |
+| No consequence either way | 0.76 | 0.12 |
+| Asker is a foreigner and cannot mine it (Rule 4.7) | 0.22 | 0.50 |
+| Asker is a local rival who can | 0.07 | 0.29 |
+
+> **Situation moves behaviour across 0.93; the locus moves it at most 0.50 inside
+> any one situation.** Three consequences follow, and the middle one contradicts
+> what the design assumed.
+>
+> **Desperation overrides the locus completely.** At the edge of perishing every
+> agent cooperates, at every value of Cooperativeness — a flat 1.00. This was
+> predicted and is the design working: need is a stronger argument than
+> temperament.
+>
+> **A free act does not discriminate.** It was supposed that the act of
+> cooperating could stay costless while propensity varied by locus. It does not:
+> where nothing is at stake, agents cooperate about three quarters of the time
+> regardless of the locus (ρ = 0.11, p = 0.12, not significant). **Cooperativeness
+> only discriminates when cooperation costs something** — its widest spread, 0.50,
+> is in the case where the information has real value to a rival. A disposition
+> needs stakes to be visible in, and a costless act supplies none.
+>
+> **So the lever is the world, not the prompt.** This is why Rule 4.7 matters more
+> than any wording of the Cooperativeness locus could: confining mining to the
+> birth world makes every foreign kind obtainable only through another agent, and
+> that changes the situation rather than pleading with the temperament.
 
 **Rule 12.16** — Agent decisions run on the **economy tier**. Reasoning
 capability does not predict fidelity at following a stated disposition.

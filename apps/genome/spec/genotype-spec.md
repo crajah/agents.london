@@ -705,6 +705,25 @@ attractiveness scores as there are agents looking at it.
 **Rule 6.3** — An agent is **disposed** to accept a mate whose attractiveness, by
 its own weights, sits above its **Selectivity**, moderated by its **Fecundity**.
 
+**Rule 6.3a** — The bar **relaxes under scarcity**: as an agent nears the end of
+its lifespan, or as willing mates within reach grow few, it accepts below its
+Selectivity. The relaxation is a disposition, not a formula — the agent decides
+whether this candidate is worth settling for.
+
+> Measured before implementation, on all three axes the rule depends on. Holding
+> everything else fixed, raising Selectivity across its range lifts the decline
+> rate by 0.71; raising the candidate's score from 3000 to 7000 lowers it by 0.51;
+> and putting the same agent near death with no alternatives in sight lowers it by
+> a further 0.41. The bar, the score, and the pressure all bite, in the right
+> directions and at comparable strength.
+>
+> Note what this makes of a *step*. Selectivity is a threshold, so a sharp
+> transition is the correct answer rather than the failure `genome-spec.md`
+> §12.3.1 warns about — what matters is that the knee sits near the candidate's
+> score and moves when the score moves. Where the candidate scores well above most
+> bars, the locus stops mattering and acceptance saturates; that is a threshold
+> behaving as one, not a locus failing to express.
+
 > Disposed, not gated. Attractiveness is **computed** — the harmonic mean is
 > arithmetic (`genome-spec.md` Rule 12.1) — and Selectivity is presented to the
 > agent alongside it as a temperament. The comparison informs the decision; it

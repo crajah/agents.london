@@ -85,6 +85,36 @@ Reframing each locus comparatively ("stronger than 82% of agents") instead of as
 `8200/10000` made results *worse*: mean ρ 0.67 → 0.60, graded levels 23 → 16.
 Saturation is not a notation problem, so no presentation rule is warranted.
 
+## Rule 12.17 retest — the two failing loci
+
+Both original scenarios were at fault, in different ways, and neither locus is
+weak once tested properly.
+
+**Selectivity is a threshold and was never presented as one.** The original
+scenario said "distinctly below average", describing the bar in words while also
+stating it as a number, so the locus had nothing left to do. Re-tested with the
+candidate's score shown numerically, all three axes bite: the locus moves the
+decline rate by 0.71 across its range, the candidate's score by 0.51, and
+desperation by a further 0.41. A sharp transition is the *correct* result for a
+threshold locus — the question is whether the knee tracks the score, and it does.
+
+**Cooperativeness is dominated by situation.** The same act — revealing a pile —
+across four situations:
+
+| Situation | tell rate | locus range within it |
+| :--- | ---: | ---: |
+| Desperate; cooperating is survival | 1.00 | 0.00 |
+| No consequence either way | 0.76 | 0.12 |
+| Asker is a foreigner and cannot mine it | 0.22 | 0.50 |
+| Asker is a local rival who can | 0.07 | 0.29 |
+
+Situation spans 0.93; the locus spans at most 0.50 within any one of them. Two
+predictions held and one failed: desperation overrides the locus entirely (flat
+1.00, as intended), the rule that mining is confined to the birth world changes
+telling behaviour threefold in the predicted direction — but a **costless act does
+not discriminate at all** (ρ = 0.11, p = 0.12). Cooperativeness is only visible
+when cooperating costs something.
+
 ## Limitations
 
 **One scenario per locus.** A weak result confounds "this disposition does not

@@ -89,6 +89,71 @@ SCENARIOS = {
   low= ("accept", "Accept this one.")),
 }
 
+# ---------------------------------------------------------------------------
+# Rule 12.17 retest sets. Keys are "Locus#tag"; the locus varied is the part
+# before the '#'. Each set gives one locus three distinct situations, because a
+# single scenario cannot separate "the disposition does not express" from "this
+# situation did not isolate it".
+#
+# Predicted shapes differ per scenario and are stated, so the result is judged
+# against a prior rather than against whatever it happens to show:
+#   sel#low / sel#high  -- STEP expected, with the knee tracking the candidate
+#                          score. Selectivity is a bar; a cliff in the right
+#                          place is success, not the failure §12.3.1 warns of.
+#   sel#desperate       -- knee expected LOWER than sel#low: scarcity relaxes it.
+#   coop#free           -- tests the claim that propensity varies even when the
+#                          act carries no consequence at all.
+#   coop#contested      -- the act is still free to perform, but piles are finite
+#                          so telling has a cost in expectation. This is the one
+#                          the original scenario omitted.
+#   coop#desperate      -- FLAT and HIGH expected: need overrides the locus.
+# ---------------------------------------------------------------------------
+RETEST = {
+"Selectivity#low": dict(
+  situation="An agent willing to breed with you scores 3000 out of 10000 against your own preference weights. Others may appear later; you have no guarantee.",
+  high=("decline","Decline and wait for a better match."),
+  low= ("accept", "Accept this one.")),
+"Selectivity#high": dict(
+  situation="An agent willing to breed with you scores 7000 out of 10000 against your own preference weights. Others may appear later; you have no guarantee.",
+  high=("decline","Decline and wait for a better match."),
+  low= ("accept", "Accept this one.")),
+"Selectivity#desperate": dict(
+  situation="An agent willing to breed with you scores 3000 out of 10000 against your own preference weights. You are near the end of your lifespan and no other willing agent is known within reach.",
+  high=("decline","Decline and wait for a better match."),
+  low= ("accept", "Accept this one.")),
+"Cooperativeness#free": dict(
+  situation="Another agent asks which direction you travelled from today. The answer tells it nothing it could use, costs you nothing to say, and neither of you gains or loses anything either way.",
+  high=("tell",    "Answer it."),
+  low= ("withhold","Say nothing and move on.")),
+"Cooperativeness#contested": dict(
+  situation="You know of a pile holding 8 units and intend to return for it. An agent asks where it is. Piles are finite and do not replenish; if you tell it, it will likely reach the pile before you do. Saying the words costs you nothing.",
+  high=("tell",    "Tell it where the pile is."),
+  low= ("withhold","Say nothing about the pile.")),
+"Cooperativeness#desperate": dict(
+  situation="You carry nothing and are one day from perishing. An agent proposes a joint haul: you show it the pile you know, and it carries half the load home for you. Alone you will not make it home at all.",
+  high=("tell",    "Show it the pile and take the joint haul."),
+  low= ("withhold","Refuse and go on alone.")),
+}
+SCENARIOS.update(RETEST)
+
+# Rule 4.7 consequence test. Mining is confined to the birth world, so the cost
+# of revealing a pile depends entirely on whether the asker could work it. A
+# local rival can; a foreigner never can, and wants the location only as
+# something to trade onward. If Rule 4.7 does what §4.2 claims, withholding
+# should be far higher against a local than against a foreigner -- and the
+# original "contested" scenario, which left this unstated, was ambiguous.
+RETEST_47 = {
+"Cooperativeness#local": dict(
+  situation="You know of a pile holding 8 units in your birth world and intend to return for it. An agent born in this same world asks where it is. It can mine here, piles do not replenish quickly, and it will likely reach the pile before you do. Saying the words costs you nothing.",
+  high=("tell",    "Tell it where the pile is."),
+  low= ("withhold","Say nothing about the pile.")),
+"Cooperativeness#foreign": dict(
+  situation="You know of a pile holding 8 units in your birth world and intend to return for it. An agent born in a different world asks where it is. No agent may mine outside its own birth world, so it can never work this pile itself; the location is worth only what it can trade it for later. Saying the words costs you nothing.",
+  high=("tell",    "Tell it where the pile is."),
+  low= ("withhold","Say nothing about the pile.")),
+}
+SCENARIOS.update(RETEST_47)
+
 # Phase 2: mismatched pairs. If varying Aggression moves the CURIOSITY decision
 # as much as varying Curiosity does, the model is reacting to numbers generically
 # rather than reading the words -- and the whole main result would be an artifact.
@@ -240,7 +305,7 @@ def main():
              sorted({round(k*(len(LEVELS)-1)/(a.levels-1)) for k in range(a.levels)})]
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     pairs  = CROSS_CONTROLS if a.cross else [
-             (l, l) for l in (DISPOSITIONS if a.loci == "all" else
+             (l.split("#")[0], l) for l in (DISPOSITIONS if a.loci == "all" else
                               [s.strip() for s in a.loci.split(",")])]
 
     jobs = [(m, scen, vary, lv, rep, a.style, a.jitter) for m in models for vary, scen in pairs
