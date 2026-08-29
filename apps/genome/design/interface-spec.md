@@ -121,6 +121,41 @@ arrival event is authoritative.
 > the server's arrival event disagree, something has drifted. Cheap to assert,
 > awkward to discover later.
 
+## 5.1 Navigation — reaching a world
+
+**Rule 5.3** — A user reaches another world by any of four routes, and no
+directory is required:
+
+| Route | |
+| :--- | :--- |
+| **Follow an agent** | the view accompanies one of the user's agents, including through a teleport |
+| **Own portals** | a world's portals name their destinations by colour (Rule 6.9h); selecting one views it |
+| **Traverse** | while viewing any world, its portals are visible and selectable, so the connected component can be walked |
+| **Jump from an inspector** | selecting any agent anywhere offers its home world |
+
+**Rule 5.4** — Traversal by a user is **free and unbounded**. It costs no journey,
+respects no first-degree limit, and confers nothing.
+
+> Rule 5.4 looks like it contradicts Rule 6.2d of `genome-spec.md`, which confines
+> *agents* to first-degree portals and makes everything beyond reachable only by
+> world-hopping. It does not, and the asymmetry is the point.
+>
+> **A user is a spectator and an agent is a participant.** Rule 13.2 grants
+> observation of any world; the only question was how to arrive, and requiring a
+> user to walk the graph would have imposed a cost on watching that Rule 13.2
+> explicitly does not impose. So a user browses freely while their agents pay for
+> every hop.
+>
+> **The obvious worry is already governed.** A user who scouts a distant world
+> learns its layout, but Rule 13.3 says observation confers nothing on agents, so
+> the knowledge is useless until it is told to one — at which point Rule 13.5
+> makes it testimony subject to Credulity, Rule 13.5b leaves relaying to Loyalty,
+> and Rule 6.10b decays it fast and faster with every hop. The channel from a
+> user's eyes into the world already has three separate governors on it, and
+> none of them needed adding here.
+
+**Rule 5.5** — Returning to a world the user owns is always **one action away**.
+
 ## 6. Rendering
 
 ### 6.1 The split
