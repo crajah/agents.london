@@ -426,11 +426,21 @@ It may be given or traded to another agent.
 **co-located** (`genome-spec.md` Rule 9.1b) and both must agree. It may be
 exchanged at any time, **including during the countdown**.
 
+**Rule 3.7d** — A berth may be traded to **any agent**, including one whose user
+contributed nothing to that Ark.
+
 **Rule 3.7c** — An agent holds **at most one berth**. A claim beyond that is a
 holding to be traded, never a second seat.
 
 > A berth is the most valuable thing in the simulation, and Rules 3.7a–3.7c are
 > what make that fact do some work rather than merely be true.
+>
+> **Rule 3.7d is what makes it an economy rather than an allocation.** Restricting
+> berths to the contributing coalition would make contribution the only route to
+> survival and leave nothing to trade. Open circulation gives the document's own
+> claim — *most users will never build an Ark, they will buy into one* — something
+> to be true of, and it means an Ark's crew at launch need not be its builders at
+> all.
 >
 > **It is the one good with no adequate price.** A berth is worth everything an
 > agent has earned — its map, its gained attributes, its antigens, its standing

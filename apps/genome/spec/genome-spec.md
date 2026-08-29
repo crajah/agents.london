@@ -1050,29 +1050,40 @@ objective**, to **acquire resources**. The specification does not say how.
 Negotiation, testimony, coordination and the agreement to breed are all carried
 over it.
 
-**Rule 9.1b** — Agents must be **co-located to negotiate**. A2A carries the
-exchange, but the parties must have met on the map (§5) — there is no bargaining
-at a distance.
+**Rule 9.1b** — A **binding proposal requires co-location**. The parties must be
+together on the map (§5) for an offer to bind or a transfer to occur.
 
-> Rule 9.1b is the more consequential half, because it decides what the map is
-> *for*.
+**Rule 9.1c** — Everything else travels: **claims, questions, testimony and
+capability requests** (Rule 8.8) pass at any distance.
+
+**Rule 9.1d** — A2A requires an **addressable counterparty**. An agent may only
+reach one it has encountered or been told of.
+
+> These three split range along the line Rule 7.3 already draws between a
+> **proposal**, which binds, and a **claim**, which is only evidence. Nothing new
+> is introduced: the distinction that decides how a message is *treated* also
+> decides how far it carries.
 >
-> **Travel becomes speculative.** If deals could be struck remotely, an agent
-> would negotiate at leisure and journey only to settle — the map would be a
-> delivery problem and the teleport graph a logistics constraint. Requiring a
-> meeting means every trade costs a journey *before* a word is exchanged, so an
-> agent must decide whom to approach while knowing almost nothing about them.
+> **The map still governs deals, and now also governs discovery.** Rule 9.1d is
+> what keeps it honest. An agent cannot address a stranger it has never met or
+> heard of, so reaching a new counterparty still requires either a journey or
+> somebody's testimony — and testimony about who exists becomes a good in itself,
+> tradeable like any other. Introductions are worth something.
 >
-> **And it is colour that it decides on.** Attributes are hidden (Rule 6.6) and
-> colour is the only visible trait (Rule 3.4), so the choice of whom to cross a
-> world for is made on provenance and prior opinion alone. That is what gives
-> Rule 6.9a's general opinion something to do, what makes Curiosity and Wanderlust
-> more than flavour, and what makes a wasted journey a real cost.
+> **Recorded honestly: travel is less speculative than co-located bargaining would
+> have made it.** An agent can now establish that a deal exists before spending a
+> journey on it, and can interview a counterparty it has merely heard of rather
+> than choosing on colour alone (Rule 3.4). That weakens the case for approaching
+> strangers blind, and it is the price of Rule 9.1c.
+>
+> What it buys is the thing the design is actually for. Capability brokerage
+> (Rule 8.8) is the headline: an agent lacking web search reaches one that has it
+> and returns an answer, without a journey standing between a user's question and
+> its reply. Under co-located brokerage every chat would contain a walk.
 >
 > Note the asymmetry with Rule 4.2, which is deliberate: cargo was always going to
-> change hands face to face. This extends the same constraint upstream to the
-> conversation, so that meeting is the *precondition* for a deal rather than its
-> final step.
+> change hands face to face, and Rule 9.1b extends that to the moment of
+> commitment without extending it to the conversation.
 
 > Naming the substrate matters more here than it usually would, because A2A is
 > what an *opinion* (`genotype-spec.md` §6.3) is built from. Attributes are
