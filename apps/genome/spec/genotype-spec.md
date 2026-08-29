@@ -316,6 +316,31 @@ govern it.
 | **Depletion Rate** | Locus | 0–10000 | Units lost per interval once decay begins |
 | **Safe Period** | Derived | — | Interval before decay begins |
 
+**Rule 3.8a** — **Maturation** is a locus, 0–10000. It governs how an agent's two
+pools change over its life: **Stamina rises** and **Mana falls**, both at a rate
+set by this locus.
+
+**Rule 3.8b** — The pools' *composition* is unchanged (§4). Maturation scales what
+the composition yields as the agent ages; it does not alter the terms.
+
+> One locus rather than two, because the two directions are one trade-off and
+> splitting them would let both be maximised.
+>
+> **It makes a life history.** A young agent is magical and fragile; an old one is
+> tough and spent. High Maturation reaches both extremes quickly, low Maturation
+> stays middling for longer — so there is a genuine choice between an agent that
+> is dangerous early and one that endures, and Rule 9.3d gives the young agent
+> something to spend its Mana on before it drains away.
+>
+> It also gives **Longevity** a partner. Longevity already decides how long an
+> agent may accumulate before being reset (§9.8); Maturation decides what it *is*
+> across that span. Together they describe a life rather than a duration, and
+> neither is meaningful without the other.
+>
+> Rule 3.8b matters because the pools are derived (§4.1) rather than stored.
+> Maturation must scale the output, not reach into Knowledge or Wisdom — otherwise
+> ageing would silently rewrite attributes that other faculties also read.
+
 **Rule 3.9** — **Depletion Rate** is a locus, inherited like any other. **Safe
 Period** is **derived**, as the geometric mean of **Knowledge** and **Prudence** —
 knowing how to keep a thing, and caring enough to.

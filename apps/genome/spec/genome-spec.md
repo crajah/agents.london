@@ -380,6 +380,16 @@ kind** in their world. A deposit that would exceed 25 is capped at 25.
 **Rule 4.16** — **Cargo ceiling.** An agent carries at most **15 units** in
 total, across all kinds.
 
+**Rule 4.19a** — A **transfer that would breach an agent's cargo ceiling is
+partially accepted** up to 15 units; the remainder stays with the giver. This
+covers trade (§9.2) and spoils taken in aggression (Rule 9.3c) alike.
+
+> Mirrors Rule 4.19, which does the same for a deposit at the user ceiling, and
+> for the same reason: an agreement should not fail on arithmetic neither party
+> checked. Rejecting the trade outright would mean a deal struck and then broken
+> — which is precisely the window `system-spec.md` Rule 5.2 identifies as where
+> defection lives, and it would put failures there that nobody chose.
+
 **Rule 4.17** — The user ceiling of 25 applies to **deposited stock only**.
 Cargo held by agents in the field is not counted against it.
 
@@ -1217,7 +1227,49 @@ quantities of kinds against quantities of kinds, agreed between two agents.
 **Rule 9.3** — Encounters may instead resolve in **aggression or competition**.
 Negotiation is not guaranteed and refusal is a legitimate move.
 
-**Rule 9.4** — Two agents that meet and **agree** may produce **two progeny**,
+**Rule 9.3a** — An attack is resolved by the attacker's **Attack** against the
+defender's, moderated by the defender's **Agility** (`genotype-spec.md` §3.1). The
+outcome is probabilistic, not determined.
+
+**Rule 9.3b** — **Both parties lose Stamina**, the loser more. Stamina is the pool
+already derived from Knowledge, Agility and Courage; it recovers at **reStamina**.
+
+**Rule 9.3c** — The winner takes the loser's **cargo**, up to its own 15-unit
+ceiling; the remainder stays with the loser (Rule 4.16, and Rule 4.19a below).
+
+**Rule 9.3d** — **Mana may be spent to press an attack harder**, raising effective
+Attack for that exchange. Mana is the pool derived from Intelligence, Knowledge
+and Wisdom, recovering at **reMana**.
+
+**Rule 9.3e** — An agent at **zero Stamina is incapacitated**: it can neither
+attack nor resist, and recovers by regeneration. It does not die.
+
+> Almost none of this needed new machinery, which is itself worth noting. `Range`
+> was already the distance at which an agent can strike, `Agility` the ability to
+> escape damage, `Courage` a feed into both Stamina and Attack, and both pools had
+> regeneration loci waiting. The combat apparatus was fully specified and had
+> nothing to do; Rule 9.3 said encounters *may* resolve in aggression and never
+> said what that meant.
+>
+> **Robbery is now a strategy rather than a mood.** An agent can gather, or it can
+> let others gather and take it — and which pays depends on how many are doing
+> each, which is frequency-dependent selection arriving without being designed.
+> That is a far better use of Aggression than a mood that expressed itself in
+> nothing.
+>
+> **It is deliberately not lethal.** Rule 9.3e leaves a beaten agent alive and
+> empty rather than dead, so violence costs cargo and time and never the knowledge
+> that `genome-spec.md` Rule 7.3 makes irreplaceable. A lethal mechanic would make
+> aggression the fastest way to destroy a rival's accumulated advantage, and the
+> flood is already the thing that does that.
+>
+> **What must be watched is §3.8's warning.** `genotype-spec.md` §3.8 argues that a
+> combat-only genotype would mean *strategy never evolves* — selection acting on
+> how hard an agent hits rather than on whether it keeps its word. Giving combat
+> real consequences reopens that risk, and it is measurable in exactly the way
+> §12.3.2 measured disposition expression: compare the selection differential on
+> the combat loci against that on the dispositions. If fighting dominates,
+> §3.8's fear has been realised and the resolution needs weakening.
 one assigned to each parent's user. This requires the pair to hold,
 **collectively**, 2 units each of 4 different kinds.
 

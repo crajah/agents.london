@@ -235,6 +235,11 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Ends at **six turns** or when a party cannot afford to continue (7.2)
 - [ ] Proposals bind; claims are evidence (7.3); timeouts are scheduled events (7.4)
 - [ ] Two-phase handoff, no intermediate custody (`system-spec.md` Rules 5.1, 5.2)
+- [ ] **Combat**: Attack against Attack moderated by Agility, probabilistic (`genome-spec.md` 9.3a)
+- [ ] Both parties lose Stamina, loser more; recovery at reStamina (9.3b)
+- [ ] Winner takes cargo to its ceiling, remainder stays (9.3c, 4.19a)
+- [ ] Mana spent to press an attack (9.3d); zero Stamina incapacitates without killing (9.3e)
+- [ ] **Selection-differential check**: combat loci against dispositions, per §3.8's warning
 
 **Done when:** two agents meet, negotiate, and cargo moves atomically — and a counterparty walking away mid-deal is recorded as an outcome, not an error.
 
@@ -268,6 +273,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 ## Phase 9 — Pathogens
 
 - [ ] Strains as a second evolving genotype — six-field strain description, parent UUID recorded (`pathogen-spec.md` Rules 2.1, 2.3, §4.3)
+- [ ] Strain creation rolled **independently at both ends** of a teleport
 - [ ] Replication, contagion, **infection distance** (`pathogen-spec.md` Rule 2.4); contact probability (Rule 2.5); creation chance on teleport
 - [ ] Expression modifiers changing phenotype, not genotype; defences are three heritable things (Rule 2.2)
 - [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8–16 dimensions (Rule 2.0)
@@ -373,9 +379,10 @@ and need a decision before the phase that meets them.
 - [x] **How a berth claim becomes a specific agent's berth.** Resolved: berths arrive **unassigned** and the user's own agents contest them (Rules 3.7e/3.7f). Presence settles what argument did not. Supersedes commentary that had the owner allocate directly.
 - [x] **Carrier death mid-portage.** Resolved: the construction is **set down where the party stands** and any group of the required number of distinct users may take it up, strangers included (Rule 3.12a).
 - [x] **Where a foreign agent emerges after boarding.** Resolved: **in the world where the Ark came to rest** — its host's — whoever owns the agent (Rule 4.3c). A survivor is a guest with a journey ahead of it.
-- [ ] ⚠ **Which world a strain is created in on teleport** — origin or destination (`pathogen-spec.md` §2).
+- [x] **Which world a strain is created in on teleport.** Resolved: **both ends, independently rolled**.
 - [ ] ⚠ **Twelve quantities remain unset**, each blocking a named phase — see [`spec/calibration-spec.md`](spec/calibration-spec.md) §4. Two are experiments in their own right: the **Longevity → lifespan** mapping (§11.2 calls it the first thing to calibrate) and the **mutation step size**, which decides whether selection has anything to climb.
-- [ ] ⚠ **Trade that would breach the 15-unit cargo ceiling** (`genome-spec.md` Rule 4.16) — rejected outright, or partially accepted as Rule 4.19 does for deposits?
+- [x] **Trade breaching the cargo ceiling.** Resolved: **partially accepted** up to 15, remainder stays with the giver — covering trade and spoils alike (Rule 4.19a).
+- [x] **Combat was referenced and never specified.** Rule 9.3 allowed encounters to resolve in aggression and never said what that meant, while `Range`, `Agility`, `Courage`, both pools and both regeneration loci sat unused. Resolved: Rules 9.3a–9.3e and the **Maturation** locus (`genotype-spec.md` 3.8a).
 
 ### Resolved by existing rules, recorded so they are not re-litigated
 - [x] Agent mid-journey inside a flooding world is present and dies; passage is instantaneous so there is no third state (`genome-spec.md` Rule 6.1a).
