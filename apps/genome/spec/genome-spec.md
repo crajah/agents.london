@@ -152,6 +152,21 @@ maintained by convention.
 > application code, and it is the first place to look when an agent appears to be
 > in two worlds or none.
 
+**Rule 3.6** — A world whose user deletes their account is **tombstoned**, not
+removed: it keeps its kinds, colours, piles and portals, has no owner and no
+agents, and nothing regenerates or is deposited there.
+
+> Deletion and Rule 6.3a's permanent links are otherwise in direct conflict.
+> Removing a world would sever portals its neighbours never agreed to lose, change
+> their trade routes without their doing anything, and orphan any agent due to
+> regenerate there under Rule 7.2.
+>
+> A tombstone resolves it because **none of what remains is personal**. Two
+> resource kinds, two palette colours, a scatter of piles and a set of links are
+> facts about a place, not about a person. What is deleted is everything that was
+> the user's: identity, agents, genotypes, chats, keys, opinions and their
+> queryable corpus. The shell that other people's worlds depend on stays.
+
 **Rule 3.5** — A world is a **realm**, but realms are **not schemas**. All realms
 live in one schema, discriminated logically. Whether to promote realms to physical
 schemas is deferred until scale demands it.
@@ -488,6 +503,39 @@ own (`system-spec.md` §9).
 **Rule 6.2a** — A world opens with **30 teleport portals**, drawn from its owner's
 connections. Where the connection list is longer, the surplus is *linkable but not
 yet linked*.
+
+**Rule 6.2f** — Every world holds a permanent portal to **the commons**: a single
+ownerless world that belongs to no user, has no piles, and never floods.
+
+**Rule 6.2g** — The **only exit from the commons is the way in**. An agent in the
+commons may return to the world it came from and to no other. The commons
+displays no portal to any user's world.
+
+> Rule 6.2f exists to break a dead end that had no escape, and Rule 6.2g exists so
+> that breaking it does not undo Rule 6.2d.
+>
+> **The dead end.** A user with no connections has no portals (Rule 6.2a), so no
+> trade, so never the four distinct kinds Rule 2.1 requires, so never a second
+> agent — and the Observatory that could forge a link needs five contributors they
+> do not have. One free agent, one world, two kinds, permanently. Every new user
+> starts there.
+>
+> **Why the exit is one-way.** A commons every world links to is two hops from
+> everywhere, and if it displayed onward portals it would put every world within
+> two hops of every other. Rule 6.2d's frontier would vanish, and with it the
+> broker role that Rule 6.2's own commentary calls the point of the topology. With
+> Rule 6.2g the commons is a **market square rather than a transit hub**: agents
+> meet, bargain and part, and reaching somebody's *world* still requires a real
+> connection or a journey through one.
+>
+> **It is a meeting place and nothing else.** No piles, and none possible — Rule
+> 4.7 confines mining to a birth world regardless. Nothing can be gathered there,
+> only exchanged, which is precisely what a cold-start user needs: an agent goes,
+> meets one from a world of two different kinds, trades, and comes home able to
+> materialise. Rule 9.1b is satisfied because they genuinely met.
+>
+> It is also where cross-world lineages will tend to begin, since breeding needs a
+> meeting too, and the commons is the one place strangers reliably find each other.
 
 **Rule 6.2e** — A portal is placed at a **random position** within the world,
 fixed when the link is created and unchanged thereafter — including through a

@@ -214,6 +214,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] World gets two kinds, two colours, piles, and its opening 30 portal slots (Rules 4.1, 4.9, 6.2a)
 - [ ] Explain the one thing that is not guessable: **you cannot reach four kinds alone** (Rule 2.3)
 - [ ] Contact import offered, never required — the world must be usable with zero connections
+- [ ] **Commons portal present from creation** (`genome-spec.md` Rule 6.2f); one-way exit enforced (6.2g)
+- [ ] Cold-start path provable: agent → commons → trade → four kinds → second agent
 - [ ] Account with no connections still runs: agents gather, deposit, and hit the four-kind wall visibly
 
 **Done when:** J1 and J8 work; a brand-new account with no contacts still has something to watch.
@@ -302,7 +304,8 @@ comprehensible. This is the phase most easily forgotten and most felt.
 Contact import makes this non-optional rather than a courtesy.
 
 - [ ] Export everything a user owns: world, agents, genotypes, decisions, chats
-- [ ] Delete an account: world, agents, keys, connections, and **imported contact material**
+- [ ] Delete an account: agents, keys, chats, opinions, corpus and **imported contact material**
+- [ ] **Tombstone the world** rather than removing it (`genome-spec.md` Rule 3.6); neighbours' portals stay valid
 - [ ] Deletion must not orphan other users' data — a connection is mutual, so removal is two-sided
 - [ ] Non-user contacts were never stored (`system-spec.md` Rule 9.3); prove it with a test
 - [ ] Revoke OAuth grants; revoke and re-key user-supplied model credentials (`execution-spec.md` Rule 9.3)
@@ -349,12 +352,12 @@ and need a decision before the phase that meets them.
 ### Resolved during audit
 - [x] **A berth did not require boarding.** Rule 4.10 said a berth was the exemption without saying the agent must be aboard, so as written a berth-holder survived anywhere — while §4.2's commentary describes *which agents board and which are left in the water*. Fixed: Rules 4.10/4.10a now require presence at the Ark.
 
-### ⚠ Unresolved — structural
-- [ ] ⚠ **A user with zero connections is permanently stuck at one agent.** Rule 7.1 grants a free first agent; Rule 2.1 needs four kinds; Rule 2.2 gives a world two; Rule 6.2a draws portals from connections, of which there are none. No trade, so never four kinds, so never a second agent — and the Observatory that forges links needs five distinct contributors. There is no escape path in the current rules. **Every new user starts here.**
-- [ ] ⚠ **Account deletion conflicts with permanent links.** Rule 6.3a makes teleport links permanent and Rule 7.2 regenerates agents in their home world. Deleting a user destroys a world that other worlds hold permanent links to, and into which foreign-parented agents may be due to regenerate.
+### Resolved by decision
+- [x] **A user with zero connections is permanently stuck at one agent.** Resolved: every world holds a permanent portal to an ownerless **commons** (`genome-spec.md` Rule 6.2f), whose only exit is the way in (6.2g) so the topology is preserved.
+- [x] **Account deletion conflicts with permanent links.** Resolved: the world is **tombstoned** (Rule 3.6) — kinds, colours, piles and portals persist ownerless; everything personal is deleted.
 
-### ⚠ Unresolved — undefined values and outcomes
-- [ ] ⚠ **Ark capacity has no number.** Rule 4.3 says capacity is finite and shared between agents, constructions and stock. The entire bargaining drama of §4.2 depends on the total being smaller than the claims, and nothing sets it.
+### ⚠ Still unresolved
+- [x] **Ark capacity has no number.** Resolved: **twelve slots**, an agent costing one, a construction its contributor count, stock one per unit (`construction-spec.md` Rule 4.3b) — oversubscribed by construction.
 - [ ] ⚠ **A user's berth claim is proportional (Rule 3.7); nothing says how a claim becomes a specific agent's berth.** Rule 3.7a assumes an agent already holds one.
 - [ ] ⚠ **Carrier death mid-portage.** Rule 3.12 has carriers move as one body; if one of five dies en route, the fate of the construction is undefined.
 - [ ] ⚠ **Where a foreign agent emerges after boarding.** Rule 5.6 has the user emerge owning a hull, in the host's world. A boarded agent belonging to another user emerges — where?
@@ -369,7 +372,7 @@ and need a decision before the phase that meets them.
 ### Consequent tasks
 - [ ] **Berth transfer must be atomic**, on the same two-phase pattern as cargo (`system-spec.md` Rules 5.1, 5.2) — two agents must not both acquire one berth
 - [ ] **Boarding is an action with a deadline**: model the race, and the case of a berth bought by an agent that cannot reach the ship in time (Rule 4.10a)
-- [ ] Ark manifest allocation across agents, constructions and stock against one limit (Rule 4.3)
+- [ ] Ark manifest allocation against **twelve slots**, priced by kind (Rule 4.3b)
 - [ ] Late flood: a world whose worker held no lease fires its countdown late — decide whether agents are owed the full two days
 - [ ] Portal placement collision with a pile or another portal (Rule 6.2e)
 - [ ] Addressability granted by an owner: a user browses freely (Rule 5.4) and may tell an agent of someone it has never met, which makes that agent addressable under Rule 9.1d

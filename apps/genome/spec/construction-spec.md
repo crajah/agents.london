@@ -523,6 +523,31 @@ a world produces two.
 A manifest may carry agents, **constructions**, and **deposited stock**, all
 drawn against the same limit.
 
+**Rule 4.3b** — Capacity is **twelve slots**, priced by what is carried:
+
+| Carried | Slots |
+| :--- | ---: |
+| An agent | 1 |
+| A construction | its contributor count (1–5) |
+| Deposited stock | 1 per unit |
+
+> Twelve is chosen so that the hold is **oversubscribed by construction**. An Ark
+> takes eight distinct contributing users (§2), so if each saved only a single
+> agent that is eight of the twelve gone, leaving four for every construction and
+> every unit of stock the coalition would like to keep. Nobody can have what they
+> want.
+>
+> That is the point rather than a limitation. §4.2's account of the countdown —
+> everyone's claim legitimate, the total exceeding the hold, two days on the clock
+> — describes nothing at all unless the number is smaller than the claims. A hold
+> that fitted everything would make the Ark a switch: build it and the threat ends.
+>
+> **Pricing constructions by contributor count also makes the manifest a genuine
+> exchange rate.** A Forge costs four slots and so competes directly with four
+> agents; an Observatory costs five. A coalition must decide whether it would
+> rather keep its infrastructure or its people, and the answer will differ between
+> coalitions and between cycles. Nothing else in the design forces that comparison.
+
 **Rule 4.3a** — A construction carried on the manifest is **re-established intact**
 in the nascent world. One not carried is destroyed with everything else
 (Rule 4.4).
