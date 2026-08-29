@@ -352,6 +352,35 @@ outlasts a poor one and carries that quality wherever it goes.
 **Rule 2.18e** — Antigens are **information**. They are shared over A2A, **copied
 rather than transferred**, and giving one costs the giver nothing.
 
+**Rule 2.18g** — An antigen received over A2A **may be false** — a vector that
+covers nothing, or less than was claimed. It is a claim like any other: the
+sharer's **Honesty** governs whether it is real, the recipient's **Credulity**
+governs whether it is trusted, and the truth is discovered when infection tests
+it.
+
+**Rule 2.18h** — A world holding an **Apothecary** (`construction-spec.md` §2) can
+**authenticate** an antigen: an agent present there may have one verified before
+relying on it.
+
+> Rule 2.18g follows the design's spine — everything said over A2A may be false
+> (`genome-spec.md` Rule 8.5) — and making antigens the sole unfakeable
+> information would have been a special case cutting against it. Trust in
+> medicine becomes emergent: a synthesiser known to hand out real coverage is
+> worth travelling to, and Rule 2.18c's combined coverage means a fake *dilutes*
+> protection rather than annihilating it.
+>
+> Note what this does not reopen. `pathogen-spec.md` §4.2 ruled that disease is
+> never a weapon, and a fake antigen is **fraud, not assault** — it causes no
+> infection, it fails to prevent one, and it works exactly once per victim per
+> liar (Rule 6.10a's surprise update sees to that).
+>
+> **Rule 2.18h gives the Apothecary branch a service its root lacked.** The branch
+> healed and retained; now it also *verifies*, which makes an Apothecary world a
+> medical marketplace — the place where antigens are worth more because they can
+> be proven, and where a liar's stock is worth less because proof is on offer. The
+> asymmetry is deliberately geographic: verification exists where a coalition
+> built it, so rich worlds trade certified medicine and poor ones trade on trust.
+
 **Rule 2.18f** — Recovery follows from coverage (Rule 2.18c), or is **immediate at
 a Sanatorium** (`construction-spec.md` §2). Nothing else ends an infection.
 

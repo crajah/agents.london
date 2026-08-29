@@ -221,6 +221,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Explain the one thing that is not guessable: **you cannot reach four kinds alone** (Rule 2.3)
 - [ ] Contact import offered, never required — the world must be usable with zero connections
 - [ ] **Commons portal present from creation** (`genome-spec.md` Rule 6.2f); one-way exit enforced (6.2g)
+- [ ] Commons **sharded, stable assignment** at world creation, hundreds of worlds per shard (6.2f-i)
 - [ ] Cold-start path provable: agent → commons → trade → four kinds → second agent
 - [ ] Account with no connections still runs: agents gather, deposit, and hit the four-kind wall visibly
 
@@ -289,6 +290,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Antigens **copied, not transferred** — sharing costs the giver nothing (2.18e)
 - [ ] **Graded immunity** by coverage rather than binary (2.20)
 - [ ] Inoculist bank holds antigens **against decay** (2.20a)
+- [ ] Antigens may be false (2.18g); **Apothecary authenticates** (2.18h)
 - [ ] **Test the prediction**: Cooperativeness should *not* predict antigen sharing, since sharing is costless (Rule 12.15)
 - [ ] **Infection rendered** as a broken disc outline (`interface-spec.md` Rule 6.9i) — it is public (Rule 2.21)
 
@@ -399,12 +401,12 @@ and need a decision before the phase that meets them.
 
 ### Found by structural analysis (composition, not coverage)
 - [x] **Deleterious-direction loci repaired.** Attrition is now intensity (adds to Attack, burns maximum Stamina on wins); Detection Latency became **Immune Vigilance** (fast detection costs Stamina regeneration). Both are trade-offs selection can settle either way (`genotype-spec.md` 3.8c/3.8e).
-- [ ] ⚠ **The four new loci never state their budget membership.** Rule 3.23 lists what is outside; Attrition, Maturation, Detection Latency and Synthesis Speed are in the physiological table, implying inside — never said. And adding budgeted loci **dilutes every existing agent's expressed values** (share = norm/Σ), which is fine pre-launch and a live-population migration problem after it.
+- [x] **Budget membership stated: all four inside**, with Longevity's membership made deliberate (Rule 3.23a). The outside list stays short and closed. Rule 3.23 lists what is outside; Attrition, Maturation, Detection Latency and Synthesis Speed are in the physiological table, implying inside — never said. And adding budgeted loci **dilutes every existing agent's expressed values** (share = norm/Σ), which is fine pre-launch and a live-population migration problem after it.
 - [ ] ⚠ **Construction resource costs do not exist.** The tree specifies kinds and contributor counts and never unit quantities — there is no cost table for any of the eighteen constructions or the Ark. Every feasibility claim in §4.2 is unfalsifiable until they exist.
 - [x] **Partial Ark survives** (Rule 4.4a): hull contributions persist across floods, so the first Ark is a multi-cycle undertaking and the one-cycle impossibility cannot strand the objective hierarchy. Economy dry-run still required to size the cycles.
 - [ ] ⚠ **The validated prompts are not the production prompts.** Every ρ in `validation/RESULTS.md` came from prompts showing 14 dispositions. Rule 6.6a's self-knowledge adds faculties, pools, maxima, cargo, objectives and opinions — several times the context. Expression may not survive the dilution; **the validation must be re-run with the full production prompt** before Phase 2's done-when is meaningful.
 - [x] **Amenability vs 10.1a settled: rank absolute, fidelity is not** (Rule 10.1d). The owner decides what; the genotype decides how, and how much.
-- [ ] ⚠ **A fake antigen reopens the bioweapon door.** Antigens are information (2.18e), shared as claims. Rule 4.2 of pathogen-spec decided disease is never a weapon — but sharing a *corrupt* antigen that covers nothing is deception with epidemiological consequences, discovered only on infection.
+- [x] **Fake antigens: fakeable like any claim, verifiable at an Apothecary** (Rules 2.18g/2.18h). Fraud, not assault — no infection is caused, and Rule 6.10a's surprise update makes it work once per victim per liar. Antigens are information (2.18e), shared as claims. Rule 4.2 of pathogen-spec decided disease is never a weapon — but sharing a *corrupt* antigen that covers nothing is deception with epidemiological consequences, discovered only on infection.
 
 ### ⚠ Still unresolved
 - [x] **Ark capacity has no number.** Resolved: **twelve slots**, an agent costing one, a construction its contributor count, stock one per unit (`construction-spec.md` Rule 4.3b) — oversubscribed by construction.

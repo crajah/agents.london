@@ -517,6 +517,17 @@ yet linked*.
 **Rule 6.2f** — Every world holds a permanent portal to **the commons**: a single
 ownerless world that belongs to no user, has no piles, and never floods.
 
+**Rule 6.2f-i** — The commons is **sharded**: many instances, each world assigned
+to one **permanently at creation**, sized at hundreds of worlds per shard.
+
+> Stable assignment is the property that matters. *Meet me at the commons* must
+> mean somewhere — a shard has regulars, reputations form among them, and two
+> agents who agree to meet will actually co-locate (Rule 9.1b). Per-visit
+> instancing would balance load perfectly and break precisely that. Cold-start
+> still holds: hundreds of worlds per shard guarantees strangers holding different
+> kinds. Cross-shard contact is unimpeded — it simply travels by ordinary portals,
+> as everything else does.
+
 **Rule 6.2g** — The **only exit from the commons is the way in**. An agent in the
 commons may return to the world it came from and to no other. The commons
 displays no portal to any user's world.
