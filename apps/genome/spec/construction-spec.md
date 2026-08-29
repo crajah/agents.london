@@ -193,6 +193,23 @@ number and spread will do.
 **Rule 3.12** — Carriers move as **one body** and are occupied for the journey:
 they may not separate, mine or trade until the construction is set down.
 
+**Rule 3.12a** — If a carrier dies en route, the construction is **set down where
+the party stands**. Any group of the required number of distinct users may take it
+up again — including strangers who find it.
+
+> The alternatives were worse in both directions. Destroying it would mean one
+> unlucky death erasing what five users funded, after which nobody would move
+> anything worth moving. Letting the survivors continue would make Rule 3.10's
+> distinct-user requirement a formality, since a party could shed members on
+> purpose once under way.
+>
+> Setting it down also creates something the design has nowhere else: **an
+> abandoned asset in the open**, belonging to nobody, worth a great deal to
+> whoever can muster the right number of hands. A Forge stranded in a foreign
+> world is a windfall for four local users and an agony for the coalition that
+> dropped it, and recovering it is a negotiation with people who have every
+> reason to refuse.
+
 **Rule 3.13** — A construction may **never be dismantled** into resources.
 
 > Rule 3.13 is the one that has to be there, and it closes an exploit rather than
@@ -426,7 +443,34 @@ It may be given or traded to another agent.
 **co-located** (`genome-spec.md` Rule 9.1b) and both must agree. It may be
 exchanged at any time, **including during the countdown**.
 
-**Rule 3.7d** — A berth may be traded to **any agent**, including one whose user
+**Rule 3.7e** — Berths earned by a user's claim (Rule 3.7) arrive **unassigned**.
+The user's own agents **contest them among themselves** under the ordinary rules:
+co-located, both parties agreeing (Rule 3.7b).
+
+**Rule 3.7f** — A berth still unclaimed when the water arrives is taken by **any
+eligible agent aboard**. Presence settles what argument did not.
+
+> This is the sharpest application of `genome-spec.md` §12 in the document, and it
+> replaces an earlier reading in which the owner allocated berths directly.
+>
+> **A user does not choose who lives.** They may instruct — Rule 13.5 lets an
+> owner set a top-ranked objective, so *take the berth* or *give it to your sister*
+> are both sayable — and whether an agent complies runs through Amenability, and
+> whether it keeps what it gets runs through Rule 3.7a. Influence without control,
+> exactly as everywhere else.
+>
+> **It creates the one conflict the design otherwise lacked: within a lineage.**
+> Every other contest here is between strangers or between coalitions. This one is
+> between siblings, who share a genotype and an owner, over the only thing that
+> cannot be shared. Hamilton's rule was already testable across the population
+> (Rule 3.7a's note); here it is testable between full siblings, where relatedness
+> is highest and the prediction sharpest.
+>
+> **And presence remains a criterion, just not the owner's.** Rule 3.7f means an
+> agent that is simply *there* when the water comes takes what the arguing agents
+> failed to settle — so being close to the Ark is worth something regardless of
+> how the negotiation went, and a coalition that spends the countdown bargaining
+> may find the question answered by whoever stopped talking and walked aboard., including one whose user
 contributed nothing to that Ark.
 
 **Rule 3.7c** — An agent holds **at most one berth**. A claim beyond that is a
@@ -523,6 +567,17 @@ a world produces two.
 A manifest may carry agents, **constructions**, and **deposited stock**, all
 drawn against the same limit.
 
+**Rule 4.3c** — An agent that boards an Ark emerges **in the world where the Ark
+came to rest**, which is its host's (§5.6), whoever owns the agent.
+
+> A foreign survivor is therefore a **guest with a journey ahead of it**, not a
+> passenger set down at its own door. The ship went where the ship went.
+>
+> Which turns taking someone aboard into the beginning of a relationship rather
+> than the end of a transaction. The rescued agent is in someone else's world,
+> carrying everything it managed to keep, and needing passage home — and its host
+> now has leverage nobody had to design in.
+
 **Rule 4.3b** — Capacity is **twelve slots**, priced by what is carried:
 
 | Carried | Slots |
@@ -576,10 +631,14 @@ in the nascent world. One not carried is destroyed with everything else
 >
 > A structure that saves everything is a switch: build it and the threat is over.
 > A structure with capacity forces a **choice under a deadline** — which agents
-> board, and which are left in the water. The user must value their own agents
-> against each other, and the criteria they use are exactly the thing the
-> simulation is trying to observe: the strongest genotype, the largest cargo, the
-> deepest knowledge, the rarest lineage, or the ones that happen to be home.
+> board, and which are left in the water.
+>
+> *Superseded, and the reasoning kept:* this originally had the **user** weigh
+> their agents against each other, on the grounds that the criteria they chose —
+> strongest genotype, largest cargo, deepest knowledge, rarest lineage, or simply
+> whoever was home — were the thing worth observing. Rules 3.7e and 3.7f give the
+> choice to the **agents**, which observes something better: not what a human
+> values, but what a population does when siblings compete for a lifeboat.
 >
 > And it opens the question the flood makes urgent: **may an Ark shelter a foreign
 > agent?** Berths are scarce and a visiting agent belongs to someone else. Refusing
