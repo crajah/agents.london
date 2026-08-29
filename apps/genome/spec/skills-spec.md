@@ -54,6 +54,30 @@ skill for a single use.
 Rule 7.3) restores the agent in its original state, and the capability it was
 born with is part of that state.
 
+**Rule 1.3a** — The **sole exception** is a capability whose tool has been
+**withdrawn from the registry**. A capability that no longer resolves to anything
+is re-rolled on the agent's next regeneration, under Rule 1.1a as though the agent
+were newly materialised.
+
+> Deliberately narrow, and the narrowness is the whole point.
+>
+> The problem it solves is real: §6.2 accepts a live registry as a moving target,
+> so an agent can be left holding a capability that has ceased to exist. Nothing
+> should permanently carry a dead pointer.
+>
+> **But a general re-roll on death would be exploitable.** Death costs cargo,
+> knowledge, gained attributes and antigens — and an agent born plain, or holding
+> a near-worthless tool, has little of any of those worth protecting. If dying
+> re-rolled capability, the optimal play for the bottom quarter of the population
+> would be **deliberate suicide until the lottery pays**, which destroys both
+> Rule 1.1a's premise that a quarter are born plain and §6.1's claim that this
+> quarter is the demand side of the economy. There is no demand side if plainness
+> is a temporary inconvenience.
+>
+> Withdrawal cannot be gamed the same way because **no agent chooses it**. The
+> re-roll is triggered by something outside the simulation entirely, which is
+> exactly what makes it safe to grant.
+
 ---
 
 ## 2. Tools versus skills
@@ -262,6 +286,10 @@ grows.
 > leaves agents holding a capability that no longer works. That is the price of
 > inheriting from a live system, and it is worth monitoring rather than
 > preventing.
+>
+> *Resolved:* an agent left holding a withdrawn tool has it **re-rolled on its next
+> regeneration** (Rule 1.3a), and only in that case. Holding a dead capability
+> until then is accepted as a cost of inheriting from a live system.
 
 **6.3 Decided — no.** Capabilities are never transferred (Rule 1.2a). A holder
 performs a service; it does not sell an asset.
