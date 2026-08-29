@@ -6,7 +6,7 @@ nothing here introduces a game rule; where this folder and `../spec/` disagree,
 
 | Document | Covers |
 | :--- | :--- |
-| [`execution-spec.md`](execution-spec.md) | agent execution: intents, the event queue, the autonomy loop, the inference budget, negotiation, the ADK runtime |
+| [`execution-spec.md`](execution-spec.md) | agent execution: intents, the event queue, the autonomy loop, inference cost, negotiation, the ADK runtime, model credentials |
 | [`system-spec.md`](system-spec.md) | substrate, tenancy, workers, transfers, scale, queues |
 | [`interface-spec.md`](interface-spec.md) | what a user sees and touches, and the belief-against-truth view |
 
@@ -22,10 +22,12 @@ sparse, which is what makes a per-event cost model viable at all.
 and the clock; pile quantities from a closed form. The tick does not advance the
 world, it drains an event queue — so cost scales with *events*, not with agents.
 
-**Inference is the budget.** Everything else is arithmetic and effectively free.
-At 10⁶ agents deciding ten times a day this is order $1.5k/day and it dominates
-every other cost in the system, which makes decisions-per-agent-per-day the most
-consequential number in the design.
+**Inference is the cost, and it is deliberately uncapped.** Everything else is
+arithmetic and effectively free. At 10⁶ agents deciding ten times a day this is
+order $1.5k/day and dominates every other cost in the system — but no budget is
+enforced (`execution-spec.md` Rule 5.2). Metering exists from the start so a
+ceiling can later be chosen from a distribution rather than guessed at, and users
+may supply their own credentials (§9).
 
 ## Open, and a decision for the specification rather than the design
 

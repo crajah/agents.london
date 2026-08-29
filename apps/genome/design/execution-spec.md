@@ -131,31 +131,31 @@ intent              →  event enqueued at that time
 | Economy inference | which pile, press on or turn home, accept or decline | routed cheap |
 | Higher inference | negotiation, deception, coalition-forming, Ark bargaining | routed up |
 
-**Rule 5.2** — The **decisions-per-agent-per-day budget is an explicit design
-parameter** with a stated target, not an emergent quantity.
+**Rule 5.2** — There is **no decision budget**. An agent thinks as often as
+events give it cause to.
 
-> `genome-spec.md` §12.4 already treats inference as a budget variable. This rule
-> makes it a number somebody owns.
+> Deliberately unlimited, and the cost is recorded rather than capped so that the
+> decision to cap can be taken later on evidence instead of guesswork.
 >
-> The arithmetic is unforgiving and worth carrying openly. At 10⁶ agents making
-> ten decisions a day, that is **10⁷ inference calls a day**, near 115/sec
-> sustained, roughly 15B tokens — order **$1.5k/day** at economy-tier pricing, and
-> it scales linearly with population.
+> The arithmetic does not go away for being unenforced. At 10⁶ agents making ten
+> decisions a day that is **10⁷ inference calls**, near 115/sec sustained, roughly
+> 15B tokens — order **$1.5k/day** at economy-tier pricing, scaling linearly with
+> population. It remains the dominant cost in the system by a wide margin.
 >
-> **This is the dominant cost in the entire system and it dwarfs the rest.** Ten
-> is a guess. Three or thirty is the difference between $500 and $5k a day at the
-> same population, and it is a *design* lever rather than an operational one: it
-> asks how much of an agent's day is committed intent and how much is fresh
-> judgement. An agent that decides once and then executes a long plan is cheap and
-> less reactive; one that reconsiders constantly is expensive and alive.
+> Two things follow from leaving it uncapped. **Rule 12.16 is worth more, not
+> less**: with no ceiling on volume, the finding that the economy tier follows a
+> stated disposition *better* as well as more cheaply is the only thing keeping
+> the number in this range at all. And **§9 matters more**, since a user supplying
+> their own key is choosing to carry a cost nobody is limiting.
 >
-> It also retroactively raises the value of a validation result. Rule 12.16 found
-> the economy tier not merely cheaper but *better* at following a stated
-> disposition. At these volumes that finding is worth real money.
+> Recorded for when this is revisited: metering per agent, per world and per user
+> should exist from the start even while nothing is enforced. Measuring later is
+> easy; measuring *retrospectively* is impossible, and a cap chosen without a
+> distribution to look at would be the same guess this rule declines to make.
 
-**Rule 5.3** — An agent that has exhausted its budget **continues its current
-intent** rather than stopping. Running out of judgement is not running out of
-motion.
+**Rule 5.3** — Should a limit ever be introduced, an agent that reaches it
+**continues its current intent** rather than stopping. Running out of judgement is
+not running out of motion.
 
 ## 6. The record
 
@@ -178,19 +178,27 @@ statistical reproducibility and a complete decision record.
 resident process on either side; the state of the exchange lives in the event
 payload and each turn is a fresh decision invocation.
 
-**Rule 7.2** — Every turn **debits both participants' decision budgets** (§5.2).
-A negotiation that exhausts a participant's budget ends without agreement.
+**Rule 7.2** — A negotiation is bounded by an **explicit maximum number of
+turns**, and ends without agreement when it is reached.
 
-> This is the most interesting consequence of taking §5.2 seriously, and it was
-> not designed so much as discovered.
+> This rule exists because Rule 5.2 removed what used to bound it, and the gap is
+> worth recording rather than quietly patching.
 >
-> Turns cost inference, so haggling is not free. An agent that has spent its day
-> deciding cannot afford to argue, and one holding budget in reserve can outlast
-> it. **The inference budget becomes a bargaining resource** — patience is
-> literally purchasable and literally finite, and an agent that walks into a
-> negotiation late in its day negotiates from weakness.
+> When decisions were budgeted, a negotiation terminated naturally: turns cost
+> inference, so haggling ended when a participant ran out. That gave a property
+> nobody designed — **the inference budget was a bargaining resource**, patience
+> was purchasable and finite, and an agent negotiating late in its day negotiated
+> from weakness. With no budget there is no such pressure, and two agents with
+> incompatible positions would exchange offers indefinitely.
 >
-> Nothing in `../spec/` had to say so. It falls out of charging for judgement.
+> An explicit cap is the correct replacement and a plainer one. It is a rule of
+> the world rather than an emergent scarcity, and it should be set high enough
+> that reaching it means genuine deadlock rather than an interrupted deal.
+>
+> The dormant property is recorded here because it is the strongest argument for
+> reintroducing a budget later: a cap makes negotiations terminate, but only
+> scarcity makes patience *cost* something, and only then does an agent face a
+> real decision about whether this deal is worth another turn.
 
 **Rule 7.3** — A2A carries two kinds of content, and they are handled
 differently:
@@ -257,3 +265,60 @@ context and written back explicitly.
 > If framework session state becomes the truth, two things break at once. The
 > decision record (§6) loses its inputs to an opaque store, and the simulation
 > acquires a second source of truth that no query can join against.
+
+## 9. Whose model, and whose key
+
+**Rule 9.1** — A user may supply **their own model credentials** and configure
+their use in either of two scopes:
+
+| Scope | Covers |
+| :--- | :--- |
+| **World** | every agent acting *inside* the world they own, visitors included |
+| **Owned agents** | every agent they own, wherever it is |
+
+**Rule 9.2** — The scopes overlap and **agent ownership takes precedence**. For an
+agent acting in a world it does not belong to:
+
+1. its **owner's** key, if configured;
+2. otherwise the **world owner's** key, if that user has enabled provision for
+   visitors;
+3. otherwise the platform default.
+
+> Precedence runs this way to close a griefing vector rather than on grounds of
+> neatness. Under world-first precedence, sending agents into a wealthy user's
+> world would spend that user's credit — and since teleport links are derived from
+> real LinkedIn connections (`genome-spec.md` Rule 6.2), the people best placed to
+> do it are exactly the people a user chose to connect to. Making provision for
+> visitors **opt-in** turns hosting into a decision instead of an exposure.
+
+**Rule 9.3** — Keys are **per-user secrets**: encrypted at rest, held in ordinary
+storage rather than as cluster secrets, and never present in a decision record.
+
+> Cluster secrets are the right home for a handful of platform credentials and the
+> wrong home for one per user. Rule 6.1 logs the model and tier used and must
+> continue not to log what authorised it.
+
+**Rule 9.4** — Credentials are resolved by the decision worker and passed to the
+**existing router** (Rule 8.2). A user key changes which credential is used, never
+whether the router is used.
+
+> Otherwise a user-supplied key becomes a way around tier selection, and
+> Rule 12.16 holds only for agents whose owners have not opted out of it.
+
+**Rule 9.5** — The **model that made each decision is recorded** (§6.1), and
+comparisons across agents must account for it.
+
+> This is the scientific cost of the feature and it should be understood before it
+> is enjoyed. The validation programme found model choice changes how faithfully a
+> disposition reaches behaviour by roughly a factor of two — 12 of 14 loci
+> expressing on one model against 6 on another (`../validation/RESULTS.md`).
+>
+> So a population running on mixed models is **not homogeneous in a way the
+> genotype does not describe.** Two agents with identical genotypes may behave
+> differently because their owners chose differently, and any comparison that
+> ignores the model column is measuring the model as much as the agent.
+>
+> That is not an argument against the feature — it is an argument for the model
+> column, which §6.1 already requires. It does mean any claim about *evolution*
+> drawn from a mixed-model population needs the model held constant or controlled
+> for, exactly as the validation held it constant to say anything at all.
