@@ -77,6 +77,10 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Mutation step size** | Phase 8 | Rule 7.4a bounds it with rare excursions; neither bound is set |
 | **Infection distance range** | Phase 9 | `pathogen-spec.md` 2.4 gives strains a radius; the range is unset |
 | **Commons capacity or sharding** | Phase 5 | One commons for every world is a crowd at scale |
+| **Stamina lost per exchange** | Phase 6 | Winner and loser both pay (`genome-spec.md` 9.3b); the ratio between them sets how costly winning is |
+| **Mana-to-Attack exchange rate** | Phase 6 | Rule 9.3d lets Mana press an attack; nothing sets how far |
+| **Maturation curve shape** | Phase 8 | Linear, or accelerating late (`genotype-spec.md` 3.8a) |
+| **Attack-versus-Agility resolution** | Phase 6 | Rule 9.3a is probabilistic; the function is unset |
 
 > Two of these are not merely unset but **consequential enough to be experiments
 > in their own right**. Longevity's mapping decides whether a stranded first agent
