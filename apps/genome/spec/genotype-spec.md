@@ -439,7 +439,7 @@ judgement.
 | **Aggression** | **A further input to Attack** — a violent line hits harder, measurably |
 | **Reciprocity** | **Magnitude of opinion update per event** — how far a judgement moves on evidence (Rule 6.9) |
 | **Vindictiveness** | **Decay constant of the opinion average** (Rule 6.10) |
-| **Credulity** | **Weight of reported evidence against witnessed** (Rule 6.9) |
+| **Credulity** | **Weight of reported evidence against witnessed** — the learning rate `K` of Rules 6.9 and 6.10a |
 | **Honesty** | **Ceiling on misrepresentation**: bounds how far a projected attractiveness (Rule 6.11) may deviate from the computed value |
 | **Loyalty** | **Retention of counterparty history** — how long a specific agent's record resists decay |
 | **Patience** | **Horizon of projected consequence** shown to the agent when it deliberates |
@@ -792,34 +792,6 @@ is folded into the agent's existing estimate of another's attributes.
 > everyone they have met, that difference is the difference between an opinion
 > layer that is affordable and one that is not.
 
-**Rule 6.10** — The average is **exponentially weighted**: recent evidence counts
-for more than old evidence, with the decay governed by the observer's
-**Vindictiveness** locus (§3.2).
-
-> Rule 6.10 exists to close a specific exploit, and the exploit is worth stating
-> because a population of optimising agents will certainly find it.
->
-> Under an *unweighted* running average, the *n*th observation moves the estimate
-> by 1/*n*. An agent that behaves well a hundred times and then defects sees its
-> reputation move by about one per cent — so it can defect repeatedly, cashing in
-> a long record at almost no cost. **Build trust, then spend it** is the dominant
-> strategy, and worse, it is invisible until far too late. Unweighted averaging
-> does not merely permit the long con; it subsidises it.
->
-> Exponential weighting fixes it without adding a parameter, because the
-> simulation already has the right one. **Vindictiveness is exactly a memory
-> decay constant** — how long a defection is held against a counterparty — so
-> wiring it to the weighting unifies a disposition locus with the mechanism it
-> was always describing. A vindictive agent's opinions have a long memory and
-> punish an old betrayal; a forgiving agent's are dominated by recent conduct and
-> can be won back. Both are viable, both are heritable, and the population settles
-> the balance itself.
->
-> Note the second-order effect: because Vindictiveness belongs to the *observer*,
-> a con artist's returns depend on who it is conning. Forgiving populations are
-> lucrative to defect against and vindictive ones are not, so the prevalence of
-> forgiveness and the prevalence of dishonesty regulate each other.
-
 **Rule 6.9a** — An agent carries a **general opinion**: a running average, in the
 same vector shape, over every agent it has actually met. An agent it has **never
 met** is seeded from this, and the general opinion is itself updated by every
@@ -870,6 +842,89 @@ rule ascribes attributes to it.
 > *Caveat, to measure rather than pre-empt:* encounters may be too sparse to learn
 > a twenty-colour correlation at all. If so the effect simply will not appear, and
 > that is the right threshold rather than a problem to engineer around.
+
+**Rule 6.10** — The average is **exponentially weighted**: recent evidence counts
+for more than old evidence, with the decay governed by the observer's
+**Vindictiveness** locus (§3.2).
+
+> Rule 6.10 exists to close a specific exploit, and the exploit is worth stating
+> because a population of optimising agents will certainly find it.
+>
+> Under an *unweighted* running average, the *n*th observation moves the estimate
+> by 1/*n*. An agent that behaves well a hundred times and then defects sees its
+> reputation move by about one per cent — so it can defect repeatedly, cashing in
+> a long record at almost no cost. **Build trust, then spend it** is the dominant
+> strategy, and worse, it is invisible until far too late. Unweighted averaging
+> does not merely permit the long con; it subsidises it.
+>
+> Exponential weighting fixes it without adding a parameter, because the
+> simulation already has the right one. **Vindictiveness is exactly a memory
+> decay constant** — how long a defection is held against a counterparty — so
+> wiring it to the weighting unifies a disposition locus with the mechanism it
+> was always describing. A vindictive agent's opinions have a long memory and
+> punish an old betrayal; a forgiving agent's are dominated by recent conduct and
+> can be won back. Both are viable, both are heritable, and the population settles
+> the balance itself.
+>
+> Note the second-order effect: because Vindictiveness belongs to the *observer*,
+> a con artist's returns depend on who it is conning. Forgiving populations are
+> lucrative to defect against and vindictive ones are not, so the prevalence of
+> forgiveness and the prevalence of dishonesty regulate each other.
+
+**Rule 6.10a** — Where evidence is a **discrete act** rather than a measurement,
+the estimate **predicts the act** and the update is the gap between prediction and
+outcome:
+
+```
+p  = σ( κ · (E − θ) )      probability this agent performs the high-attribute act
+E' = E + K · (S − p)       S ∈ {0,1}, the act actually observed
+```
+
+`E` is the current estimate, `θ` the **difficulty of the situation**, `κ` a slope
+constant, `K` the learning rate. Rule 6.10's decay is unchanged and applies on top.
+
+> Rule 6.9 speaks of evidence being folded into an average, which presumes it
+> arrives as a *value*. Almost none of it does. An agent observes **events** — it
+> lied to me, it kept the bargain, it attacked — and there is no number on the
+> Honesty scale to average in. Converting an act into a value was the gap; this
+> rule closes it the way Elo does, by never observing a strength and only ever
+> observing an outcome.
+>
+> **The logistic is what makes the same event mean different things.** Two agents
+> lie to me. I believed the first almost certainly honest, so `p` ≈ 0.95 and the
+> estimate collapses by `0.95K`. I already suspected the second, so `p` ≈ 0.15 and
+> it moves by `0.15K` — barely a nudge, because nothing surprising happened. A
+> linear residual cannot produce that asymmetry; it saturates nowhere.
+>
+> **The situation is the opponent, and that is the important term.** In Elo you
+> play an opponent with a rating and beating a strong one moves you further. Here
+> an agent plays a *situation*, and `θ` is how hard it was to act well. Honesty
+> when lying gains nothing is almost no evidence; honesty when the lie was worth
+> five units is strong evidence.
+>
+> That makes **differential cost mechanical rather than rhetorical.** The design
+> already leans on signalling theory — a signal is worth something only when it
+> costs more to fake than to earn — and until now that argument lived only in
+> prose. `θ` puts it in the arithmetic: a cheap virtue barely moves an opinion, an
+> expensive one moves it a great deal, and no separate rule is needed to say so.
+>
+> **`K` comes from loci that already exist.** Credulity is defined as the weight
+> of reported evidence against witnessed (§4), which is exactly a learning rate —
+> so testimony moves an opinion less than what an agent saw itself, with nothing
+> new introduced. `K` may also fall as the accumulated weight grows, so a first
+> encounter counts for more than a hundredth.
+>
+> **And it stays affordable.** Rule 6.9 rejected a Bayesian posterior because that
+> means a distribution per attribute per known agent against "a number and a
+> weight". This is still a number and a weight — one logistic per update, no
+> distributions — which buys most of the Bayesian benefit at the running-average
+> price the earlier note wanted and could not reach.
+>
+> Worth being explicit that this is not decoration for the prompt. Opinions feed
+> **computed** faculties: attractiveness is a harmonic mean over them (Rule 6.8)
+> and Selectivity compares against it (Rule 6.3). Those are arithmetic, so the
+> quality of the number has mechanical consequences whatever the model then does
+> with it.
 
 **Rule 6.11** — An agent may **project an attractiveness level**: a single value
 it broadcasts about itself, computed as a harmonic mean over its own attributes.
