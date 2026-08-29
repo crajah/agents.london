@@ -57,22 +57,16 @@ No behaviour. Everything later assumes this shape.
 - [ ] Add each to `deploy-gke.yml` build matrix **and** its manifest list — omitting either is a silent no-op, not an error (`system-spec.md` Rule 1.2)
 - [ ] Health endpoints, structured logging, Prometheus scrape targets
 
-### 0.2 Schema
-- [ ] `world(realm_id, uuid, kinds[2], colours[2], flood_at, aggregate_stock)`
-- [ ] `agent(uuid, realm_id, genotype, cargo, home_realm, alive, models, colour_pair, name, parents[2], born_at, stamina, stamina_max, mana, mana_max, cert_ref)`
-- [ ] `movement(agent_id, from_xy, to_xy, departed_at, arrives_at)` (`execution-spec.md` Rule 2.1)
-- [ ] `pile(uuid, realm_id, kind, xy, qty_at, measured_at, rate, cap)` (Rule 2.3)
-- [ ] `portal(realm_id, to_realm, xy)` — random placement, fixed (`genome-spec.md` Rule 6.2e)
-- [ ] `event(due_at, kind, subject_uuid, payload)` — the queue's source of truth (`system-spec.md` Rule 8.3)
-- [ ] `opinion(observer_uuid, subject_uuid, attribute, estimate, weight)` + general opinion row (`genotype-spec.md` Rule 6.9a)
-- [ ] `decision(agent_uuid, at, situation, inputs, model, tier, choice)` (`execution-spec.md` Rule 6.1)
-- [ ] `model_key(user_id, scope, provider, ciphertext, visitors_allowed)` (Rule 9.3)
-- [ ] `connection(user_a, user_b, confirmed_at)` — mutual only (`system-spec.md` Rule 9.4)
-- [ ] Core only; later phases add their own tables where the work lands: `objective`, `negotiation` (6), `chat` (7), `infection`, `strain`, `antigen` (9), `construction`, `plan`, `berth`, `ark_manifest` (10), `digest` derives and is not stored (11)
-- [ ] Migrations, seed fixtures, rollback tested against a copy
+### 0.2 Storage shapes — on post-graph, never raw DDL (`system-spec.md` Rules 3.2a/3.2b)
+- [x] ~~SQL migration~~ — written, caught, deleted; post-graph owns all DDL
+- [ ] `ensure_schema`: vertex tables `worlds, agents, piles, portals, events, decisions`; edge `opinion_of` — realm `genome`, idempotent
+- [ ] World = post-graph **space**; movement intents and decisions as **append-only vertex data**
+- [ ] Agent knowledge stores on **post-graph-rag**, agent-keyed spaces (`genome-spec.md` §8)
+- [ ] Later phases add their vertex/edge tables where the work lands: `objectives, negotiations` (6), `chats` (7), `infections, strains, antigens` (9), `constructions, plans, berths, ark_manifests` (10)
+- [ ] Seed fixtures; ensure_schema idempotence test against the in-cluster DB (throwaway pod)
 
 ### 0.3 Realm scoping — the highest-risk primitive
-- [ ] Repository layer where **realm is a required argument**, never defaulted, never inferred from context
+- [ ] Store layer where the **world space is a required argument**, never defaulted, never inferred from context
 - [ ] Lint or test that fails any query reaching storage without it
 - [ ] **Rationale:** realms are logical, not schemas (`genome-spec.md` Rule 3.5), so a read that forgets to scope is a cross-world leak rather than an empty result
 
