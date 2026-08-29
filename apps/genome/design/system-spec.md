@@ -149,3 +149,58 @@ it and nothing is built for it in advance.
 > population of a hundred users is a different system in every practical respect,
 > and the value of the three rules above is that discovering so does not require
 > rewriting anything.
+
+## 8. Queues
+
+**Rule 8.1** — There is **one event queue per world**, in Redis.
+
+> Partitioning by world is not arbitrary. It gives **time-ordering within a
+> world** for free, which the simulation requires — an agent must arrive before it
+> can mine — without needing any global order. It gives row locality, since every
+> event in a world touches the same partition of the same tables. And it gives
+> fairness: a world with two hundred agents cannot starve a world with three,
+> because their queues are separate and scheduled independently.
+
+**Rule 8.2** — A worker **owns many worlds**. There is never a process per world.
+
+> A queue per world is correct and a *process* per world repeats the
+> process-per-agent mistake one level up. At the populations this design allows
+> for, a million users is a million worlds; a million resident consumers is the
+> same unaffordable shape as a million resident agents.
+>
+> Ownership is by revocable lease (§4.1), so a lost worker's worlds are picked up
+> rather than stalled — and a stalled world is invisible from outside, since a
+> world where nothing happens looks exactly like a world where nothing was due.
+
+**Rule 8.3** — Postgres is the **source of truth for events**; Redis is the
+scheduler. The queue must be **reconstructible** from the `event` table at any
+time.
+
+> This is the rule that matters most operationally. A dropped arrival event is not
+> a lost message, it is an agent that never arrives anywhere again — permanently
+> stuck, holding cargo, with no mechanism that would ever notice. Redis is chosen
+> for what it is good at, and made non-authoritative for exactly that reason: if
+> it is flushed, a worker rebuilds its queues with one query over due events and
+> the simulation resumes.
+
+**Rule 8.4** — The world queue **never blocks on inference**. Draining an event
+that requires a decision enqueues a **decision request** on a separate queue and
+moves on.
+
+> Inference takes a second or two; a world's events arrive in strict order. Doing
+> the call inline would let one agent's deliberation stall every other agent in
+> its world, and a busy world would run slower than a quiet one purely because it
+> is interesting.
+>
+> Two queues with different shapes: the world queue is ordered and partitioned,
+> the decision queue is unordered and global, sized to the inference budget rather
+> than to the population.
+
+**Rule 8.5** — **A2A endpoints belong to workers, not to agents.** Agent identity
+travels in the message.
+
+> The same scaling argument once more, and it is the one most likely to be got
+> wrong when adopting a framework: the natural way to expose an agent over A2A is
+> to give it an address, and an address implies something listening. Millions of
+> listeners is not available. A worker holds one endpoint and routes by the agent
+> UUID in the envelope.

@@ -171,3 +171,89 @@ statistical reproducibility and a complete decision record.
 > discover what emerges is worthless if nobody can afterwards ask *why* an agent
 > did something. The log is not observability in the operational sense; it is the
 > experimental record, and it is the only artifact that survives the run.
+
+## 7. Negotiation
+
+**Rule 7.1** — A negotiation is a **bounded sequence of turns**. There is no
+resident process on either side; the state of the exchange lives in the event
+payload and each turn is a fresh decision invocation.
+
+**Rule 7.2** — Every turn **debits both participants' decision budgets** (§5.2).
+A negotiation that exhausts a participant's budget ends without agreement.
+
+> This is the most interesting consequence of taking §5.2 seriously, and it was
+> not designed so much as discovered.
+>
+> Turns cost inference, so haggling is not free. An agent that has spent its day
+> deciding cannot afford to argue, and one holding budget in reserve can outlast
+> it. **The inference budget becomes a bargaining resource** — patience is
+> literally purchasable and literally finite, and an agent that walks into a
+> negotiation late in its day negotiates from weakness.
+>
+> Nothing in `../spec/` had to say so. It falls out of charging for judgement.
+
+**Rule 7.3** — A2A carries two kinds of content, and they are handled
+differently:
+
+| | Status | Governed by |
+| :--- | :--- | :--- |
+| **Proposal** — *I will give 3 of kind 7 for 2 of kind 11* | Binding if accepted | the handoff (`system-spec.md` §5) |
+| **Claim** — *that pile is rich; I am honest; they cheated me* | Evidence only | Credulity, folded in under `genotype-spec.md` Rule 6.10a |
+
+> Which is exactly the split Rule 13.5 makes for an owner's instructions, arrived
+> at independently. A commitment binds; an assertion is testimony. That the same
+> distinction is needed for a human talking to their agent and for two agents
+> talking to each other suggests it is the right cut rather than a convenience.
+
+**Rule 7.4** — A negotiation **times out**, and the timeout is an ordinary
+scheduled event (§3.2). An agent that perishes, teleports or is re-tasked
+mid-exchange leaves the other with a lapsed offer rather than a wait.
+
+**Rule 7.5** — Neither party sees the other's **reasoning**, only its messages.
+
+> `../spec/` requires that an agent know only part of any plan. The architecture
+> gives this for nothing: there is no shared session, so the only channel is what
+> was actually said.
+
+## 8. Runtime
+
+**Rule 8.1** — Agents are built and run on **Google ADK**. A decision is a
+**runner invocation**, not a resident agent.
+
+> ADK is a good fit for reasons that go beyond convenience: it carries A2A as a
+> first-class concern (§7), speaks MCP for the capability registry
+> (`skills-spec.md` §6.2), and supplies a local harness for developing an agent
+> before any world exists.
+>
+> The important compatibility is with Rule 1.1. ADK's runner-plus-session shape is
+> already "load durable state, take one turn, persist" — which is what Rule 1.1
+> asks for. What must be resisted is the ambient assumption that an agent is a
+> long-lived conversational object. Here it is a row that is woken.
+
+**Rule 8.2** — Models are reached **through the existing litellm router**, never
+directly.
+
+> Otherwise Rule 12.16's tier selection is bypassed on day one, and the finding
+> that the economy tier is *better* as well as cheaper stops being worth anything.
+> ADK's LiteLLM model binding exists precisely for this.
+
+**Rule 8.3** — An ordinary decision is a **single constrained call**. Multi-step
+tool-calling loops are reserved for the higher tier (§5.1).
+
+> This is the cost trap in adopting an agent framework, and it is worth stating
+> before it is sprung. Frameworks make an agentic loop the default — reason, call
+> a tool, observe, reason again — and each lap is an inference call. A default
+> five-step loop turns §5.2's ten decisions a day into fifty, and $1.5k/day into
+> $7.5k/day, **for the same simulation**.
+>
+> Deciding which pile to walk to does not need a loop. Negotiating an Ark
+> contribution might. The tier is the boundary and it must be explicit, because
+> the expensive default is also the more impressive-looking one.
+
+**Rule 8.4** — **Postgres remains the system of record.** A session holds the live
+exchange and nothing else; genotype, opinions, cargo and objectives are loaded as
+context and written back explicitly.
+
+> If framework session state becomes the truth, two things break at once. The
+> decision record (§6) loses its inputs to an opaque store, and the simulation
+> acquires a second source of truth that no query can join against.

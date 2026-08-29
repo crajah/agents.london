@@ -6,8 +6,8 @@ nothing here introduces a game rule; where this folder and `../spec/` disagree,
 
 | Document | Covers |
 | :--- | :--- |
-| [`execution-spec.md`](execution-spec.md) | agent execution: intents, the event queue, the autonomy loop, the inference budget |
-| [`system-spec.md`](system-spec.md) | substrate, tenancy, workers, transfers, scale |
+| [`execution-spec.md`](execution-spec.md) | agent execution: intents, the event queue, the autonomy loop, the inference budget, negotiation, the ADK runtime |
+| [`system-spec.md`](system-spec.md) | substrate, tenancy, workers, transfers, scale, queues |
 | [`interface-spec.md`](interface-spec.md) | what a user sees and touches, and the belief-against-truth view |
 
 Rule numbering is local to each document. References of the form
@@ -26,3 +26,21 @@ world, it drains an event queue — so cost scales with *events*, not with agent
 At 10⁶ agents deciding ten times a day this is order $1.5k/day and it dominates
 every other cost in the system, which makes decisions-per-agent-per-day the most
 consequential number in the design.
+
+## Open, and a decision for the specification rather than the design
+
+**May agents negotiate at a distance, or must they meet first?** `genome-spec.md`
+Rule 9.1a puts negotiation on A2A and Rule 8.5 puts deliberation there too, but
+neither says whether the parties must be co-located. Rule 4.2 settles the
+*transfer* — resources move only inside agents, so cargo changes hands face to
+face — and leaves the conversation open.
+
+The two readings give different games. If agents may negotiate remotely, the map
+becomes a delivery problem: deals are struck at leisure and travel is settlement.
+If they must meet, then every trade costs a journey before a word is exchanged,
+travel is speculative, and an agent must decide whom to approach knowing only
+colour (Rule 3.4).
+
+The second is the more interesting constraint and the more expensive one, and it
+is a rule about the world rather than a fact about the architecture — so it
+belongs in `../spec/`.
