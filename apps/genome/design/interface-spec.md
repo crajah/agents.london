@@ -197,6 +197,44 @@ only the user can see**.
 with size scaled to quantity, constructions, **first-degree portals only**
 (`genome-spec.md` Rule 6.2d), and a flood countdown when one is running.
 
+**Rule 6.9a** — An agent is a **disc in its first colour with an equilateral
+triangle in its second**, the triangle pointing along its heading. That is the
+whole vocabulary.
+
+**Rule 6.9b** — Heading is **derived from the movement intent**, never stored:
+the bearing from `from_xy` to `to_xy` (`execution-spec.md` Rule 2.4). A stationary
+agent keeps the heading it arrived on.
+
+**Rule 6.9c** — Both shapes are **tinted sprites from one source texture**, not
+per-frame vector drawing, so batching holds (Rule 6.12).
+
+**Rule 6.9d** — **Ownership may be marked** — a ring on the user's own agents —
+because it discloses nothing about an agent that the agent does not already know
+about itself.
+
+> Two shapes and two tints do more work here than sprite art would, and the
+> reasons are worth setting down because they are easy to lose later.
+>
+> **It renders exactly the readable state and nothing else.** An agent carries two
+> colour loci (`genotype-spec.md` Rule 3.5) and colour is the only attribute other
+> agents can observe (Rule 3.4). A disc and a triangle in those two colours *is*
+> the agent as its counterparties see it — so Rule 6.8 is satisfied by the shape
+> itself rather than by remembering to withhold things.
+>
+> **There is no art dependency.** One white disc and one white triangle, tinted at
+> draw time, cover every agent that will ever exist across a twenty-hue palette.
+> Nothing needs drawing in isometric perspective, nothing needs redrawing when the
+> palette changes, and the atlas stays a single texture.
+>
+> **Facing is free and honest.** Bearing falls out of the movement intent, so it
+> costs no storage and cannot disagree with where the agent is actually going. A
+> heading stored separately would eventually drift from the path and look wrong in
+> precisely the way that makes a simulation feel broken.
+>
+> Under the isometric transform a disc projects to an ellipse, which reads
+> correctly as a token lying flat on the ground, and the triangle rotates in world
+> space before projection. Both are the cheap case.
+
 **Rule 6.10** — Not drawn, deliberately: no physics, no pathfinding visualisation,
 no particle systems, no audio, no 3D, no tilemap editor, no lighting.
 
