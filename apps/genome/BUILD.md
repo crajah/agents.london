@@ -217,10 +217,10 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 ## Phase 9 — Pathogens
 
-- [ ] Strains as a second evolving genotype (`pathogen-spec.md` Rule 4.3)
-- [ ] Replication, contagion, infection distance; creation chance on teleport
-- [ ] Expression modifiers changing phenotype, not genotype
-- [ ] Antigens with genotype-derived retention (Rule 2.19)
+- [ ] Strains as a second evolving genotype — six-field strain description, parent UUID recorded (`pathogen-spec.md` Rules 2.1, 2.3, §4.3)
+- [ ] Replication, contagion, **infection distance** (`pathogen-spec.md` Rule 2.4); contact probability (Rule 2.5); creation chance on teleport
+- [ ] Expression modifiers changing phenotype, not genotype; defences are three heritable things (Rule 2.2)
+- [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8–16 dimensions (Rule 2.0)
 
 ---
 
