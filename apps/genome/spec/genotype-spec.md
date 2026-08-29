@@ -834,6 +834,44 @@ whether this candidate is worth settling for.
 **Rule 6.6** — An agent's attributes are **not observable by other agents**.
 Colour (§3.5) is the sole exception.
 
+**Rule 6.6a** — An agent **knows itself in full**: its genotype, its computed
+faculties, its current pools and their maxima, its cargo, its objectives, its
+opinions, and its preference weights.
+
+**Rule 6.6b** — It knows its **current expression** as well as its genotype, so a
+divergence between them is **self-evident**. An infected agent can tell that it is
+infected (`pathogen-spec.md` §2.4), and an agent worn down by victories can tell
+that it has been (Rule 3.8c).
+
+**Rule 6.6c** — It does **not** know **how it appears to others**. Attractiveness
+is computed with the assessor's weights (Rule 3.2), so there is no single value to
+know, and no agent can learn what any particular counterparty makes of it.
+
+> Rules 6.6a–6.6c settle something the specification had left silent: Rule 6.6
+> hides attributes *from other agents* and never said what an agent knows about
+> itself. Everything downstream assumed the generous answer without stating it.
+>
+> **It is the precondition for Rule 12.4.** That rule has every locus reach
+> conduct through a computed faculty *and* an expression in the agent's prompt —
+> which is only possible if the agent is told what it is. The entire validation
+> programme (`genome-spec.md` §12.3.2) measured that channel, on prompts that
+> showed an agent all fourteen of its dispositions. Rule 6.6a is what those
+> prompts were doing.
+>
+> **Self-evident infection is a deliberate choice.** Knowing the genotype and the
+> expression means the difference can be computed, so illness is diagnosable
+> rather than mysterious. That is the right call: `pathogen-spec.md` is interested
+> in epidemiology rather than in diagnosis, and an agent that cannot tell it is
+> sick has no reason to seek a Sanatorium or value an antigen. Making the symptom
+> legible is what gives the cure a market.
+>
+> **Rule 6.6c is what keeps the signalling game alive.** If an agent could know how
+> it was appraised, projection (Rule 6.11) would collapse into telling the truth
+> about a number both parties could see, and Fisherian dynamics would have nothing
+> to run on. An agent knows exactly what it is and never what it is worth to
+> anyone else — which is, in the end, the condition the whole document is built on
+> inverted: others cannot see in, and it cannot see out.
+
 **Rule 6.7** — An agent instead forms an **opinion** of another: its own private
 estimate of that agent's attributes, held in its own space
 (`genome-spec.md` §8) and built from what it has seen, what it has been told,

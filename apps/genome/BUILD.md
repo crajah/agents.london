@@ -127,6 +127,9 @@ The bet the whole design rests on. Prove it before building on it.
 - [ ] Loci, normalisation, allocation budget (`genotype-spec.md` §3.10)
 - [ ] Prompt assembly showing **all** dispositions (validation method, `validation/README.md`)
 - [ ] Every locus drives a computed faculty (Rule 3.19)
+- [ ] **Self-knowledge in the prompt**: genotype, faculties, pools and maxima, cargo, objectives, opinions, preference weights (`genotype-spec.md` 6.6a)
+- [ ] Current **expression** shown alongside genotype, so infection and attrition are self-evident (6.6b)
+- [ ] **Never** how the agent appears to others — no appraised attractiveness (6.6c)
 
 ### 2.4 Opinions
 - [ ] EWMA with Vindictiveness decay (`genotype-spec.md` Rules 6.9, 6.10)
