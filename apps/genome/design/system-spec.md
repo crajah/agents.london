@@ -75,6 +75,7 @@ pile       ( uuid, realm_id, kind, xy, qty_at, measured_at, rate, cap )
 event      ( due_at, kind, subject_uuid, payload )          -- the queue
 opinion    ( observer_uuid, subject_uuid, attribute, estimate, weight )
 decision   ( agent_uuid, at, situation, inputs, model, tier, choice )
+model_key  ( user_id, scope, provider, ciphertext, visitors_allowed )
 ```
 
 > `opinion` is the row count to watch. It is O(agents met) per agent, not
