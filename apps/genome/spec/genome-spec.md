@@ -1424,10 +1424,35 @@ agents may discover, carry, share with other agents, and build from gathered
 resources. A plan may specify a contributor count, inheriting the cooperative
 mechanic of `construction-spec.md` §2.
 
+**Rule 13.6a** — A plan is a **tree**, not a single structure: an item together
+with the items and resources it depends on, to whatever depth the author chooses.
+
+**Rule 13.6b** — Plans are authored **conversationally**, through the world
+channel (`interface-spec.md` Rule 3.4), not through a form.
+
 **Rule 13.7** — **Plans are structures, not rules.** A built plan may not grant a
 faculty, relax a constraint, alter a ceiling or change any rule in these
 documents. Only the eighteen canonical constructions do that.
 
+> **The tree is the point, and it is what makes a plan more than decoration.** A
+> single item with a bill of materials is an errand. A tree is a **supply chain**:
+> it has an order, it has intermediate goods that are useless on their own, and it
+> has a critical path. That is what creates division of labour without anyone
+> designing a division of labour — some agents gather at the leaves while others
+> assemble toward the root, and the sequencing is a fact about the plan rather
+> than an instruction to anybody.
+>
+> **A user can therefore author scarcity.** A tree whose leaves include kinds the
+> author's own world does not hold cannot be completed at home, and the plan
+> becomes a standing reason to trade. That is Rule 2.3 in miniature, produced by a
+> user rather than by the specification — and unlike Rule 2.3 it is *chosen*,
+> which makes it the first mechanism by which one user deliberately creates work
+> for another.
+>
+> **None of which grants anything.** A completed plan is a structure and confers
+> no effect, does not survive a flood, and does not relax a constraint (Rule 13.7).
+> It simulates a supply chain; it does not become one.
+>
 > Rule 13.7 is what makes Rule 13.6 safe, and the reason is arithmetic rather than
 > taste. **If a user could author a plan that conferred an effect, the economy
 > would be user-authorable** — someone would design the building that yields a

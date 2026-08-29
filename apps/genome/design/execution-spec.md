@@ -132,7 +132,12 @@ intent              →  event enqueued at that time
 | Higher inference | negotiation, deception, coalition-forming, Ark bargaining | routed up |
 
 **Rule 5.2** — Every agent carries a **decision budget** that accrues
-continuously. It exists to make deliberation scarce, **not** to control cost.
+continuously at **ten per day**, to a capacity of **twelve**. It exists to make
+deliberation scarce, **not** to control cost.
+
+> Capacity is twice the negotiation cap (Rule 7.2) so an agent can always finish
+> one exchange and usually two. A routine day is about five decisions, so ordinary
+> life never touches the budget and only sustained haggling drains it.
 
 **Rule 5.2a** — The budget **never prevents an agent from acting**. An agent with
 none continues its current intent; with no intent, it remains where it is. It
@@ -206,7 +211,7 @@ resident process on either side; the state of the exchange lives in the event
 payload and each turn is a fresh decision invocation.
 
 **Rule 7.2** — A negotiation ends when a participant **cannot afford to
-continue**, or at an **explicit maximum number of turns**, whichever comes first.
+continue**, or at **six turns**, whichever comes first.
 
 > Both bounds are kept because they do different work.
 >
