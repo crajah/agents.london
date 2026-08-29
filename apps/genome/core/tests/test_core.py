@@ -2,11 +2,13 @@
 that could be derived is a defect), the budget invariant, the fail-closed
 realm guard, and the calibrated life-history curves."""
 import math
+import pathlib
 import random
 import sys
 import unittest
 
-sys.path.insert(0, "core")
+# Locate genome_core relative to THIS file, so the suite runs from any cwd.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from genome_core import forms, genotype as G, opinion, repo
 
 
