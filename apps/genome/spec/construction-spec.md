@@ -83,7 +83,7 @@ things that keeps a world productive.
 ## 3. The hierarchy
 
 **Rule 3.1** — Construction is organised into **five independent branches**, one
-per **colour family** (`genome-spec.md` §4.2). A branch is advanced using the
+per **colour family** (`genome-spec.md` §4.3). A branch is advanced using the
 kinds of its own family.
 
 | Branch | Family | Kinds | Concerns |
@@ -274,7 +274,7 @@ allows a structural exception for two branch roots. Two is the budget for
 tollbooths in this design.
 
 **Store is deliberately weak.** The 25-unit ceiling is the anti-snowball
-mechanic (`genome-spec.md` §4.4), and a building that removed it would undo the
+mechanic (`genome-spec.md` §4.5), and a building that removed it would undo the
 most valuable property in the resource system. Store should raise the cap by a
 small fixed amount, not multiply it — enough to be worth building, not enough to
 restore hoarding.
