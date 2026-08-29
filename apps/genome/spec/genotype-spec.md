@@ -166,6 +166,29 @@ user inherits the two colours of its birth world's two resource kinds
 (`genome-spec.md` §4.3). An agent born of two parents inherits its colours from
 theirs by ordinary crossover and mutation.
 
+**Rule 3.2a** — A **founder** — an agent with no parents (`genome-spec.md`
+Rule 7.1) — has its genotype drawn **uniformly within its world, about a centre
+drawn uniformly for that world**. Worlds therefore differ in character from the
+first day.
+
+**Rule 3.2b** — A world's **founding centre is recorded** and every analysis of
+population structure must control for it.
+
+> Rule 3.2b is not bookkeeping; it is what keeps Rule 3.2a from spoiling the
+> experiment.
+>
+> Seeding each world around its own centre creates immediate regional difference,
+> which is the point — worlds have character before anyone has traded, and the map
+> is varied from the start. But it also means **any later finding about population
+> structure cannot distinguish what emerged from what was seeded**, unless the seed
+> is known.
+>
+> Recording it converts a confound into a covariate, which is the same move
+> `execution-spec.md` Rule 9.5 makes for model assignment: the variable is not
+> removed, it is measured, and analyses that ignore the column are measuring the
+> seed as much as the population. A claim that two worlds diverged is only
+> interesting relative to how far apart they started.
+
 **Rule 3.4** — Colour is the **only attribute visible to other agents** (§6.3).
 Everything else is hidden.
 

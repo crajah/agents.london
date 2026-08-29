@@ -443,6 +443,19 @@ It may be given or traded to another agent.
 **co-located** (`genome-spec.md` Rule 9.1b) and both must agree. It may be
 exchanged at any time, **including during the countdown**.
 
+**Rule 3.7g** — A berth **does not survive the death of its holder**. It returns
+to unassigned and is contested afresh (Rule 3.7e).
+
+> Consistent with `genome-spec.md` Rule 7.3, under which only genotype and
+> identity cross death and everything else is lost. A berth is neither, and making
+> it the sole further exception would be a large hole in a rule that is otherwise
+> absolute.
+>
+> It also puts risk into the berth market. Buying passage for a fragile agent —
+> old, infected, far from the ship — is a gamble rather than a purchase, and a
+> coalition that loses agents late in a countdown finds the question of who boards
+> genuinely reopened.
+
 **Rule 3.7e** — Berths earned by a user's claim (Rule 3.7) arrive **unassigned**.
 The user's own agents **contest them among themselves** under the ordinary rules:
 co-located, both parties agreeing (Rule 3.7b).
