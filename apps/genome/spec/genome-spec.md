@@ -1444,6 +1444,21 @@ channel (`interface-spec.md` Rule 3.4), not through a form.
 **Rule 13.6c** — Plans are **additive**. The Ark tree is immutable
 (`construction-spec.md` Rule 3.9a) and no plan may alter it.
 
+**Rule 13.6d** — A plan may be built **in any world**, not only the one it was
+authored in. Agents carry designs wherever they go and may raise them anywhere the
+materials can be gathered.
+
+> Rule 13.6d makes plans a **third population that propagates by copying**,
+> alongside genotypes and strains (`pathogen-spec.md` §4.3). A design spreads
+> because agents judge it worth carrying and worth raising, and it dies when they
+> stop — selected by nothing but usefulness, with no fitness function anybody
+> wrote.
+>
+> It also means authorship stops at the drawing. A user writes a plan and loses
+> control of it the moment an agent leaves with it, which is the same bargain
+> Rule 13.8 already struck for surviving a flood: what spreads persists, and what
+> is held closely dies with its holder.
+
 **Rule 13.7** — **Plans are structures, not rules.** A built plan may not grant a
 faculty, relax a constraint, alter a ceiling or change any rule in these
 documents. Only the eighteen canonical constructions do that.

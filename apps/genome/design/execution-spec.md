@@ -391,9 +391,19 @@ assigned model, the platform default is used for that agent.
 
 ### 10.1 Why randomisation is the safe choice, measured
 
-**Rule 10.6** — The **genotype must dominate the substrate**. The share of
-behavioural variance attributable to model assignment is measured and must remain
-below the share attributable to the genotype.
+**Rule 10.6** — The **genotype must dominate the substrate by at least 1.5×**.
+The behavioural effect of sweeping a locus, against the effect of swapping the
+model with the locus held, is measured and must clear that ratio.
+
+> 1.5× is a permissive bar, chosen to keep the pool wide. It admits models on
+> which the substrate is a substantial minority of the variance, which is the
+> point — heterogeneity is wanted, and a pool narrowed to the two families
+> measured so far would supply very little of it.
+>
+> It is a floor rather than a target. Today's pool measures 3.3× on average and
+> 2.0× at its weakest locus, so there is considerable room beneath before anything
+> is excluded. What 1.5× rules out is the case that would matter: a model on which
+> agents differ more by what they drew than by what they inherited.
 
 > The risk in heterogeneous models is precise and worth stating: if swapping an
 > agent's model moves its behaviour more than sweeping a locus does, then the
@@ -425,7 +435,7 @@ screen**, and the pool is re-screened whenever it changes.
 > This is what turns Rule 10.6 from an aspiration into a gate. The screen is the
 > harness in `../validation` run against the candidate: sweep each disposition
 > under randomised backgrounds, and admit the model if the genotype still
-> dominates the substrate by the margin Rule 10.6 requires.
+> dominates the substrate by at least **1.5×**, the margin Rule 10.6 sets.
 >
 > It costs about an hour of cluster time per candidate, which is trivial against
 > the alternative. Two of the eleven models the router currently serves returned
