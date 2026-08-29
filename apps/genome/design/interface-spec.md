@@ -68,13 +68,23 @@ just sent**.
 > sending turns a bug report into a mechanic — and into a reason to care which of
 > your agents is credulous.
 
-**Rule 3.4** — **Plan editor.** In the owned world only. A plan is a structure
-and never a rule (`genome-spec.md` Rule 13.7), so the editor cannot express an
-effect, a yield or a constraint — only a form, a cost in kinds, and optionally a
-contributor count.
+**Rule 3.4** — **World channel.** Opened by clicking the world rather than an
+agent. It is where plans are authored (`genome-spec.md` Rule 13.6b) — a
+conversation in which a user describes an item and the tree of things it depends
+on, and the system renders it as a buildable plan.
 
-> The editor's grammar is the enforcement. If a plan cannot be *written down* as
-> anything but a shape and a bill of materials, Rule 13.7 needs no runtime check.
+**Rule 3.5** — The channel may express a **form, a bill of materials, a
+dependency tree and a contributor count**, and nothing else. It cannot express an
+effect, a yield or a relaxed constraint.
+
+> The grammar is the enforcement. If a plan cannot be *said* as anything but a
+> shape and what it is made from, Rule 13.7 needs no runtime check — there is no
+> sentence a user could utter that would grant their construction a power.
+>
+> Authoring by conversation rather than by form is the right call for a tree
+> specifically. A form is fine for one item with a bill of materials and becomes
+> punishing at depth four, where the useful question is *and what does that need?*
+> — which is a dialogue, not a field.
 
 ## 4. The view that only this design can offer
 
