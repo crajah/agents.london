@@ -111,8 +111,8 @@ them evolving straight to its maximum.
 | Range | 1–100 | Distance at which it can strike |
 | Sight | 1–100 | Distance at which it can sense |
 | reStamina | 0–1 | Regenerates stamina |
-| Attrition | 0–10000 | Share of **maximum** Stamina permanently lost on each victory |
-| Detection Latency | 0–10000 | Delay between infection and its detection (`pathogen-spec.md` 2.18a) |
+| Attrition | 0–10000 | Fighting intensity: **adds to Attack**, and sets the share of maximum Stamina permanently lost on each victory |
+| Immune Vigilance | 0–10000 | How quickly an infection is detected (`pathogen-spec.md` 2.18a) — at the price of slower Stamina regeneration |
 | Synthesis Speed | 0–10000 | Rate at which an antigen is synthesised once detected (2.18a) |
 | reMana | 0–1 | Regenerates mana |
 
@@ -323,9 +323,27 @@ govern it.
 pools change over its life: **Stamina rises** and **Mana falls**, both at a rate
 set by this locus.
 
-**Rule 3.8c** — An agent that **wins** an encounter permanently reduces its
-**maximum** Stamina by its **Attrition** share. The loser pays only in *current*
-Stamina and recovers in full.
+**Rule 3.8c** — **Attrition is intensity.** It adds to effective Attack in every
+exchange — and an agent that **wins** permanently reduces its **maximum** Stamina
+by its Attrition share. The loser pays only in *current* Stamina and recovers in
+full.
+
+**Rule 3.8e** — **Immune Vigilance** sets how quickly an infection is detected
+(`pathogen-spec.md` Rule 2.18a), and **subtracts from Stamina regeneration**: a
+body kept on alert pays for the watch.
+
+> Both loci originally had only a cost, and a locus that is bad in every direction
+> is not a trait, it is a tax: selection pins it to the floor within a few
+> generations, variance goes extinct, and the locus is decorative by monomorphism —
+> §11.12's sin arrived at by a route Rule 3.19 does not police, since the faculty
+> exists right up until nobody varies in it.
+>
+> The repair is the same in both cases: **make the direction a trade-off.** High
+> Attrition is now a berserker — hits harder, burns out faster — and low Attrition
+> a career fighter. High Vigilance detects early and regenerates slowly; low
+> Vigilance is robust and slow to notice it is sick. Selection can settle either
+> way, populations can differ, and both loci join every other locus in having no
+> correct value.
 
 **Rule 3.8d** — An agent whose maximum Stamina reaches zero **perishes**, and
 `genome-spec.md` Rule 7.2 applies as for any other death.

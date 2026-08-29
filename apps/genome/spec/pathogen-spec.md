@@ -335,7 +335,7 @@ restoring the affected attributes toward baseline.
 
 **Rule 2.18a** — An antigen is **synthesised during infection**, not after it.
 Synthesis begins once the infection is **detected** and proceeds at a **rate**,
-both governed by loci: **Detection Latency** and **Synthesis Speed**.
+both governed by loci: **Immune Vigilance** and **Synthesis Speed**.
 
 **Rule 2.18b** — An antigen is a **vector in signature space** (§2.0) and covers
 part of it. **No antigen is bound to a strain.** It counteracts whatever its

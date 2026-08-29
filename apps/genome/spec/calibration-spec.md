@@ -131,7 +131,7 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Base collection rate** | Phase 1.1 | A Toolhouse improves it, so a base exists |
 | **Cargo decay rate** | Phase 1.1 | Rule 4.18 decays carried cargo; the rate governs how far an agent can usefully range |
 | **Infection distance range** | Phase 9 | `pathogen-spec.md` 2.4 gives strains a radius; the range is unset |
-| **Detection Latency mapping** | Phase 9 | Locus to real delay (`pathogen-spec.md` 2.18a) |
+| **Immune Vigilance mapping** | Phase 9 | Locus to detection delay and to the Stamina-regeneration price (`genotype-spec.md` 3.8e) |
 | **Synthesis Speed mapping** | Phase 9 | Locus to antigen produced per interval (2.18a) |
 | **Coverage threshold** | Phase 9 | How much combined coverage counters an infection (2.18c) |
 | **Antigen decay rate range** | Phase 9 | Set at synthesis from the maker's genotype (2.18d) |
