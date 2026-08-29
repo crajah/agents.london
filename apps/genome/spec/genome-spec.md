@@ -1324,6 +1324,111 @@ user as *uncertainty*, never as false certainty (§8.1.6).
 
 ---
 
+## 13. The user
+
+A human observer sees almost everything and may touch almost nothing. Agents see
+almost nothing and do everything.
+
+### 13.1 Sight
+
+**Rule 13.1** — A user may see **any agent's genotype and its expression**,
+anywhere in the simulation, including agents they do not own.
+
+**Rule 13.2** — A user may **observe any world** — its map, piles, stock,
+constructions and flood clock — and may change nothing in a world they do not own.
+
+> The asymmetry is deliberate and it is the source of the whole spectacle. Agents
+> are blind to one another: attributes are hidden (Rule 6.6), colour is the sole
+> visible trait (Rule 3.4), and every judgement runs on opinion rather than truth
+> (Rule 6.8). The human watching has none of those limits.
+>
+> **So the user is the only party who can see a deception as it happens** — who
+> can watch an agent project an attractiveness it does not have (Rule 6.11) and
+> watch a counterparty believe it. That dramatic irony is the reason to give a
+> human god-view at all, and it costs the simulation nothing, because seeing is
+> not acting.
+
+**Rule 13.3** — Observation is a **human affordance and confers nothing on
+agents**. What a user knows, its agents do not.
+
+> Without this rule the Observatory is worthless — five kinds, three contributors,
+> destroyed every flood — since its whole yield is teleport topology and other
+> worlds' flood clocks (`construction-spec.md` §4.2.1) that the user can already
+> read. It keeps its value precisely because it gives *agents* what only humans
+> had. The same division as Rules 6.2a–6.2b: what a user may do for itself and
+> what must be built for agents are different powers.
+
+### 13.2 Touch
+
+**Rule 13.4** — A user may **interact only with agents they own**. There is no
+channel to another user's agent, hostile or otherwise.
+
+**Rule 13.5** — An owner's **instruction is a command**: it takes the top
+objective rank and holds it (Rule 10.1c). An owner's **assertion of fact is
+testimony**: it is folded into the agent's running average as evidence like any
+other claim (`genotype-spec.md` Rule 6.9), and is subject to the agent's
+**Credulity**.
+
+> This rule exists to close a hole that Rule 13.1 would otherwise open, and the
+> hole is severe enough to be worth stating plainly.
+>
+> **An omniscient owner who can state facts is a truth channel into a blind
+> agent.** A user reads a stranger's genotype, tells their own agent "that one's
+> Honesty is 9000", and the agent now knows something Rule 6.8 says no agent can
+> know. Deception, projection, reputation and the entire signalling game collapse
+> — through the owner rather than in spite of them. Rule 6.8 is described in
+> `genotype-spec.md` as the decision "that makes the rest mean anything", and an
+> unguarded Rule 13.1 would quietly repeal it.
+>
+> **Separating commands from claims closes it exactly.** *Go and trade with the
+> cyan agent* is obeyed, because it is a goal and goals are the owner's to set.
+> *The cyan agent is honest* is merely heard, because it is a claim about the
+> world and claims are evidence. The owner's word is good evidence — it will
+> usually be true — but it arrives through the same door as everyone else's and
+> the agent's Credulity decides what to do with it.
+>
+> **And it produces a trade-off worth having.** Credulity is not owner-specific;
+> nothing distinguishes the owner as a source. So a user's most trusting,
+> easily-directed agent is also **the most gullible agent in the field** — the one
+> a stranger can most easily mislead. Wanting an obedient agent and wanting a
+> shrewd one are in tension, and no user gets to have both in the same body.
+
+### 13.3 Plans
+
+**Rule 13.6** — A user may place **plans** in the world they own: designs that
+agents may discover, carry, share with other agents, and build from gathered
+resources. A plan may specify a contributor count, inheriting the cooperative
+mechanic of `construction-spec.md` §2.
+
+**Rule 13.7** — **Plans are structures, not rules.** A built plan may not grant a
+faculty, relax a constraint, alter a ceiling or change any rule in these
+documents. Only the eighteen canonical constructions do that.
+
+> Rule 13.7 is what makes Rule 13.6 safe, and the reason is arithmetic rather than
+> taste. **If a user could author a plan that conferred an effect, the economy
+> would be user-authorable** — someone would design the building that yields a
+> thousand units, and every ceiling in §4.4 would become advisory. Creative mode
+> in the game this is named after works the same way: you may build anything, and
+> you may not change the rules.
+>
+> What remains is still substantial. Plans give agents an objective nobody
+> designed, a reason to cooperate that did not come from the eighteen, and — since
+> they spread agent to agent — **a second population that propagates by copying**.
+> Strains evolve (`pathogen-spec.md` §4.3), genotypes evolve, and now designs
+> spread memetically alongside both, selected by nothing but whether agents find
+> them worth carrying.
+
+**Rule 13.8** — A flood destroys what was **built**, never what was **known**. The
+structure burns with everything else (`construction-spec.md` §5.1); the plan
+survives in every agent still carrying it.
+
+> Which is the right shape for both the theme and the mechanism. Noah's world is
+> emptied and the knowledge of how to build is what walks off the Ark — and
+> mechanically it means a plan that has spread widely enough becomes effectively
+> permanent, while one held by a single agent dies with it (Rule 7.3). **Plans
+> compete for survival by being shared**, which is the only form of persistence
+> this design offers anything.
+
 ## 12. Agency
 
 Agents are **hybrid**. The design goal is to put the model wherever judgement,
