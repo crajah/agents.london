@@ -33,20 +33,8 @@ Inference remains the dominant cost regardless — order $1.5k/day at 10⁶ agen
 deciding ten times daily — and is metered from the start even though the budget
 is a game rule rather than a spend limit.
 
-## Open, and a decision for the specification rather than the design
+## Decided since
 
-**May agents negotiate at a distance, or must they meet first?** `genome-spec.md`
-Rule 9.1a puts negotiation on A2A and Rule 8.5 puts deliberation there too, but
-neither says whether the parties must be co-located. Rule 4.2 settles the
-*transfer* — resources move only inside agents, so cargo changes hands face to
-face — and leaves the conversation open.
-
-The two readings give different games. If agents may negotiate remotely, the map
-becomes a delivery problem: deals are struck at leisure and travel is settlement.
-If they must meet, then every trade costs a journey before a word is exchanged,
-travel is speculative, and an agent must decide whom to approach knowing only
-colour (Rule 3.4).
-
-The second is the more interesting constraint and the more expensive one, and it
-is a rule about the world rather than a fact about the architecture — so it
-belongs in `../spec/`.
+**Agents must meet to negotiate** — `genome-spec.md` Rule 9.1b. A2A carries the
+exchange but the parties must have met on the map, so travel is speculative and
+the choice of whom to approach is made on colour and prior opinion alone.

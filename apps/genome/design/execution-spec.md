@@ -414,6 +414,20 @@ below the share attributable to the genotype.
 > *randomised covariate*: uncorrelated with genotype by construction, its effect
 > estimable, and controllable in any comparison that needs it.
 >
+**Rule 10.7** — A model enters the pool only by **passing a disposition-expression
+screen**, and the pool is re-screened whenever it changes.
+
+> This is what turns Rule 10.6 from an aspiration into a gate. The screen is the
+> harness in `../validation` run against the candidate: sweep each disposition
+> under randomised backgrounds, and admit the model if the genotype still
+> dominates the substrate by the margin Rule 10.6 requires.
+>
+> It costs about an hour of cluster time per candidate, which is trivial against
+> the alternative. Two of the eleven models the router currently serves returned
+> no usable content at all under test, and admitting one that expresses
+> dispositions poorly would narrow the ratio toward the point where the substrate
+> rivals the genotype — the one outcome Rule 10.6 exists to prevent.
+
 > Re-measure when the pool changes. The 3.3× holds for the two families tested;
 > a model far worse at following a stated disposition would narrow it, and the
 > ratio is the quantity that decides whether the pool is admissible.
