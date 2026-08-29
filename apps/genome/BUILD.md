@@ -276,6 +276,10 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] 18 constructions, five branches, contributor counts 1/2/3/4/5 (`construction-spec.md` §2)
 - [ ] Contributor counted once per **user** (Rule 3.4); claims enforced not promised (3.7)
 - [ ] Berths: one per agent, **exchangeable to anyone**, tradeable during countdown (3.7a–3.7d)
+- [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)
+- [ ] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a)
+- [ ] Ark lands in the host's world; **foreign survivors emerge there** and must travel home (4.3c)
+- [ ] Carrier death sets the construction down in place, reclaimable by the right number of distinct users (3.12a)
 - [ ] Portage by that many **distinct users**; never dismantled into resources (3.10–3.13)
 - [ ] Ark tree immutable (3.9a); user plans additive (`genome-spec.md` Rule 13.6c)
 - [ ] Plans are **trees**, authored conversationally in the world channel, buildable anywhere (13.6a, 13.6b, 13.6d)
@@ -358,9 +362,9 @@ and need a decision before the phase that meets them.
 
 ### ⚠ Still unresolved
 - [x] **Ark capacity has no number.** Resolved: **twelve slots**, an agent costing one, a construction its contributor count, stock one per unit (`construction-spec.md` Rule 4.3b) — oversubscribed by construction.
-- [ ] ⚠ **A user's berth claim is proportional (Rule 3.7); nothing says how a claim becomes a specific agent's berth.** Rule 3.7a assumes an agent already holds one.
-- [ ] ⚠ **Carrier death mid-portage.** Rule 3.12 has carriers move as one body; if one of five dies en route, the fate of the construction is undefined.
-- [ ] ⚠ **Where a foreign agent emerges after boarding.** Rule 5.6 has the user emerge owning a hull, in the host's world. A boarded agent belonging to another user emerges — where?
+- [x] **How a berth claim becomes a specific agent's berth.** Resolved: berths arrive **unassigned** and the user's own agents contest them (Rules 3.7e/3.7f). Presence settles what argument did not. Supersedes commentary that had the owner allocate directly.
+- [x] **Carrier death mid-portage.** Resolved: the construction is **set down where the party stands** and any group of the required number of distinct users may take it up, strangers included (Rule 3.12a).
+- [x] **Where a foreign agent emerges after boarding.** Resolved: **in the world where the Ark came to rest** — its host's — whoever owns the agent (Rule 4.3c). A survivor is a guest with a journey ahead of it.
 - [ ] ⚠ **Which world a strain is created in on teleport** — origin or destination (`pathogen-spec.md` §2).
 
 ### Resolved by existing rules, recorded so they are not re-litigated
