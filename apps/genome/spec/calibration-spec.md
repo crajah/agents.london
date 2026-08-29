@@ -86,6 +86,34 @@ locus 5000 costs ~6.7% of maximum Stamina per win, scaled linearly by the locus.
 > balance stays frequency-dependent — rather than the strongest simply winning
 > until checked by nothing.
 
+**Rule 3.0c** — A world's **two kinds are a uniformly random pair** of the 190.
+
+> Scarcity is emergent and mobile: a kind can be globally rare this month and
+> common next as users join, and nobody — including the designers — decides what
+> is valuable. A balanced allocator would have been fairer and would have removed
+> exactly that property.
+
+**Rule 3.0d** — A world holds **6–10 piles per kind**, placed uniformly at random
+with a **minimum spacing**, capacities drawn **15–50** and summing near the
+250-unit ceiling.
+
+> Enough piles that agents spread out and routes differ; few enough that a good
+> pile is worth remembering, which is what gives Cartography and Prospecting their
+> value. Minimum spacing keeps a world from being one lucky corner.
+
+**Rule 3.0e** — A **founder draws two fresh surnames** from the name pool, and
+becomes the root of a lineage. Every surname in the population traces to some
+founder.
+
+**Rule 3.0f** — The flood countdown is a **promise, not a clock reading**: the
+flood fires **two full days after the countdown actually became visible**. An
+infrastructure delay shifts the flood; it never shortens the warning.
+
+> Agents should lose to the game, never to an outage. Rule 4.8's two days is the
+> basis of every evacuation and boarding decision in `construction-spec.md` §4.2,
+> and a warning that could silently shrink would make those decisions gambles on
+> the platform rather than on the world.
+
 ## 3.1 Founding
 
 **Rule 3.1** — A founder's genotype is drawn **uniformly within its world, about a
@@ -99,14 +127,9 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 
 | Quantity | Blocks | Note |
 | :--- | :--- | :--- |
-| **Pile count per world** | Phase 4.2 | With capacity and placement, decides whether a world feels rich or bare |
-| **Pile placement** | Phase 4.2 | Random, or spread to guarantee reachability |
-| **Pile capacity range** | Phase 4.2 | Bounded by the 250 world ceiling (`genome-spec.md` 4.13) |
 | **Pile regeneration rate range** | Phase 1.1 | Rule 4.6 assigns each pile its own; the range is unset |
 | **Base collection rate** | Phase 1.1 | A Toolhouse improves it, so a base exists |
 | **Cargo decay rate** | Phase 1.1 | Rule 4.18 decays carried cargo; the rate governs how far an agent can usefully range |
-| **How a world's two kinds are chosen** | Phase 4.2 | Rule 2.2 fixes that there are two, not which |
-| **Founder surnames** | Phase 4.2 | Rule 7.14 gives a progeny one from each parent; a founder has none |
 | **Infection distance range** | Phase 9 | `pathogen-spec.md` 2.4 gives strains a radius; the range is unset |
 | **Detection Latency mapping** | Phase 9 | Locus to real delay (`pathogen-spec.md` 2.18a) |
 | **Synthesis Speed mapping** | Phase 9 | Locus to antigen produced per interval (2.18a) |

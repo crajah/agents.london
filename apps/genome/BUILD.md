@@ -192,9 +192,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 ### 4.2 World generation
 - [ ] Two kinds per world from 20; colours from the A100 palette (Rules 4.1, 4.9)
 - [ ] Piles with individual regeneration rates (4.6); random portal placement (6.2e)
-- [ ] World generation reads its quantities from [`spec/calibration-spec.md`](spec/calibration-spec.md) — pile count, placement, capacity and rate ranges, and how the two kinds are chosen
+- [ ] World generation reads its quantities from [`spec/calibration-spec.md`](spec/calibration-spec.md): uniform random kind pair (3.0c); 6–10 piles per kind, min-spaced, capacities 15–50 (3.0d)
 - [ ] Founder genotype: uniform about a recorded per-world centre (`genotype-spec.md` 3.2a/3.2b)
-- [ ] Founder surnames — Rule 7.14 covers progeny only
+- [ ] Founder surnames drawn fresh from the name pool; founders root lineages (calibration 3.0e)
 - [ ] First agent free (7.1); materialisation costs 8 units (2.1)
 
 ### 4.3 Transfer
@@ -408,7 +408,7 @@ and need a decision before the phase that meets them.
 - [ ] **Berth transfer must be atomic**, on the same two-phase pattern as cargo (`system-spec.md` Rules 5.1, 5.2) — two agents must not both acquire one berth
 - [ ] **Boarding is an action with a deadline**: model the race, and the case of a berth bought by an agent that cannot reach the ship in time (Rule 4.10a)
 - [ ] Ark manifest allocation against **twelve slots**, priced by kind (Rule 4.3b)
-- [ ] Late flood: a world whose worker held no lease fires its countdown late — decide whether agents are owed the full two days
+- [x] **Late flood.** Resolved: the countdown is a promise — the flood fires two full days after the countdown actually became visible (calibration 3.0f). Agents lose to the game, never to an outage.
 - [ ] Portal placement collision with a pile or another portal (Rule 6.2e)
 - [ ] Addressability granted by an owner: a user browses freely (Rule 5.4) and may tell an agent of someone it has never met, which makes that agent addressable under Rule 9.1d
 
