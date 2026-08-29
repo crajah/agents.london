@@ -612,6 +612,18 @@ attribute at mid-range.
 **Rule 3.23** — Dispositions, preference weights, colour, Gender and Mutability
 are **outside** the budget.
 
+**Rule 3.23a** — Everything else is **inside**, the additions included: Attrition,
+Maturation, Immune Vigilance, Synthesis Speed — and **Longevity**, whose absence
+from the list above is deliberate.
+
+> Longevity's membership is the precedent that settles the rest: a long life
+> **competes for expression against strength and wit**, which is the classic
+> life-history trade-off, and the new loci follow it. A fast synthesiser or a
+> vigilant immune system costs capacity elsewhere; a berserker's intensity is paid
+> for out of the same purse. The outside list stays short and closed — things that
+> are *about* the genotype (Mutability), gates (Gender), identity (colour), and
+> the dispositions whose independence the validation depends on.
+
 #### 3.10.1 Why there has to be a budget
 
 **A gene with no trade-off is a setting.** Thirteen loci were monotonic as

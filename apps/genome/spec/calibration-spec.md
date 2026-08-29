@@ -137,7 +137,7 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Antigen decay rate range** | Phase 9 | Set at synthesis from the maker's genotype (2.18d) |
 | **Inoculist bank size** | Phase 9 | Rule 2.20a says small and bounded |
 | **Wreck decay duration** | Phase 10 | Must complete before the next flood could arrive, guaranteeing single use (`construction-spec.md` 4.4b) |
-| **Commons capacity or sharding** | Phase 5 | One commons for every world is a crowd at scale |
+| **Worlds per commons shard** | Phase 5 | Hundreds (`genome-spec.md` 6.2f-i); the exact figure tunes crowd against liquidity |
 | **Stamina lost per exchange** | Phase 6 | Winner and loser both pay (`genome-spec.md` 9.3b); the ratio between them sets how costly winning is |
 | **Mana-to-Attack exchange rate** | Phase 6 | Rule 9.3d lets Mana press an attack; nothing sets how far |
 | **Maturation curve shape** | Phase 8 | Linear, or accelerating late (`genotype-spec.md` 3.8a) |
