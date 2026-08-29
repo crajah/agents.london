@@ -281,7 +281,11 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Strain creation rolled **independently at both ends** of a teleport
 - [ ] Replication, contagion, **infection distance** (`pathogen-spec.md` Rule 2.4); contact probability (Rule 2.5); creation chance on teleport
 - [ ] Expression modifiers changing phenotype, not genotype; defences are three heritable things (Rule 2.2)
-- [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8–16 dimensions (Rule 2.0)
+- [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8-16 dimensions (Rule 2.0)
+- [ ] **Antigen earned only by recovering** from an infection, matching that strain (Rule 2.18a)
+- [ ] Recovery natural via **Infection Resistance**, or immediate at a **Sanatorium** (Rule 2.18b)
+- [ ] Inoculist **transfers** a banked antigen without illness; bounded bank (Rules 2.18c, 2.20a)
+- [ ] **Infection rendered** as a broken disc outline (`interface-spec.md` Rule 6.9i) — it is public (Rule 2.21)
 
 ---
 
