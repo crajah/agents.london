@@ -441,7 +441,7 @@ judgement.
 | **Vindictiveness** | **Decay constant of the opinion average** (Rule 6.10) |
 | **Credulity** | **Weight of reported evidence against witnessed** — the learning rate `K` of Rules 6.9 and 6.10a |
 | **Honesty** | **Ceiling on misrepresentation**: bounds how far a projected attractiveness (Rule 6.11) may deviate from the computed value |
-| **Loyalty** | **Retention of counterparty history** — how long a specific agent's record resists decay |
+| **Loyalty** | **Retention of counterparty history** — how long a specific agent's record resists decay; and **discretion**, whether what an owner said is relayed (`genome-spec.md` Rule 13.5a) |
 | **Patience** | **Horizon of projected consequence** shown to the agent when it deliberates |
 | **Curiosity** | **Proportion of an unfamiliar map revealed** on arrival |
 | **Wanderlust** | **Number of teleport links visible** from a world |
@@ -870,6 +870,30 @@ for more than old evidence, with the decay governed by the observer's
 > a con artist's returns depend on who it is conning. Forgiving populations are
 > lucrative to defect against and vindictive ones are not, so the prevalence of
 > forgiveness and the prevalence of dishonesty regulate each other.
+
+**Rule 6.10b** — Evidence originating with a **user** decays at an **accelerated
+rate**, and the acceleration **compounds with every relay** it has passed through.
+
+> Rule 13.5 of `genome-spec.md` protects the agent a user speaks to: an assertion
+> is testimony, weighed by Credulity, never fact. Rule 6.10b protects everyone
+> else, and it is needed because a user is not a normal source.
+>
+> **A user sees every genotype** (Rule 13.1) while agents see none (§6.3). An
+> agent's testimony is bounded by what it witnessed; a user's is bounded by
+> nothing. So the owner channel is the one place where ground truth can enter a
+> system built on its absence, and unlike every other source it does not degrade
+> at the origin.
+>
+> **Accelerated, compounding decay makes injected truth fade and witnessed truth
+> persist.** A user can move their own agent's opinion and can move it sharply.
+> What they cannot do is *rewrite the population's* — the claim thins with every
+> hop and keeps thinning with time, so a rumour two agents removed from a human is
+> worth very little and worth less tomorrow.
+>
+> The legitimate route to a durable belief is left open and is the same as it
+> always was: if what the user said is true, agents will eventually witness
+> evidence of it, and an opinion re-formed from observation does not decay this
+> way. **A user may point; only the world may convince.**
 
 **Rule 6.10a** — Where evidence is a **discrete act** rather than a measurement,
 the estimate **predicts the act** and the update is the gap between prediction and

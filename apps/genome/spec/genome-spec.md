@@ -1398,6 +1398,38 @@ agents**. What a user knows, its agents do not.
 **Rule 13.4** — A user may **interact only with agents they own**. There is no
 channel to another user's agent, hostile or otherwise.
 
+**Rule 13.5a** — What an owner tells an agent is **marked as owner-sourced**, and
+the mark survives every relay (Rule 8.11's provenance chain already carries it).
+
+**Rule 13.5b** — Whether an agent **relays** a marked claim is its own choice,
+disposed by **Loyalty**. A loyal agent keeps its owner's confidences; a disloyal
+one gossips.
+
+> Two things had to be true at once here, and neither fixed answer gave both.
+>
+> **Discretion could not simply be declared, because it already was.** Nothing in
+> these documents compels an agent to answer anything: Rule 8.5 subjects what
+> agents tell each other to Honesty, Rule 8.8 makes every answer testimony, and
+> silence is always available. "The agent chooses whether to share" describes the
+> existing treatment of everything it knows, so as a rule it would have changed
+> nothing.
+>
+> **What was needed was something pushing on the choice.** Loyalty supplies it,
+> and it is the right locus — already the one governing whom an agent favours, and
+> weak enough in measurement (ρ = 0.39, failing on the second model tested) to
+> deserve the second faculty Rule 3.20b prescribes for exactly that case.
+>
+> **So the leak rate is evolved rather than designed.** If discretion pays, loyal
+> agents spread and what users know stays with the agents they told. If gossip
+> pays, secrecy dies and the population has told us something. That is the same
+> refusal to install a finding that Rule 6.9c makes about colour, and it is a real
+> bet rather than a safe one: nothing guarantees deception survives.
+>
+> What keeps the bet from being reckless is Rule 6.10b. Even a wholly indiscreet
+> population passes owner claims that decay fast and compound their decay each
+> hop, so the channel leaks at a rate the population sets, into a medium that
+> forgets quickly.
+
 **Rule 13.5** — An owner's **instruction is a command**: it takes the top
 objective rank and holds it (Rule 10.1c). An owner's **assertion of fact is
 testimony**: it is folded into the agent's running average as evidence like any
