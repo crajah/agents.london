@@ -446,16 +446,43 @@ they sit somewhere, and finding them is work.
 **Rule 6.1** — A teleport point links two worlds and carries **agents only** —
 never resources, never users.
 
-**Rule 6.2** — Teleport points are derived from the owners' **LinkedIn
-connections**. Two worlds are linkable when their users are connected.
+**Rule 6.1a** — Passage through a teleport point is **instantaneous**. An agent is
+in one world or another and never between them.
+
+> This is a rule about edge cases rather than about play, and it earns its place
+> by removing one. Rule 4.9 of `construction-spec.md` kills every agent *present*
+> when a flood arrives, so a passage with duration would create a third state
+> belonging to no world — an agent that is neither drowned nor safe, and that every
+> realm-scoped query (`Rule 3.2` of `system-spec.md`) would have to account for.
+>
+> Instantaneous passage means an agent walking inside a flooding world is present
+> and dies, and one that stepped through is already elsewhere and lives. There is
+> no limbo to define, and departure during the countdown is a clean decision with
+> a clean outcome.
+
+**Rule 6.2** — Teleport points are derived from **verified connections between
+users**. Two worlds are linkable when their owners are connected.
+
+**Rule 6.2c** — A connection counts when it is **verifiable**, by either route:
+an imported real-world professional graph, or **mutual confirmation between two
+users of genome itself**.
 
 > This is the most consequential rule in the specification, because it decides
-> who can reach whom. The trade graph is not random and not chosen: it is the
-> users' real professional network. A well-connected user has many potential
-> partners and a well-connected user's *neighbours* become valuable intermediaries.
-> Structural inequality is imported wholesale from outside the game, which is
-> either the most interesting thing here or the most objectionable, depending on
-> what the experiment is meant to show.
+> who can reach whom. The trade graph is not random and not chosen: a
+> well-connected user has many potential partners, and a well-connected user's
+> *neighbours* become valuable intermediaries.
+>
+> **Recorded honestly: broadening beyond an imported graph gives something up.**
+> The rule originally read *LinkedIn connections*, and the point of that was that
+> structural inequality arrived **wholesale from outside the game** — nobody could
+> negotiate their way to a better starting position because the position was a
+> fact about their life. Rule 6.2c admits connections formed inside genome, and
+> those *can* be negotiated for. Inequality becomes partly endogenous.
+>
+> What is gained is that the design no longer depends on a third party's API
+> continuing to expose something it may not expose at all (§11.6). What is lost is
+> some of the sharpness of the original claim. Both halves are worth keeping in
+> view when reading any result about how much starting position mattered.
 
 **Rule 6.2a** — A world opens with **30 teleport portals**, drawn from its owner's
 connections. Where the connection list is longer, the surplus is *linkable but not
