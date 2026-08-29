@@ -52,7 +52,41 @@ each end.
 | Pathogen signature | 8–16 dimensions | `pathogen-spec.md` 2.0 |
 | Capability roll | 75% | `skills-spec.md` 1.1a |
 
-## 3. Founding
+## 3. Life history
+
+**Rule 3.0** — **Longevity maps to 20–90 real days**: locus 0 → 20 days,
+locus 10000 → 90, linear between.
+
+> Spanning one to four flood cycles is the property that matters. An agent
+> typically outlives a flood, so an Ark berth preserves knowledge that would
+> otherwise have persisted — which is what makes saving it worth bargaining over.
+> A stranded first agent self-corrects in weeks (`genome-spec.md` §11.2). The cost
+> is accepted openly: roughly 6–10 generations a year, so evolution is read as a
+> trend rather than watched as a spectacle.
+
+**Rule 3.0a** — The **ordinary mutation step is ~5% of a locus range**, with
+Rule 7.4a's rare large excursions on top.
+
+> Chosen coarse and fast, against the recommendation, and the reasoning is
+> recorded. At 6–10 generations a year a fine step would make evolution
+> imperceptible for years; 5% makes drift visible within a few generations. The
+> risk is that offspring land far from parents and selection loses what it found —
+> but two things blunt it. Mutability is itself a locus (`genotype-spec.md` §3.4),
+> so lineages that suffer from coarse mutation can evolve it down: **the step size
+> is a starting condition, not a constant.** And crossover recombines without
+> mutating, so a good combination can still propagate intact between excursions.
+> If the population wanders rather than adapts, Mutability's own trajectory will
+> show it — falling Mutability is the population voting the step down.
+
+**Rule 3.0b** — **Attrition at mid-range exhausts an agent in ~15 victories**:
+locus 5000 costs ~6.7% of maximum Stamina per win, scaled linearly by the locus.
+
+> A raiding career with a visible end. Against Maturation's rise a fighter
+> sustains a run and then must stop, so predator and producer coexist and their
+> balance stays frequency-dependent — rather than the strongest simply winning
+> until checked by nothing.
+
+## 3.1 Founding
 
 **Rule 3.1** — A founder's genotype is drawn **uniformly within its world, about a
 centre drawn uniformly for that world**, and the centre is **recorded**
@@ -71,10 +105,8 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Pile regeneration rate range** | Phase 1.1 | Rule 4.6 assigns each pile its own; the range is unset |
 | **Base collection rate** | Phase 1.1 | A Toolhouse improves it, so a base exists |
 | **Cargo decay rate** | Phase 1.1 | Rule 4.18 decays carried cargo; the rate governs how far an agent can usefully range |
-| **Longevity → lifespan** | Phase 8 | The locus is 0–10000; the mapping to days is unset, and §11.2 makes it the thing to calibrate first |
 | **How a world's two kinds are chosen** | Phase 4.2 | Rule 2.2 fixes that there are two, not which |
 | **Founder surnames** | Phase 4.2 | Rule 7.14 gives a progeny one from each parent; a founder has none |
-| **Mutation step size** | Phase 8 | Rule 7.4a bounds it with rare excursions; neither bound is set |
 | **Infection distance range** | Phase 9 | `pathogen-spec.md` 2.4 gives strains a radius; the range is unset |
 | **Detection Latency mapping** | Phase 9 | Locus to real delay (`pathogen-spec.md` 2.18a) |
 | **Synthesis Speed mapping** | Phase 9 | Locus to antigen produced per interval (2.18a) |
@@ -84,7 +116,6 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Commons capacity or sharding** | Phase 5 | One commons for every world is a crowd at scale |
 | **Stamina lost per exchange** | Phase 6 | Winner and loser both pay (`genome-spec.md` 9.3b); the ratio between them sets how costly winning is |
 | **Mana-to-Attack exchange rate** | Phase 6 | Rule 9.3d lets Mana press an attack; nothing sets how far |
-| **Attrition percentage range** | Phase 6 | What 0–10000 maps to per victory. Against Maturation's rise, this decides whether a fighting lineage is viable at all — the single most consequential combat number |
 | **Maturation curve shape** | Phase 8 | Linear, or accelerating late (`genotype-spec.md` 3.8a) |
 | **Attack-versus-Agility resolution** | Phase 6 | Rule 9.3a is probabilistic; the function is unset |
 
