@@ -483,13 +483,16 @@ in the nascent world. One not carried is destroyed with everything else
 > Rule 4.3 is what makes the Ark interesting rather than merely expensive, and
 > Rule 4.3a is what makes it worth building at all.
 >
-> **It is the answer to evacuation** (§4.2.3). Sending agents abroad saves agents
-> and very little else. Rule 3.10 lets a prepared coalition carry out its branch
-> roots, and the capstones — three to five distinct users, assembled at one spot
-> inside a two-day countdown — are not going anywhere. A user who evacuates keeps
-> their line and the cheapest tier of what they built. An Ark can carry a Forge
-> through the water. Evacuation is a *retreat* that now salvages something; the
-> Ark is *continuity*, and no amount of packing substitutes for it.
+> **It is the answer to evacuation** (§4.2.3), and the answer is that there is no
+> such thing for agents. Rule 4.9 claims every agent of the world wherever it
+> stands, so sending them abroad saves nothing at all. What a prepared coalition
+> can carry out is *property* — branch roots under Rule 3.10, while the capstones,
+> needing three to five distinct users assembled at one spot inside two days, are
+> not going anywhere.
+>
+> So an agent may save what it built and never what it learned. A berth is the only
+> thing that saves the agent, an Ark can carry a Forge through the water, and no
+> amount of packing substitutes for either.
 >
 > **And it converts the Ark into a collective allocation problem under a
 > deadline**, which is the sharpest thing in the design. Capacity is shared among
@@ -595,6 +598,36 @@ disclosed**.
 
 **Rule 4.8** — **Two days before a flood, a countdown becomes visible** to every
 agent in that world, visitors included.
+
+**Rule 4.9** — A flood claims **every agent of that world, wherever it is**. An
+agent abroad is claimed exactly as one standing in the water is.
+
+**Rule 4.10** — A **berth on an Ark is the only exemption.** Nothing else saves an
+agent: not distance, not a construction, not another user's world.
+
+> Rule 4.9 is the rule that makes the Ark the centre of the design rather than one
+> building among eighteen, and it is worth being clear about what it costs.
+>
+> **Agents cannot be evacuated.** Sending them abroad is not a strategy, and there
+> is no clever positioning that substitutes for a berth. What is lost is everything
+> *earned* — knowledge, gained attributes, retained antigens, cargo (§5.1) — none
+> of which regeneration restores (`genome-spec.md` Rule 7.3). The agent itself
+> returns; what it had learned does not.
+>
+> **So the two-day countdown is about property and passage, never about people.**
+> A prepared coalition spends it carrying out branch roots (Rule 3.10) and settling
+> who boards. Rule 4.8 tells visitors the clock because a foreign world's flood
+> date is worth knowing — the Observatory sells exactly that — not because a
+> visitor is in danger. Visitors belong to other worlds and are claimed by their
+> own floods, not by this one.
+>
+> **And it puts a ceiling on accumulation that nothing else in the design
+> provides.** Every fifteen to thirty days a world's entire population is stripped
+> back to its genotype unless berthed. An agent cannot compound knowledge
+> indefinitely, a lineage cannot ride one exceptional map forever, and the
+> advantage that survives a cycle is the advantage a coalition chose to save. That
+> is a periodic equaliser with a social filter on it, and it is the strongest
+> reason the flood exists at all.
 
 ### 4.2.1 Why per-world clocks change everything
 
