@@ -489,6 +489,22 @@ own (`system-spec.md` §9).
 connections. Where the connection list is longer, the surplus is *linkable but not
 yet linked*.
 
+**Rule 6.2e** — A portal is placed at a **random position** within the world,
+fixed when the link is created and unchanged thereafter — including through a
+flood, since the link itself is permanent (Rule 6.3a).
+
+> Random placement is what gives a world **geography that matters**. A portal
+> beside a rich pile is a fortunate world and a portal in the far corner is a
+> tax on every journey out, and neither was chosen by anybody. Combined with
+> Rule 9.1b — a binding deal requires meeting — the distance between a world's
+> portals and its piles becomes a standing fact about how expensive it is to
+> trade from there.
+>
+> It also gives `Cartography` and `Prospecting` (`skills-spec.md` §4) something
+> durable to know. Pile positions and portal positions together are the layout of
+> a world, they do not change, and an agent that has learned them holds knowledge
+> that stays true across floods — one of the few things that does.
+
 **Rule 6.2d** — Only **first-degree portals are visible** in a world. Reaching
 anything further is done by **world-hopping**: an agent travels to a connected
 world and departs again from there.
