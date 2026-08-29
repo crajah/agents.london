@@ -152,11 +152,26 @@ maintained by convention.
 > application code, and it is the first place to look when an agent appears to be
 > in two worlds or none.
 
-**Assumption 3.5** — Rule 3.1 holds only while **users are bounded in the
-thousands**. Schema-per-world scales with user count, and at a million users it
-fails exactly as schema-per-agent would. If genome is ever intended to reach that
-many users, worlds must become spaces and Rule 3.3's caveat extends to them.
-Recorded here so the limit is discovered by reading rather than by outage.
+**Rule 3.5** — A world is a **realm**, but realms are **not schemas**. All realms
+live in one schema, discriminated logically. Whether to promote realms to physical
+schemas is deferred until scale demands it.
+
+> This removes the scaling limit that stood here before. Schema-per-world scales
+> with user count and would have failed around a million users exactly as
+> schema-per-agent would; logical realms do not, so the ceiling is a
+> configuration change rather than a rewrite.
+>
+> **The cost is that world isolation becomes query discipline.** Worlds previously
+> had the strong guarantee — physical separation the database enforced — and now
+> they have what agents have under Rule 3.3: a read that forgets to scope by realm
+> is a cross-world leak, not an empty result. Every argument in Rule 3.3's note
+> applies to worlds now, and the reconciliation burden in Rule 3.4's note gets
+> larger rather than smaller.
+>
+> That is the right trade while the population is small and the schema count would
+> otherwise grow without bound — but it should be revisited deliberately, not
+> discovered. Promoting realms to schemas later is a migration; forgetting that
+> isolation is only logical is an incident.
 
 ## 4. Resources
 
@@ -441,6 +456,31 @@ connections**. Two worlds are linkable when their users are connected.
 > Structural inequality is imported wholesale from outside the game, which is
 > either the most interesting thing here or the most objectionable, depending on
 > what the experiment is meant to show.
+
+**Rule 6.2a** — A world opens with **30 teleport portals**, drawn from its owner's
+connections. Where the connection list is longer, the surplus is *linkable but not
+yet linked*.
+
+**Rule 6.2b** — A user may **open further portals to their own connections** at
+any time. They may **never** open one to a world they are not connected to; that
+remains the exclusive power of the Water capstone (`construction-spec.md` §5.2).
+
+> The division matters, because without it the capstone loses its purpose. §5.2
+> made forging links the reward at the top of a five-kind, three-contributor
+> construction chain that the flood destroys every cycle — and if a user could
+> simply add whatever portal they wanted, nobody would ever build it.
+>
+> **So the two powers differ in kind, not degree.** Self-service reaches only
+> inside the graph LinkedIn already gave you; the capstone reaches outside it.
+> Structural inequality is still imported wholesale — a user with forty
+> connections can eventually open forty portals and a user with five cannot — and
+> escaping *your own graph* still costs an Observatory.
+>
+> **Connectivity prices itself.** Every portal is another route for a strain to
+> arrive (`pathogen-spec.md` §1.3), and pathogens are created on teleport. A
+> maximally connected world is a maximally exposed one, so the ceiling on portals
+> is epidemiological rather than arbitrary — which is why 30 is an opening
+> allocation and not a cap.
 
 **Rule 6.3** — An agent that leaves exists in the destination world, subject to
 that world's rules, until it **traces its way back** to its birth world. The
@@ -1212,9 +1252,12 @@ age, and Rule 7.2 then regenerates it at home. Stranding becomes *expensive but
 temporary* — the agent loses its cargo, its accumulated knowledge and a great
 deal of time, and the user is idle meanwhile, but nothing is permanent.
 
-*What needs confirming:* that natural death does trigger regeneration, and that
-lifespans are short enough that a stranded first agent returns before the user
-abandons the game.
+*Confirmed.* Natural death triggers regeneration exactly as any other death does
+(Rule 7.2, and `genotype-spec.md` §9.8 — there is no gentler death). Stranding is
+therefore bounded by Longevity in all cases. **Lifespan calibration remains a
+runtime parameter**, not a design question: the requirement is that a stranded
+first agent returns before its owner abandons the game, and only a running
+population can say what duration satisfies it.
 
 **11.3 Decided — no.** A user-ascribed objective outranks any learned one
 permanently (Rule 10.1c). Objectives still spread, but into the ranks the owner
@@ -1228,8 +1271,9 @@ stakes.
 of all 20 kinds, then build an Ark against the flood. Detail of flooding and the
 construction hierarchy is deferred to a companion document.
 
-**11.6 Decided — the real LinkedIn connection graph.** Rule 6.2 stands as
-written.
+**11.6 Decided — the real LinkedIn connection graph**, with **30 portals
+allocated initially** and the user free to open more from their own connections
+(Rules 6.2a–6.2b). Rule 6.2 stands as written.
 
 *Recorded as a build dependency, not an open design question:* connection-list
 access is restricted to approved LinkedIn partners, so this needs partner
