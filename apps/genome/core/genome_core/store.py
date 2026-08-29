@@ -51,96 +51,144 @@ def _req(value: str | None, what: str) -> str:
 
 async def ensure_world_realm(client: Any, world_realm: str) -> None:
     """Create one world's tables in its own realm. Idempotent; called at world
-    creation. post-graph performs all DDL."""
-    for table in (WORLD_META, PILES, PORTALS, EVENTS, PRESENCE):
-        await client.create_vertex_table(table, realm=_req(world_realm, "world realm"))
+    creation. post-graph performs all DDL. due_at is promoted so Phase 1's
+    due-event query can filter in the database."""
+    r = _req(world_realm, "world realm")
+    for table in (WORLD_META, PILES, PORTALS, PRESENCE):
+        await client.create_vertex_table(table, realm=r)
+    await client.create_vertex_table(EVENTS, realm=r,
+                                     promoted_keys=("due_at", "done_at"))
 
 
 async def ensure_agents_realm(client: Any) -> None:
     """Create the single agents realm. Idempotent; called at deploy."""
     for table in (AGENTS, DECISIONS):
         await client.create_vertex_table(table, realm=AGENTS_REALM)
-    await client.create_edge_table(OPINION, AGENTS, AGENTS, realm=AGENTS_REALM)
+    await client.create_edge_table(OPINION, from_vertex_table=AGENTS,
+                                  to_vertex_table=AGENTS, realm=AGENTS_REALM)
 
 
 class GenomeStore:
+    """post-graph vertex_ids are integers minted by add_vertex; every genome
+    entity keeps its business key in payload["key"] and is found by it — the
+    registry idiom (services/agent-registry/registry_store.py)."""
+
     def __init__(self, client: Any):
         self._c = client
 
+    async def _pk(self, table: str, realm: str, key: str) -> int | None:
+        rows = await self._c.find_vertices(table, realm=realm,
+                                           filters={"key": key}, limit=1)
+        return int(rows[0].id) if rows else None
+
+    async def _upsert_by_key(self, table: str, realm: str, key: str,
+                             payload: dict, space: str = "default") -> int:
+        body = {**payload, "key": key}
+        pk = await self._pk(table, realm, key)
+        if pk is None:
+            v = await self._c.add_vertex(table, realm=realm, space=space,
+                                         payload=body)
+            return int(v.id)
+        await self._c.upsert_vertex(table, realm=realm, vertex_id=pk,
+                                    space=space, payload=body)
+        return pk
+
     # ---------- world-realm operations ----------
 
-    async def put_world(self, world_realm: str, properties: dict) -> None:
+    async def put_world(self, world_realm: str, payload: dict) -> None:
         r = _req(world_realm, "world realm")
-        await self._c.upsert_vertex(WORLD_META, key=r, realm=r,
-                                    properties=properties)
+        await self._upsert_by_key(WORLD_META, r, r, payload)
 
-    async def put_pile(self, world_realm: str, pile_uuid: str, properties: dict) -> None:
-        await self._c.upsert_vertex(PILES, key=pile_uuid,
-                                    realm=_req(world_realm, "world realm"),
-                                    properties=properties)
+    async def put_pile(self, world_realm: str, pile_uuid: str, payload: dict) -> None:
+        await self._upsert_by_key(PILES, _req(world_realm, "world realm"),
+                                  _req(pile_uuid, "pile"), payload)
 
     async def piles_in(self, world_realm: str) -> list:
-        return await self._c.get_vertices(PILES, realm=_req(world_realm, "world realm"))
+        return await self._c.get_vertices(PILES,
+                                          realm=_req(world_realm, "world realm"))
 
     async def set_presence(self, world_realm: str, agent_uuid: str,
                            present: bool) -> None:
         """An agent is admitted to exactly one world at a time
         (genome-spec.md Rule 6.10); presence lives in the world's realm so
         agents_in never crosses realms."""
-        await self._c.upsert_vertex(PRESENCE, key=_req(agent_uuid, "agent"),
-                                    realm=_req(world_realm, "world realm"),
-                                    properties={"present": present})
+        await self._upsert_by_key(PRESENCE, _req(world_realm, "world realm"),
+                                  _req(agent_uuid, "agent"),
+                                  {"present": present})
 
     async def agents_in(self, world_realm: str) -> list:
+        # Client-side filter: find_vertices matches string values only — a
+        # boolean/None filter silently matches nothing (proven in-cluster).
         rows = await self._c.get_vertices(
             PRESENCE, realm=_req(world_realm, "world realm"))
-        return [r for r in rows if r["properties"].get("present")]
+        return [v for v in rows if v.payload.get("present") is True]
 
     # events: the queue's source of truth (system-spec Rule 8.3)
 
     async def schedule(self, world_realm: str, event_id: str, due_at: str,
                        kind: str, subject: str, payload: dict) -> None:
-        await self._c.upsert_vertex(
-            EVENTS, key=event_id, realm=_req(world_realm, "world realm"),
-            properties={"due_at": due_at, "kind": kind, "subject": subject,
-                        "payload": payload, "done_at": None})
+        await self._upsert_by_key(
+            EVENTS, _req(world_realm, "world realm"), _req(event_id, "event"),
+            {"due_at": due_at, "kind": kind, "subject": subject,
+             "payload": payload, "done_at": None})
 
     async def due_events(self, world_realm: str, now: str) -> list:
+        # done_at filtered client-side: a None filter matches nothing in real
+        # post-graph (proven in-cluster). Promoted due_at enables a DB-side
+        # range query later if the scan ever matters.
         rows = await self._c.get_vertices(
             EVENTS, realm=_req(world_realm, "world realm"))
-        return sorted((r for r in rows
-                       if r["properties"]["due_at"] <= now
-                       and r["properties"]["done_at"] is None),
-                      key=lambda r: r["properties"]["due_at"])
+        return sorted((v for v in rows
+                       if v.payload.get("done_at") is None
+                       and v.payload["due_at"] <= now),
+                      key=lambda v: v.payload["due_at"])
 
     async def complete_event(self, world_realm: str, event_id: str, now: str) -> None:
-        await self._c.upsert_vertex(EVENTS, key=event_id,
-                                    realm=_req(world_realm, "world realm"),
-                                    properties={"done_at": now}, merge=True)
+        r = _req(world_realm, "world realm")
+        rows = await self._c.find_vertices(EVENTS, realm=r,
+                                           filters={"key": event_id}, limit=1)
+        if not rows:
+            raise KeyError(f"event {event_id} not found in {r}")
+        await self._c.upsert_vertex(EVENTS, realm=r, vertex_id=int(rows[0].id),
+                                    payload={**rows[0].payload, "done_at": now})
 
     # ---------- agents-realm operations (space = the agent) ----------
 
-    async def put_agent(self, agent_uuid: str, properties: dict) -> None:
+    async def put_agent(self, agent_uuid: str, payload: dict) -> None:
         a = _req(agent_uuid, "agent")
-        await self._c.upsert_vertex(AGENTS, key=a, realm=AGENTS_REALM,
-                                    space=a, properties=properties)
+        await self._upsert_by_key(AGENTS, AGENTS_REALM, a, payload, space=a)
 
     async def set_movement(self, agent_uuid: str, intent: dict) -> None:
         """One of the two writes a journey makes (execution-spec Rule 2.2);
         appended, so the movement history IS the position log."""
         a = _req(agent_uuid, "agent")
-        await self._c.add_vertex_data(AGENTS, key=a, realm=AGENTS_REALM,
-                                      space=a, record={"kind": MOVEMENT, **intent})
+        pk = await self._pk(AGENTS, AGENTS_REALM, a)
+        if pk is None:
+            raise KeyError(f"agent {a} not found")
+        await self._c.add_vertex_data(AGENTS, realm=AGENTS_REALM, vertex_id=pk,
+                                      payload={"kind": MOVEMENT, **intent})
+
+    async def latest_movement(self, agent_uuid: str):
+        a = _req(agent_uuid, "agent")
+        pk = await self._pk(AGENTS, AGENTS_REALM, a)
+        if pk is None:
+            return None
+        return await self._c.get_latest_vertex_data(AGENTS, realm=AGENTS_REALM,
+                                                    vertex_id=pk)
 
     async def update_opinion(self, observer: str, subject: str,
-                             attribute: str, record: dict) -> None:
-        await self._c.add_edge(OPINION, src=_req(observer, "observer"),
-                               dst=_req(subject, "subject"), realm=AGENTS_REALM,
-                               space=observer,
-                               properties={"attribute": attribute, **record})
+                             attribute: str, payload: dict) -> None:
+        o = await self._pk(AGENTS, AGENTS_REALM, _req(observer, "observer"))
+        s = await self._pk(AGENTS, AGENTS_REALM, _req(subject, "subject"))
+        if o is None or s is None:
+            raise KeyError("observer or subject not found")
+        await self._c.upsert_edge(OPINION, realm=AGENTS_REALM,
+                                  from_id=o, to_id=s, relation_type=attribute,
+                                  space=observer, payload=payload)
 
-    async def record_decision(self, agent_uuid: str, record: dict) -> None:
+    async def record_decision(self, agent_uuid: str, payload: dict) -> None:
         """Append-only, never sampled (execution-spec §6)."""
         a = _req(agent_uuid, "agent")
-        await self._c.add_vertex_data(DECISIONS, key=a, realm=AGENTS_REALM,
-                                      space=a, record=record)
+        pk = await self._upsert_by_key(DECISIONS, AGENTS_REALM, a, {}, space=a)             if await self._pk(DECISIONS, AGENTS_REALM, a) is None else             await self._pk(DECISIONS, AGENTS_REALM, a)
+        await self._c.add_vertex_data(DECISIONS, realm=AGENTS_REALM,
+                                      vertex_id=pk, payload=payload)

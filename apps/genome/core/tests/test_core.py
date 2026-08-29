@@ -113,22 +113,73 @@ class TestOpinion(unittest.TestCase):
         self.assertGreater(d.estimate, 5000.0)
 
 
+class _V:
+    def __init__(self, vid, payload): self.id, self.payload = vid, payload
+
+
 class _FakeClient:
-    """Captures post-graph calls: every call must carry a non-empty realm."""
+    """Mirrors post_graph 1.0.1 signatures; asserts realm on every call."""
     def __init__(self):
         self.calls = []
+        self.vertices = {}
 
-    def _record(self, method, kw):
-        assert kw.get("realm"), "realm must always be present"
-        self.calls.append((method, kw))
+    def _rec(self, method, realm, **kw):
+        assert realm, "realm must always be present"
+        self.calls.append((method, realm, kw))
 
-    async def upsert_vertex(self, table, **kw): self._record("upsert", kw)
-    async def add_vertex_data(self, table, **kw): self._record("append", kw)
-    async def add_edge(self, table, **kw): self._record("edge", kw)
-    async def get_vertices(self, table, **kw): self._record("get", kw); return []
-    async def create_vertex_table(self, *a, **kw):
-        assert kw.get("realm"), "DDL must name its realm"
-    async def create_edge_table(self, *a, **kw): pass
+    _next_id = 1000
+
+    async def add_vertex(self, table_name, realm, space="default",
+                         payload=None, **kw):
+        self._rec("add", realm, table=table_name, space=space)
+        _FakeClient._next_id += 1
+        v = _V(_FakeClient._next_id, payload or {})
+        self.vertices[(table_name, realm, v.id)] = v
+        return v
+
+    async def upsert_vertex(self, table_name, realm, vertex_id=None,
+                            payload=None, space="default", **kw):
+        assert isinstance(vertex_id, int), "vertex_id must be an integer pk"
+        self._rec("upsert", realm, table=table_name, vertex_id=vertex_id,
+                  space=space)
+        self.vertices[(table_name, realm, vertex_id)] = _V(vertex_id, payload)
+
+    async def add_vertex_data(self, table_name, realm, vertex_id, payload, **kw):
+        self._rec("append", realm, table=table_name, vertex_id=vertex_id)
+
+    async def upsert_edge(self, table_name, realm, from_id, to_id,
+                          relation_type, edge_id=None, payload=None,
+                          space="default", **kw):
+        self._rec("edge", realm, space=space)
+
+    async def get_vertices(self, table_name, realm, space=None, limit=None):
+        self._rec("get", realm, table=table_name)
+        return [v for (t, r, _), v in self.vertices.items()
+                if t == table_name and r == realm]
+
+    async def find_vertices(self, table_name, realm, filters, limit=None, **kw):
+        self._rec("find", realm, table=table_name)
+        rows = [v for (t, r, _), v in self.vertices.items()
+                if t == table_name and r == realm
+                and all(v.payload.get(k) == fv for k, fv in filters.items())]
+        return rows[:limit] if limit else rows
+
+    async def get_vertex(self, table_name, realm, vertex_id, strict=False):
+        self._rec("get1", realm, table=table_name)
+        return self.vertices[(table_name, realm, vertex_id)]
+
+    async def get_latest_vertex_data(self, table_name, realm, vertex_id, **kw):
+        self._rec("latest", realm, table=table_name)
+        return None
+
+    async def create_vertex_table(self, table_name, realm=None, **kw):
+        assert realm, "DDL must name its realm"
+        self._rec("ddl", realm, table=table_name)
+
+    async def create_edge_table(self, table_name=None, *, from_vertex_table,
+                                to_vertex_table, realm=None, **kw):
+        assert realm, "DDL must name its realm"
+        self._rec("ddl_edge", realm, table=table_name)
 
 
 def _run(coro):
@@ -149,25 +200,38 @@ class TestStoreGuard(unittest.TestCase):
             _run(store.ensure_world_realm(_FakeClient(), None))
 
     def test_world_realm_is_one_to_one(self):
-        # a world's data lives in a realm named by the world itself
         c = _FakeClient(); s = store.GenomeStore(c)
         _run(s.put_pile("world-1", "pile-9", {"kind": 3}))
         _run(s.schedule("world-1", "ev-1", "t1", "arrival", "a-1", {}))
-        self.assertTrue(all(kw["realm"] == "world-1" for _, kw in c.calls))
+        self.assertTrue(all(realm == "world-1" for _, realm, _ in c.calls))
 
-    def test_agent_data_lives_in_agents_realm_with_agent_space(self):
+    def test_agent_data_in_agents_realm_with_agent_space(self):
         c = _FakeClient(); s = store.GenomeStore(c)
         _run(s.put_agent("agent-7", {"alive": True}))
-        _run(s.record_decision("agent-7", {"choice": "mine"}))
-        for _, kw in c.calls:
-            self.assertEqual(kw["realm"], store.AGENTS_REALM)
-            self.assertEqual(kw["space"], "agent-7")
+        writes = [(m, realm, kw) for m, realm, kw in c.calls if m == "add"]
+        self.assertEqual(writes[0][1], store.AGENTS_REALM)
+        self.assertEqual(writes[0][2]["space"], "agent-7")
 
     def test_decisions_and_movement_append_only(self):
         c = _FakeClient(); s = store.GenomeStore(c)
+        _run(s.put_agent("agent-7", {"alive": True}))
         _run(s.record_decision("agent-7", {"choice": "mine"}))
         _run(s.set_movement("agent-7", {"to_x": 1.0}))
-        self.assertEqual([m for m, _ in c.calls], ["append", "append"])
+        appends = [m for m, _, _ in c.calls if m == "append"]
+        self.assertEqual(appends, ["append", "append"])
+        upserts_on_history = [kw for m, _, kw in c.calls
+                              if m == "upsert" and kw.get("table") in
+                              (store.DECISIONS,)]
+        self.assertEqual(upserts_on_history, [])  # history never updated in place
+
+    def test_event_lifecycle(self):
+        c = _FakeClient(); s = store.GenomeStore(c)
+        _run(s.schedule("w1", "e1", "2026-01-01T01:00", "arrival", "a1", {}))
+        _run(s.schedule("w1", "e2", "2026-01-01T03:00", "arrival", "a2", {}))
+        due = _run(s.due_events("w1", "2026-01-01T02:00"))
+        self.assertEqual([v.payload["key"] for v in due], ["e1"])
+        _run(s.complete_event("w1", "e1", "2026-01-01T02:01"))
+        self.assertEqual(_run(s.due_events("w1", "2026-01-01T02:00")), [])
 
 
 if __name__ == "__main__":
