@@ -239,6 +239,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Both parties lose Stamina, loser more; recovery at reStamina (9.3b)
 - [ ] Winner takes cargo to its ceiling, remainder stays (9.3c, 4.19a)
 - [ ] Mana spent to press an attack (9.3d); zero Stamina incapacitates without killing (9.3e)
+- [ ] **Winner's maximum Stamina permanently reduced by Attrition** (`genotype-spec.md` 3.8c); loser recovers in full
+- [ ] Zero maximum Stamina perishes, Rule 7.2 applying as for any death (3.8d)
 - [ ] **Selection-differential check**: combat loci against dispositions, per §3.8's warning
 
 **Done when:** two agents meet, negotiate, and cargo moves atomically — and a counterparty walking away mid-deal is recorded as an outcome, not an error.
