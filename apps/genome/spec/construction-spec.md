@@ -669,6 +669,23 @@ in the nascent world. One not carried is destroyed with everything else
 their original arrangement, rates and quantities; **deposited stock is
 destroyed**; and **every construction is destroyed except the Ark itself**.
 
+**Rule 4.4a** — "The Ark itself" includes a **partial** one: contributions to the
+hull survive a flood. The seventeen constructions beneath it are destroyed as
+ever, prerequisites for *further* contribution included.
+
+> Without this the first Ark may be arithmetically impossible. The full tree plus
+> the Ark would have to complete inside a single cycle — as short as fifteen days —
+> with eight users' agents travelling at six hours a world under a fifteen-unit
+> cargo cap. If the economy dry-run showed that infeasible, the top of the entire
+> objective hierarchy would be unreachable and nobody would discover it until the
+> simulation had run for months.
+>
+> Persistent hull progress makes the first Ark a **multi-cycle undertaking**: each
+> flood wipes the scaffolding, the keel remains, and the coalition rebuilds its
+> prerequisites to contribute again. Every cycle the water takes everything except
+> the one thing the coalition is accumulating — which is the Ark's own story told
+> about its construction.
+
 **Rule 4.5** — Agents sheltered in the Ark survive **entire** — cargo, knowledge,
 gained attributes and retained antigens intact.
 

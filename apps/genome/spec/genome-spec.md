@@ -1292,6 +1292,20 @@ is the floor. Higher objectives may be **ascribed by the owning user** or
 **Rule 10.1a** — A **user prompt to an agent outranks every other objective**,
 and holds that rank until the user judges it answered or cancels it.
 
+**Rule 10.1d** — Rank is absolute; **fidelity is not**. Amenability governs how
+faithfully an agent serves an instruction it cannot outrank: a high-Amenability
+agent executes as asked, a low one pursues the objective its own way, minimally,
+or under the widest interpretation it can defend.
+
+> This settles a contradiction between 10.1a and Amenability's definition —
+> "openness to being instructed by its owner" gated nothing if rank was
+> unconditional. The split is **obedience of rank, independence of method**: the
+> owner always decides *what*; the genotype decides *how*, and how much. A defiant
+> agent does not refuse; it complies in the least helpful legitimate way, which is
+> both truer to how instruction-following actually fails and far more interesting
+> to watch. §13.5's berth reading — *give it to your sister* runs through
+> Amenability — already assumed exactly this.
+
 **Rule 10.1c** — An objective **ascribed by the owning user cannot be displaced
 by one learned from another agent**. Learned objectives compete only for the
 ranks below whatever the owner has set.

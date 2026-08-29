@@ -282,7 +282,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Replication, contagion, **infection distance** (`pathogen-spec.md` Rule 2.4); contact probability (Rule 2.5); creation chance on teleport
 - [ ] Expression modifiers changing phenotype, not genotype; defences are three heritable things (Rule 2.2)
 - [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8-16 dimensions (Rule 2.0)
-- [ ] **Antigens synthesised during infection**, after Detection Latency, at Synthesis Speed (Rule 2.18a)
+- [ ] **Antigens synthesised during infection**, after Immune Vigilance's detection delay, at Synthesis Speed (Rule 2.18a)
 - [ ] Antigen as a **vector in signature space**, unbound to any strain (2.18b)
 - [ ] Recovery when **combined coverage** crosses the threshold, or at a Sanatorium (2.18c, 2.18f)
 - [ ] Antigen **decay rate fixed at synthesis** from the maker's genotype (2.18d), modulated by the holder (2.19)
@@ -396,12 +396,12 @@ and need a decision before the phase that meets them.
 - [x] **A berth's fate on death was undefined.** Resolved: lost, returning to unassigned (`construction-spec.md` Rule 3.7g).
 
 ### Found by structural analysis (composition, not coverage)
-- [ ] ⚠ **Two loci are deleterious in every direction, which the budget will erase.** Attrition (high = lose more per win) and Detection Latency (high = detected later) have **no compensating benefit**. If they sit inside the allocation budget, a high value is doubly bad — worse outcomes *and* budget stolen from useful loci — so selection pins both to the floor within a few generations and they become monomorphic: decorative by extinction of variance, exactly what §11.12 forbids, arrived at by a route Rule 3.19 does not police.
+- [x] **Deleterious-direction loci repaired.** Attrition is now intensity (adds to Attack, burns maximum Stamina on wins); Detection Latency became **Immune Vigilance** (fast detection costs Stamina regeneration). Both are trade-offs selection can settle either way (`genotype-spec.md` 3.8c/3.8e).
 - [ ] ⚠ **The four new loci never state their budget membership.** Rule 3.23 lists what is outside; Attrition, Maturation, Detection Latency and Synthesis Speed are in the physiological table, implying inside — never said. And adding budgeted loci **dilutes every existing agent's expressed values** (share = norm/Σ), which is fine pre-launch and a live-population migration problem after it.
 - [ ] ⚠ **Construction resource costs do not exist.** The tree specifies kinds and contributor counts and never unit quantities — there is no cost table for any of the eighteen constructions or the Ark. Every feasibility claim in §4.2 is unfalsifiable until they exist.
-- [ ] ⚠ **Ark feasibility inside one cycle is unverified arithmetic.** Rule 4.4 destroys every construction except "the Ark itself"; whether a *partial* Ark survives is unstated. If it does not, the full 18-tree plus Ark must complete inside a minimum 15-day cycle with 8 users' agents travelling at ~6h/world under a 15-unit cargo cap — which may be impossible, meaning **no first Ark is ever built**.
+- [x] **Partial Ark survives** (Rule 4.4a): hull contributions persist across floods, so the first Ark is a multi-cycle undertaking and the one-cycle impossibility cannot strand the objective hierarchy. Economy dry-run still required to size the cycles.
 - [ ] ⚠ **The validated prompts are not the production prompts.** Every ρ in `validation/RESULTS.md` came from prompts showing 14 dispositions. Rule 6.6a's self-knowledge adds faculties, pools, maxima, cargo, objectives and opinions — several times the context. Expression may not survive the dilution; **the validation must be re-run with the full production prompt** before Phase 2's done-when is meaningful.
-- [ ] ⚠ **Amenability and Rule 10.1a pull in opposite directions.** 10.1a makes an owner's prompt outrank everything unconditionally; Amenability is "openness to being instructed by its owner." If rank is absolute, Amenability gates nothing for owners; if Amenability moderates, 10.1a is not a rule. §13.5's berth commentary already assumes the Amenability reading.
+- [x] **Amenability vs 10.1a settled: rank absolute, fidelity is not** (Rule 10.1d). The owner decides what; the genotype decides how, and how much.
 - [ ] ⚠ **A fake antigen reopens the bioweapon door.** Antigens are information (2.18e), shared as claims. Rule 4.2 of pathogen-spec decided disease is never a weapon — but sharing a *corrupt* antigen that covers nothing is deception with epidemiological consequences, discovered only on infection.
 
 ### ⚠ Still unresolved
