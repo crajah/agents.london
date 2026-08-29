@@ -648,8 +648,25 @@ agent in that world, visitors included.
 **Rule 4.9** — A flood kills **every agent present in the world** when it
 arrives, **whether or not it is their home world**. Visitors die with natives.
 
-**Rule 4.10** — A **berth on an Ark is the only exemption.** Nothing else saves an
-agent that is present: not a construction, not standing, not whose world it is.
+**Rule 4.10** — A **berth on an Ark is the only exemption**, and only if the agent
+is **aboard when the water arrives**. Holding a berth is not being in it.
+
+**Rule 4.10a** — Boarding requires the agent to be **at the Ark**, which is in one
+specific world. An agent elsewhere when the flood comes is saved by being
+elsewhere (Rule 4.11), never by a berth it did not reach.
+
+> Rules 4.10 and 4.10a were implied throughout §4 and never stated, which made the
+> rule as written say something nobody intended: that a berth-holder survives
+> anywhere. Under that reading a coalition could buy berths and then ignore the
+> water entirely, and §4.2's whole account of the countdown — *which agents board,
+> and which are left in the water* — would describe nothing.
+>
+> Boarding is what makes the two-day window a **race rather than an errand**. An
+> agent four hops out with a berth in its name is in as much danger as one with
+> none, the Ark's host world becomes a destination under a deadline, and a berth
+> bought late from an agent that cannot reach the ship is worth exactly nothing.
+> That last case is a real trade and a real risk, and it only exists because
+> holding and boarding are different things.
 
 **Rule 4.11** — An agent **elsewhere when the water comes is untouched**. Presence
 is the criterion, and only presence.
