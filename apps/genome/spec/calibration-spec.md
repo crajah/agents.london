@@ -79,6 +79,7 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 | **Commons capacity or sharding** | Phase 5 | One commons for every world is a crowd at scale |
 | **Stamina lost per exchange** | Phase 6 | Winner and loser both pay (`genome-spec.md` 9.3b); the ratio between them sets how costly winning is |
 | **Mana-to-Attack exchange rate** | Phase 6 | Rule 9.3d lets Mana press an attack; nothing sets how far |
+| **Attrition percentage range** | Phase 6 | What 0–10000 maps to per victory. Against Maturation's rise, this decides whether a fighting lineage is viable at all — the single most consequential combat number |
 | **Maturation curve shape** | Phase 8 | Linear, or accelerating late (`genotype-spec.md` 3.8a) |
 | **Attack-versus-Agility resolution** | Phase 6 | Rule 9.3a is probabilistic; the function is unset |
 

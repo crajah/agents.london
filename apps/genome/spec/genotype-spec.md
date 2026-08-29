@@ -111,6 +111,7 @@ them evolving straight to its maximum.
 | Range | 1–100 | Distance at which it can strike |
 | Sight | 1–100 | Distance at which it can sense |
 | reStamina | 0–1 | Regenerates stamina |
+| Attrition | 0–10000 | Share of **maximum** Stamina permanently lost on each victory |
 | reMana | 0–1 | Regenerates mana |
 
 ### 3.2 Disposition — what an agent tends to do
@@ -319,6 +320,37 @@ govern it.
 **Rule 3.8a** — **Maturation** is a locus, 0–10000. It governs how an agent's two
 pools change over its life: **Stamina rises** and **Mana falls**, both at a rate
 set by this locus.
+
+**Rule 3.8c** — An agent that **wins** an encounter permanently reduces its
+**maximum** Stamina by its **Attrition** share. The loser pays only in *current*
+Stamina and recovers in full.
+
+**Rule 3.8d** — An agent whose maximum Stamina reaches zero **perishes**, and
+`genome-spec.md` Rule 7.2 applies as for any other death.
+
+> **The loser heals; the winner ages.** That asymmetry is the whole point and it
+> inverts the obvious reading of a fight. A beaten agent is emptied and recovers;
+> a victorious one keeps the cargo and never quite gets back what it spent. Every
+> win is drawn against a balance that does not refill.
+>
+> **It makes aggression self-limiting without forbidding it.** Without Rule 3.8c
+> the strongest fighter simply keeps winning, and nothing in the design stops it —
+> risk alone does not, because a sufficiently strong agent faces very little.
+> With it, raiding has diminishing returns built into the raider rather than into
+> its victims, and the population does not need to coordinate a response to a
+> bully who is already dismantling himself.
+>
+> **And it makes a genuine life-history axis with Maturation.** Rule 3.8a raises
+> maximum Stamina with age while Rule 3.8c lowers it with every victory, so an
+> agent's toughness across its life is the race between the two. A peaceful old
+> agent is formidable; a veteran of the same age is not. Some lineages are built
+> to fight — high Maturation, low Attrition — and some are ruined by it, and which
+> is which is heritable, so selection settles how much violence the population can
+> afford.
+>
+> Rule 3.8d makes the limit real rather than asymptotic. An agent that fights
+> without pause destroys itself, which is burnout as a mechanic and the third way
+> to die after Longevity and the water.
 
 **Rule 3.8b** — The pools' *composition* is unchanged (§4). Maturation scales what
 the composition yields as the agent ages; it does not alter the terms.
