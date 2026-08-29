@@ -65,6 +65,23 @@ cross-world leak, not an empty result.
 > that takes the realm as a required argument — never a default, never inferred
 > from context.
 
+**Rule 3.2a** — **All storage goes through post-graph and post-graph-rag. Direct
+DDL is forbidden** — genome never issues CREATE TABLE, and a migration file is a
+defect, not a convenience.
+
+**Rule 3.2b** — The substrate mapping, stated once: post-graph realm **`genome`**
+is the one schema; **each world is a post-graph space**; agents' private
+knowledge stores are **post-graph-rag** with agent-keyed spaces
+(`genome-spec.md` §8). The specification's own word *realm* (a world) maps to a
+post-graph **space** — the naming collision is resolved here and nowhere else.
+
+> Rule 3.5 of `genome-spec.md` chose logical realms in one schema precisely so
+> scale stays a configuration question; post-graph spaces are that mechanism
+> already built, hardened by the services running beside genome. Hand-rolled
+> tables would have duplicated the substrate the design names (Rule 1.1) and
+> quietly created a second tenancy model to keep consistent with the first —
+> which was attempted once, caught, and deleted.
+
 **Rule 3.3** — The shapes that matter are **intents and events**, not states:
 
 ```
