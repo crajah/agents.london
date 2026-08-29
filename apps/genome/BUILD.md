@@ -42,9 +42,9 @@ phase is not done until the journeys it unblocks work end to end.
 | J8 | Import contacts, propose, get confirmed, watch a portal appear | 5 |
 | J9 | Watch two agents meet and strike a trade, and see what each believed | 6, 7.4 |
 | J10 | Author a plan by conversation and watch agents build it | 10 |
-| J11 | Come back after two days and understand what happened while I was away | 12 |
-| J12 | See a flood countdown, and see who boards | 10, 12 |
-| J13 | Leave: export what is mine, delete the rest | 13 |
+| J11 | Come back after two days and understand what happened while I was away | 11 |
+| J12 | See a flood countdown, and see who boards | 10, 11 |
+| J13 | Leave: export what is mine, delete the rest | 12 |
 
 ---
 
@@ -283,7 +283,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 ---
 
-## Phase 12 — Absence and attention — J11, J12
+## Phase 11 — Absence and attention — J11, J12
 
 The world runs unattended (`system-spec.md` Rule 2.2), so returning must be
 comprehensible. This is the phase most easily forgotten and most felt.
@@ -297,7 +297,7 @@ comprehensible. This is the phase most easily forgotten and most felt.
 
 **Done when:** J11 and J12 work — two days away is legible in under a minute.
 
-## Phase 13 — Account lifecycle and data — J13
+## Phase 12 — Account lifecycle and data — J13
 
 Contact import makes this non-optional rather than a courtesy.
 
@@ -310,7 +310,7 @@ Contact import makes this non-optional rather than a courtesy.
 
 **Done when:** J13 works and a deleted account leaves nothing behind but the other side of a severed connection.
 
-## Phase 14 — Admin and operability
+## Phase 13 — Admin and operability
 
 - [ ] Inspect a world: lease holder, queue depth, oldest due event, last tick
 - [ ] **Find a stalled world** — a world where nothing happens is indistinguishable from a world where nothing was due (`system-spec.md` Rule 8.2)
@@ -319,7 +319,7 @@ Contact import makes this non-optional rather than a courtesy.
 - [ ] Pause and resume a world; drain a worker for deploy
 - [ ] Cost per world and per user, with the biggest spenders visible
 
-## Phase 11 — Operations
+## Phase 14 — Operations
 
 - [ ] Decision record retention distinct from telemetry (`system-spec.md` Rule 6.1)
 - [ ] Model screen automated and re-run on pool change (`execution-spec.md` Rule 10.7)
@@ -350,10 +350,10 @@ Contact import makes this non-optional rather than a courtesy.
 | Second texture atlas kills batching | `interface-spec.md` 6.12 | Frame-time budget in CI |
 | Agent-facing read reuses a user-facing path | `interface-spec.md` 1.1 | Separate modules, no shared repository |
 | Model pool drifts below 1.5× | `execution-spec.md` 10.6 | Screen re-run gated on pool change |
-| Stalled world looks identical to a quiet one | `system-spec.md` 8.2 | Phase 14 lease and queue-depth view |
+| Stalled world looks identical to a quiet one | `system-spec.md` 8.2 | Phase 13 lease and queue-depth view |
 | Client interpolation drifts from server clock | `interface-spec.md` 6.13 | Arrival-event comparison assertion |
-| Digest rebuilt from a side log that diverges | Phase 12 | Digest derives from `event`/`decision` only |
-| Deleted account leaves contact material behind | `system-spec.md` 9.3 | Phase 13 deletion test |
+| Digest rebuilt from a side log that diverges | Phase 11 | Digest derives from `event`/`decision` only |
+| Deleted account leaves contact material behind | `system-spec.md` 9.3 | Phase 12 deletion test |
 
 ## Open, and answered only by running
 
