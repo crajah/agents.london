@@ -517,7 +517,7 @@ yet linked*.
 **Rule 6.2f** — Every world holds a permanent portal to **the commons**: a single
 ownerless world that belongs to no user, has no piles, and never floods.
 
-**Rule 6.2f-i** — The commons is **sharded**: many instances, each world assigned
+**Rule 6.2h** — The commons is **sharded**: many instances, each world assigned
 to one **permanently at creation**, sized at hundreds of worlds per shard.
 
 > Stable assignment is the property that matters. *Meet me at the commons* must

@@ -59,7 +59,7 @@ No behaviour. Everything later assumes this shape.
 
 ### 0.2 Schema
 - [ ] `world(realm_id, uuid, kinds[2], colours[2], flood_at, aggregate_stock)`
-- [ ] `agent(uuid, realm_id, genotype, cargo, home_realm, alive, models, colour_pair)`
+- [ ] `agent(uuid, realm_id, genotype, cargo, home_realm, alive, models, colour_pair, name, parents[2], born_at, stamina, stamina_max, mana, mana_max, cert_ref)`
 - [ ] `movement(agent_id, from_xy, to_xy, departed_at, arrives_at)` (`execution-spec.md` Rule 2.1)
 - [ ] `pile(uuid, realm_id, kind, xy, qty_at, measured_at, rate, cap)` (Rule 2.3)
 - [ ] `portal(realm_id, to_realm, xy)` — random placement, fixed (`genome-spec.md` Rule 6.2e)
@@ -68,6 +68,7 @@ No behaviour. Everything later assumes this shape.
 - [ ] `decision(agent_uuid, at, situation, inputs, model, tier, choice)` (`execution-spec.md` Rule 6.1)
 - [ ] `model_key(user_id, scope, provider, ciphertext, visitors_allowed)` (Rule 9.3)
 - [ ] `connection(user_a, user_b, confirmed_at)` — mutual only (`system-spec.md` Rule 9.4)
+- [ ] Core only; later phases add their own tables where the work lands: `objective`, `negotiation` (6), `chat` (7), `infection`, `strain`, `antigen` (9), `construction`, `plan`, `berth`, `ark_manifest` (10), `digest` derives and is not stored (11)
 - [ ] Migrations, seed fixtures, rollback tested against a copy
 
 ### 0.3 Realm scoping — the highest-risk primitive
@@ -130,6 +131,7 @@ The bet the whole design rests on. Prove it before building on it.
 - [ ] **Self-knowledge in the prompt**: genotype, faculties, pools and maxima, cargo, objectives, opinions, preference weights (`genotype-spec.md` 6.6a)
 - [ ] Current **expression** shown alongside genotype, so infection and attrition are self-evident (6.6b)
 - [ ] **Never** how the agent appears to others — no appraised attractiveness (6.6c)
+- [ ] **Fidelity, not rank**: Amenability expressed as how faithfully the top objective is served (`genome-spec.md` Rule 10.1d)
 
 ### 2.4 Opinions
 - [ ] EWMA with Vindictiveness decay (`genotype-spec.md` Rules 6.9, 6.10)
@@ -221,7 +223,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Explain the one thing that is not guessable: **you cannot reach four kinds alone** (Rule 2.3)
 - [ ] Contact import offered, never required — the world must be usable with zero connections
 - [ ] **Commons portal present from creation** (`genome-spec.md` Rule 6.2f); one-way exit enforced (6.2g)
-- [ ] Commons **sharded, stable assignment** at world creation, hundreds of worlds per shard (6.2f-i)
+- [ ] Commons **sharded, stable assignment** at world creation, hundreds of worlds per shard (6.2h)
 - [ ] Cold-start path provable: agent → commons → trade → four kinds → second agent
 - [ ] Account with no connections still runs: agents gather, deposit, and hit the four-kind wall visibly
 
@@ -240,7 +242,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Proposals bind; claims are evidence (7.3); timeouts are scheduled events (7.4)
 - [ ] Two-phase handoff, no intermediate custody (`system-spec.md` Rules 5.1, 5.2)
 - [ ] **Combat**: Attack against Attack moderated by Agility, probabilistic (`genome-spec.md` 9.3a)
-- [ ] Both parties lose Stamina, loser more; recovery at reStamina (9.3b)
+- [ ] Both parties lose Stamina, loser more; recovery at reStamina (9.3b), **less Immune Vigilance's watch-cost** (`genotype-spec.md` 3.8e)
 - [ ] Winner takes cargo to its ceiling, remainder stays (9.3c, 4.19a)
 - [ ] Mana spent to press an attack (9.3d); zero Stamina incapacitates without killing (9.3e)
 - [ ] **Winner's maximum Stamina permanently reduced by Attrition** (`genotype-spec.md` 3.8c); loser recovers in full
@@ -300,7 +302,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 - [ ] 18 constructions, five branches, contributor counts 1/2/3/4/5 (`construction-spec.md` §2)
 - [ ] Contributor counted once per **user** (Rule 3.4); claims enforced not promised (3.7)
-- [ ] Berths: one per agent, **exchangeable to anyone**, tradeable during countdown (3.7a–3.7d)
+- [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
 - [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)
 - [ ] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a)
 - [ ] Ark lands in the host's world; **foreign survivors emerge there** and must travel home (4.3c)
@@ -401,7 +403,7 @@ and need a decision before the phase that meets them.
 
 ### Found by structural analysis (composition, not coverage)
 - [x] **Deleterious-direction loci repaired.** Attrition is now intensity (adds to Attack, burns maximum Stamina on wins); Detection Latency became **Immune Vigilance** (fast detection costs Stamina regeneration). Both are trade-offs selection can settle either way (`genotype-spec.md` 3.8c/3.8e).
-- [x] **Budget membership stated: all four inside**, with Longevity's membership made deliberate (Rule 3.23a). The outside list stays short and closed. Rule 3.23 lists what is outside; Attrition, Maturation, Detection Latency and Synthesis Speed are in the physiological table, implying inside — never said. And adding budgeted loci **dilutes every existing agent's expressed values** (share = norm/Σ), which is fine pre-launch and a live-population migration problem after it.
+- [x] **Budget membership stated: all four inside**, with Longevity's membership made deliberate (`genotype-spec.md` Rule 3.23a). Pre-launch dilution is free; post-launch additions need the genotype-versioning task below.
 - [ ] ⚠ **Construction resource costs do not exist.** The tree specifies kinds and contributor counts and never unit quantities — there is no cost table for any of the eighteen constructions or the Ark. Every feasibility claim in §4.2 is unfalsifiable until they exist.
 - [x] **Partial Ark survives** (Rule 4.4a): hull contributions persist across floods, so the first Ark is a multi-cycle undertaking and the one-cycle impossibility cannot strand the objective hierarchy. Economy dry-run still required to size the cycles.
 - [ ] ⚠ **The validated prompts are not the production prompts.** Every ρ in `validation/RESULTS.md` came from prompts showing 14 dispositions. Rule 6.6a's self-knowledge adds faculties, pools, maxima, cargo, objectives and opinions — several times the context. Expression may not survive the dilution; **the validation must be re-run with the full production prompt** before Phase 2's done-when is meaningful.
@@ -414,7 +416,7 @@ and need a decision before the phase that meets them.
 - [x] **Carrier death mid-portage.** Resolved: the construction is **set down where the party stands** and any group of the required number of distinct users may take it up, strangers included (Rule 3.12a).
 - [x] **Where a foreign agent emerges after boarding.** Resolved: **in the world where the Ark came to rest** — its host's — whoever owns the agent (Rule 4.3c). A survivor is a guest with a journey ahead of it.
 - [x] **Which world a strain is created in on teleport.** Resolved: **both ends, independently rolled**.
-- [ ] ⚠ **Twelve quantities remain unset**, each blocking a named phase — see [`spec/calibration-spec.md`](spec/calibration-spec.md) §4. Two are experiments in their own right: the **Longevity → lifespan** mapping (§11.2 calls it the first thing to calibrate) and the **mutation step size**, which decides whether selection has anything to climb.
+- [ ] ⚠ **Mechanical calibration constants remain unset** (live count in [`spec/calibration-spec.md`](spec/calibration-spec.md) §4 — currently 15). All are rates, thresholds and exchange functions with sensible first values; the two that were experiments (lifespan, mutation step) are now set.
 - [x] **Trade breaching the cargo ceiling.** Resolved: **partially accepted** up to 15, remainder stays with the giver — covering trade and spoils alike (Rule 4.19a).
 - [x] **Combat was referenced and never specified.** Rule 9.3 allowed encounters to resolve in aggression and never said what that meant, while `Range`, `Agility`, `Courage`, both pools and both regeneration loci sat unused. Resolved: Rules 9.3a–9.3e and the **Maturation** locus (`genotype-spec.md` 3.8a).
 
