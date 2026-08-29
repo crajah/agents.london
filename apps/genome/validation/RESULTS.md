@@ -53,13 +53,19 @@ fidelity at following a stated disposition.
 
 ### 2. Expression strength is not uniform, and must be recorded per locus
 
-Robust in **all four** cells — safe to lean on the prompt:
+The operative question is per-locus behaviour on the tier actually deployed
+(flash-lite, randomised backgrounds — Rule 12.16). Against that:
 
-> Aggression · Curiosity · Fecundity · Vindictiveness · Wanderlust
+| | Loci |
+| :--- | :--- |
+| Robust in **all four** cells — safe to lean on the prompt | Aggression · Curiosity · Fecundity · Vindictiveness · Wanderlust |
+| Pass on the deployed tier but not on DeepSeek — portability caveat, not a design flaw | Amenability · Credulity · Honesty · Loyalty · Patience · Prudence · Reciprocity |
+| **Fail on the deployed tier** — the prompt cannot be relied on | **Cooperativeness · Selectivity** |
+| Fail on *both* models under realistic backgrounds | **Cooperativeness** alone |
 
-Fail under realistic backgrounds on both models — the prompt cannot be relied on:
-
-> Cooperativeness · Amenability · Honesty · Patience · Reciprocity · Credulity
+Only Cooperativeness fails everywhere. The middle row is a statement about
+DeepSeek's fidelity, not about those loci: it is the same weakness Rule 12.16
+already acts on by not deploying that model.
 
 ### 3. Cooperativeness is the problem case, and it is the one that matters most
 
