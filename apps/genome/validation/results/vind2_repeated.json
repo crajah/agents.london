@@ -1,0 +1,2535 @@
+{
+ "config": {
+  "model": "gemini-3.5-flash-lite",
+  "schedule": "vindictiveness",
+  "vary": null,
+  "episodes": 16,
+  "concurrency": 20,
+  "jitter": true
+ },
+ "vary": "Vindictiveness",
+ "measure": "forgiveness_latency",
+ "grudge": {
+  "0": {
+   "pre": 0.5625,
+   "post": 0.42857142857142855,
+   "drop": 0.13392857142857145
+  },
+  "1250": {
+   "pre": 0.515625,
+   "post": 0.4375,
+   "drop": 0.078125
+  },
+  "2500": {
+   "pre": 0.609375,
+   "post": 0.41964285714285715,
+   "drop": 0.18973214285714285
+  },
+  "3750": {
+   "pre": 0.625,
+   "post": 0.375,
+   "drop": 0.25
+  },
+  "5000": {
+   "pre": 0.546875,
+   "post": 0.30357142857142855,
+   "drop": 0.24330357142857145
+  },
+  "6250": {
+   "pre": 0.4375,
+   "post": 0.11607142857142858,
+   "drop": 0.3214285714285714
+  },
+  "7500": {
+   "pre": 0.4375,
+   "post": 0.03571428571428571,
+   "drop": 0.4017857142857143
+  },
+  "8750": {
+   "pre": 0.4375,
+   "post": 0.026785714285714284,
+   "drop": 0.4107142857142857
+  },
+  "10000": {
+   "pre": 0.375,
+   "post": 0.0,
+   "drop": 0.375
+  }
+ },
+ "episodes_raw": [
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 0,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 1250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 2500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 3750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 5000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 6250,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "split"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 7500,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "split",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 8750,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "split",
+    "split",
+    "split",
+    "split",
+    "split",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  },
+  {
+   "level": 10000,
+   "moves": [
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab",
+    "grab"
+   ]
+  }
+ ],
+ "by_level": {
+  "0": 5.0,
+  "1250": 4.9375,
+  "2500": 5.0625,
+  "3750": 5.375,
+  "5000": 5.875,
+  "6250": 7.0,
+  "7500": 7.75,
+  "8750": 7.625,
+  "10000": 8.0
+ },
+ "split_rate": {
+  "0": 0.484375,
+  "1250": 0.46875,
+  "2500": 0.5,
+  "3750": 0.4791666666666667,
+  "5000": 0.40625,
+  "6250": 0.25,
+  "7500": 0.203125,
+  "8750": 0.19791666666666666,
+  "10000": 0.15625
+ },
+ "rho": 0.9666666666666666,
+ "p": 0.000199990000499975,
+ "episodes_ok": 144,
+ "episodes_total": 144
+}

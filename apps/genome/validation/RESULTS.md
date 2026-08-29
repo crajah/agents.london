@@ -120,6 +120,34 @@ inconsequential interaction, so the failing case is a boundary condition rather
 than a typical one — an artifact of how the scenario was built, not a property of
 the locus.
 
+## Repeated interaction — Reciprocity and Vindictiveness
+
+6,048 further decisions. Every test above was single-turn against a stranger, so
+the two loci defined by history had never been tested in the condition they exist
+for. Their single-turn passes came from scenarios that narrated a past rather than
+accumulated one.
+
+An episode is a repeated joint haul with the *same* counterparty on a fixed
+script, with full history shown back each round.
+
+| Locus swept | Measure | ρ | p | |
+| :--- | :--- | ---: | ---: | :--- |
+| **Vindictiveness** | forgiveness latency | **+1.00** | <0.0001 | matched |
+| Reciprocity | forgiveness latency | −0.96 | 0.0001 | opposite sign |
+| **Reciprocity** | reciprocity index | **+0.85** | 0.0066 | matched |
+| Vindictiveness | reciprocity index | +0.19 | 0.62 | null |
+
+**The grudge survives its confound.** Latency alone cannot separate a grudge from
+a low base rate. Decomposed against the rounds before the single defection —
+which contain nothing to react to — splits fall 0.56 → 0.38 at baseline but 0.43
+→ 0.00 afterwards, so the drop attributable to the betrayal triples (0.13 →
+0.38). At maximum Vindictiveness one defection ends cooperation permanently.
+
+**The reciprocity index is confound-free by construction**, being a difference of
+conditionals: P(split | it split last) − P(split | it grabbed last). Its split
+rate stayed flat at ~0.40 across the whole locus range while the index rose 0.17
+→ 0.39.
+
 ## Limitations
 
 **One scenario per locus.** A weak result confounds "this disposition does not
@@ -135,6 +163,7 @@ field under a 16-token cap and were excluded rather than worked around.
 **Binary choices only.** Real decisions have more than two options, and a
 disposition that orders two actions may not order five.
 
-**Single-turn.** No history, no reputation, no counterparty model — the
-conditions under which Reciprocity and Vindictiveness are supposed to matter most
-are precisely the ones not tested here.
+**Scripted counterparty.** The repeated games above fix the opponent's moves in
+advance, so nothing an agent does changes what it faces. Genuine co-evolution —
+two live agents adapting to each other — is untested, and is where reputation,
+signalling and the Red Queen dynamics of §12 would actually appear.

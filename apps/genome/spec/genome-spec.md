@@ -1525,6 +1525,63 @@ capability does not predict fidelity at following a stated disposition.
 least three distinct scenarios**, since one scenario cannot separate "the
 disposition does not express" from "this situation did not isolate it".
 
+#### 12.3.3 The history-dependent loci
+
+**Rule 12.18** — Loci defined by history are validated in **repeated interaction
+with a persistent counterparty**. A single-turn scenario that *describes* a past
+in a sentence is not admissible evidence for them.
+
+> Reciprocity and Vindictiveness passed the single-turn battery (ρ = 0.43 and
+> 0.66) on scenarios that narrated a history rather than accumulating one. Those
+> passes measured whether the model responds to a *description* of betrayal — a
+> different and much easier thing than whether it holds a betrayal against
+> someone it has been dealing with for eleven rounds. The two loci carrying the
+> Axelrod dynamics were, until this was run, the least tested in the genotype.
+
+Measured over 6,048 decisions in repeated joint hauls against a scripted
+counterparty (`apps/genome/validation/run_repeated.py`), with the other twelve
+dispositions randomised:
+
+| Locus swept | Measure | ρ | p | |
+| :--- | :--- | ---: | ---: | :--- |
+| **Vindictiveness** | forgiveness latency | **+1.00** | <0.0001 | matched |
+| Reciprocity | forgiveness latency | −0.96 | 0.0001 | opposite sign |
+| **Reciprocity** | reciprocity index | **+0.85** | 0.0066 | matched |
+| Vindictiveness | reciprocity index | +0.19 | 0.62 | null |
+
+**Rule 12.19** — **Vindictiveness governs how long a defection is held against a
+counterparty**, and does so beyond any general difference in cooperativeness.
+
+> The obvious objection is that a vindictive agent might simply grab more often,
+> making it slower to cooperate again without holding anything against anyone.
+> Decomposed against the rounds *before* the counterparty's single defection —
+> which contain no defection to react to, and so give each agent's own baseline —
+> the objection fails:
+>
+> | Vindictiveness | 0 | 10000 |
+> | :--- | ---: | ---: |
+> | splits before any defection | 0.56 | 0.38 |
+> | splits after one defection | 0.43 | **0.00** |
+> | drop attributable to the defection | +0.13 | **+0.38** |
+>
+> The baseline does fall, by 0.18 — a vindictive agent is warier in general, which
+> is coherent rather than confounding. But the *response to the betrayal* is three
+> times larger, and at the top of the range a single defection ends cooperation
+> permanently: zero splits across the remaining seven rounds.
+
+**Rule 12.20** — Reciprocity and Vindictiveness are **distinct and opposed** on
+forgiveness. Reciprocity shortens the return to cooperation; Vindictiveness
+lengthens it. Neither may be treated as a restatement of the other.
+
+> This is a better result than a null cross-control would have been. A reciprocator
+> resumes cooperating when its counterparty does, so it forgives *faster*
+> (ρ = −0.96); a vindictive agent does not (ρ = +1.00). The two loci move the same
+> measure in opposite directions, exactly as their definitions imply, while
+> Vindictiveness leaves the reciprocity index untouched (ρ = 0.19, p = 0.62). The
+> Axelrod decomposition of *nice, retaliatory, forgiving* is therefore carried by
+> two separable loci rather than one conflated disposition — which is what makes
+> the strategy space wide enough to be worth simulating.
+
 ### 12.4 What the hybrid costs and buys
 
 **Buys: deception and negotiation are performed rather than simulated.** Barter
