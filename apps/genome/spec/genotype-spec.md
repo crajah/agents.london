@@ -820,6 +820,57 @@ for more than old evidence, with the decay governed by the observer's
 > lucrative to defect against and vindictive ones are not, so the prevalence of
 > forgiveness and the prevalence of dishonesty regulate each other.
 
+**Rule 6.9a** — An agent carries a **general opinion**: a running average, in the
+same vector shape, over every agent it has actually met. An agent it has **never
+met** is seeded from this, and the general opinion is itself updated by every
+encounter.
+
+**Rule 6.9b** — The general opinion is seeded at **materialisation** from the
+population mean, and thereafter is the agent's own.
+
+**Rule 6.9c** — Colour is **not** built into the seed. It remains visible
+(§3.5) and may be folded into an opinion as evidence like anything else, but no
+rule ascribes attributes to it.
+
+> Rules 6.9a–6.9c close §9.6, and 6.9c is the load-bearing one.
+>
+> **Colour is genuinely informative, which is exactly why it must not be
+> installed.** It encodes the birth world's two resource kinds, and since an
+> agent draws one colour from each parent (§3.5) it carries lineage as well as
+> provenance — so colour really does say something about what an agent needs to
+> trade for. A colour-keyed seed would therefore be *partly* justified and then
+> overgeneralised, which is the phenomenon itself.
+>
+> Build it in and prejudice-by-provenance is an assumption someone installed.
+> Leave it out and it is a **result**. Colour stays visible, agents hold private
+> knowledge (`genome-spec.md` §8) and decide with an LLM, so where the correlation
+> is real and strong enough to learn from a few dozen encounters, agents will find
+> it and begin conditioning on colour unprompted. Prejudice then appears if and
+> only if it is earned, at the strength it is earned. If it never appears, that is
+> a finding too. **A simulation must not assume the result it exists to study.**
+>
+> **A neutral seed was rejected as both wrong and inert.** Under the allocation
+> budget (§3.10) the population mean of the expressed loci is determined, so a
+> fixed midpoint is systematically mistaken — and worse, it would give every agent
+> an identical view of every stranger, making first encounters interchangeable and
+> the machinery idle.
+>
+> Two consequences follow, and both are wanted.
+>
+> **Trust can now collapse.** An agent that meets many defectors grows wary of
+> everyone, defects pre-emptively, and makes others wary in turn. Nothing else in
+> the design could produce that, because until now suspicion had nowhere to
+> accumulate except against individuals.
+>
+> **Naivety is restored by death.** A general opinion is private knowledge, so
+> `genome-spec.md` Rule 7.3 destroys it. A regenerated agent trusts strangers
+> again — an old agent's caution is genuinely earned and genuinely lost, and
+> Longevity governs one more thing worth having.
+>
+> *Caveat, to measure rather than pre-empt:* encounters may be too sparse to learn
+> a twenty-colour correlation at all. If so the effect simply will not appear, and
+> that is the right threshold rather than a problem to engineer around.
+
 **Rule 6.11** — An agent may **project an attractiveness level**: a single value
 it broadcasts about itself, computed as a harmonic mean over its own attributes.
 A projection is a *claim*, not a reading — it is evidence folded into the average
@@ -1100,13 +1151,16 @@ testimony, never read directly. Colour is the sole visible attribute (§3.5).
 
 **9.6 Resolved** — opinions update as an exponentially weighted running average,
 with **Vindictiveness** as the decay constant (Rules 6.9–6.10), and projected
-attractiveness is evidence rather than fact (Rule 6.11). One residue: what an
-agent believes about a stranger it has **never met** and so has no average for.
-A neutral seed, the population mean, and a seed keyed to **colour** are all
-defensible — but the last makes prejudice-by-provenance an emergent property,
-since colour is the only visible attribute (§3.5). That may be exactly the sort
-of result this simulation exists to produce, or exactly the sort to exclude on
-purpose; it should not be decided by whichever is easiest to implement.
+attractiveness is evidence rather than fact (Rule 6.11).
+
+*The residue is now closed.* A stranger is seeded from the agent's **own general
+opinion** — a running average over everyone it has met, itself seeded at the
+population mean on materialisation (Rules 6.9a–6.9b). **Colour is deliberately
+not built into the seed** (Rule 6.9c): it stays visible and may be learned as
+evidence, so prejudice-by-provenance becomes an experimental outcome rather than
+a designed one. Of the three candidates, the neutral seed was rejected as both
+statistically wrong and behaviourally inert, and the colour seed as deciding in
+advance the very question the simulation is there to ask.
 
 **9.7 Resolved** — parental influence is exactly one high-priority objective
 (Rule 7.5), and never touches the genotype.
