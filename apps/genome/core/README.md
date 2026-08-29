@@ -4,7 +4,7 @@ The deterministic simulation core: closed forms, genotype arithmetic, opinion
 updates, schema, and the realm-scoped repository. **No inference happens here**
 (`execution-spec.md` Rule 1.2) — everything in this package is the free tier.
 
-Run tests: `python3 core/tests/test_core.py`
+Run tests from anywhere: `python3 apps/genome/core/tests/test_core.py`
 
 | Module | Implements |
 | :--- | :--- |
