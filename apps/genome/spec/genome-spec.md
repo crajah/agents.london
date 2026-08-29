@@ -1469,41 +1469,47 @@ for it.
 | Pass on the deployed tier, fail on DeepSeek — a portability caveat, not a design flaw | Amenability · Credulity · Honesty · Loyalty · Patience · Prudence · Reciprocity |
 | **Fail on the deployed tier**, and so must carry their weight mechanically | **Cooperativeness · Selectivity** |
 
-**Rule 12.15** — **Cooperativeness is dominated by situation, not disposition.**
-The locus modulates; the stakes decide. §5.7–5.8 must therefore be carried by
-world structure, not by the disposition alone.
+**Rule 12.15** — **Cooperativeness needs stakes to be visible.** It expresses
+reliably wherever cooperating has a consequence, and not at all where it has
+none. The act itself may remain free; what it may not be is inconsequential.
 
-Measured tell-rates for the same act — revealing a pile's location — across four
-situations, each sweeping the full locus range:
+Measured tell-rates for the same act — revealing a pile's location — each
+sweeping the full locus range:
 
-| Situation | tell rate | locus range within it |
-| :--- | ---: | ---: |
-| Desperate; cooperating is survival | 1.00 | 0.00 |
-| No consequence either way | 0.76 | 0.12 |
-| Asker is a foreigner and cannot mine it (Rule 4.7) | 0.22 | 0.50 |
-| Asker is a local rival who can | 0.07 | 0.29 |
+| Situation | tell rate | ρ | expresses? |
+| :--- | ---: | ---: | :--- |
+| Desperate; cooperating is survival | 1.00 | 0.00 | no — need overrides it |
+| Stakes removed by construction | 0.76 | 0.11 | no |
+| Asker is a foreigner who cannot mine it (Rule 4.7) | 0.22 | **0.32** | **yes** |
+| Asker is a local rival who can | 0.07 | **0.35** | **yes** |
 
-> **Situation moves behaviour across 0.93; the locus moves it at most 0.50 inside
-> any one situation.** Three consequences follow, and the middle one contradicts
-> what the design assumed.
+> **The locus is sound; a costless act is not the same as a consequenceless one.**
+> Cooperating in genome need spend no unit and consume no action — and revealing a
+> pile still costs, because piles are finite (Rule 4.13) and a rival who learns of
+> one may empty it. In both scenarios where that consequence is present,
+> Cooperativeness clears the bar. It fails only in the scenario built to have no
+> consequence at all, and genome contains almost no such situation: finite piles,
+> a world ceiling and a user ceiling see to that.
 >
-> **Desperation overrides the locus completely.** At the edge of perishing every
-> agent cooperates, at every value of Cooperativeness — a flat 1.00. This was
-> predicted and is the design working: need is a stronger argument than
-> temperament.
+> **Situation still dominates in magnitude.** Across the four rows behaviour spans
+> 0.93, while the locus spans at most 0.50 inside any one row. Temperament
+> modulates; stakes decide. That is the right ordering for a simulation about
+> scarcity, and it is why Rule 4.7 does more for §5.7–5.8 than any wording of this
+> locus could — it changes the situation rather than pleading with the
+> disposition.
 >
-> **A free act does not discriminate.** It was supposed that the act of
-> cooperating could stay costless while propensity varied by locus. It does not:
-> where nothing is at stake, agents cooperate about three quarters of the time
-> regardless of the locus (ρ = 0.11, p = 0.12, not significant). **Cooperativeness
-> only discriminates when cooperation costs something** — its widest spread, 0.50,
-> is in the case where the information has real value to a rival. A disposition
-> needs stakes to be visible in, and a costless act supplies none.
->
-> **So the lever is the world, not the prompt.** This is why Rule 4.7 matters more
-> than any wording of the Cooperativeness locus could: confining mining to the
-> birth world makes every foreign kind obtainable only through another agent, and
-> that changes the situation rather than pleading with the temperament.
+> **Desperation overrides the locus entirely**, as intended: at the edge of
+> perishing every agent cooperates at every value of Cooperativeness. Need is a
+> stronger argument than temperament.
+
+**Rule 12.15a** — No interaction may be built with **no consequence either way**.
+An outcome that costs nothing and gains nothing makes whatever locus governs it
+invisible, and wastes it.
+
+> This generalises past Cooperativeness. A disposition is only legible in the
+> choices it changes, and a choice with nothing at stake changes nothing. Where a
+> design finds itself offering agents a free and inconsequential option, the fault
+> is in the situation, not the genotype.
 
 **Rule 12.16** — Agent decisions run on the **economy tier**. Reasoning
 capability does not predict fidelity at following a stated disposition.
