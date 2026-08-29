@@ -282,9 +282,14 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Replication, contagion, **infection distance** (`pathogen-spec.md` Rule 2.4); contact probability (Rule 2.5); creation chance on teleport
 - [ ] Expression modifiers changing phenotype, not genotype; defences are three heritable things (Rule 2.2)
 - [ ] Antigens with genotype-derived retention (Rule 2.19); signatures 8-16 dimensions (Rule 2.0)
-- [ ] **Antigen earned only by recovering** from an infection, matching that strain (Rule 2.18a)
-- [ ] Recovery natural via **Infection Resistance**, or immediate at a **Sanatorium** (Rule 2.18b)
-- [ ] Inoculist **transfers** a banked antigen without illness; bounded bank (Rules 2.18c, 2.20a)
+- [ ] **Antigens synthesised during infection**, after Detection Latency, at Synthesis Speed (Rule 2.18a)
+- [ ] Antigen as a **vector in signature space**, unbound to any strain (2.18b)
+- [ ] Recovery when **combined coverage** crosses the threshold, or at a Sanatorium (2.18c, 2.18f)
+- [ ] Antigen **decay rate fixed at synthesis** from the maker's genotype (2.18d), modulated by the holder (2.19)
+- [ ] Antigens **copied, not transferred** — sharing costs the giver nothing (2.18e)
+- [ ] **Graded immunity** by coverage rather than binary (2.20)
+- [ ] Inoculist bank holds antigens **against decay** (2.20a)
+- [ ] **Test the prediction**: Cooperativeness should *not* predict antigen sharing, since sharing is costless (Rule 12.15)
 - [ ] **Infection rendered** as a broken disc outline (`interface-spec.md` Rule 6.9i) — it is public (Rule 2.21)
 
 ---

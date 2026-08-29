@@ -333,163 +333,76 @@ restoring the affected attributes toward baseline.
 > names the counter. Worth renaming before implementation if the audience is
 > likely to include anyone who will read it the other way.
 
-**Rule 2.18a** — An antigen is **earned by recovering from an infection**, and
-matches the signature of the strain recovered from. There is no other way to
-originate one.
+**Rule 2.18a** — An antigen is **synthesised during infection**, not after it.
+Synthesis begins once the infection is **detected** and proceeds at a **rate**,
+both governed by loci: **Detection Latency** and **Synthesis Speed**.
 
-**Rule 2.18b** — Recovery is **natural**, after a period derived from the agent's
-**Infection Resistance** (§2.2), or **immediate** at a **Sanatorium**
-(`construction-spec.md` §2). Nothing else ends an infection.
+**Rule 2.18b** — An antigen is a **vector in signature space** (§2.0) and covers
+part of it. **No antigen is bound to a strain.** It counteracts whatever its
+coverage overlaps.
 
-**Rule 2.18c** — An **Inoculist** (§4.4) may **transfer** a banked antigen to
-another agent, which confers it without the illness. Transfer moves an antigen;
-it never creates one.
+**Rule 2.18c** — An infection is countered when the **combined coverage of every
+antigen the agent holds** meets the strain's signature above a threshold. Several
+partial antigens may do what no single one can.
 
-> The specification described what an antigen does, how long it lasts and what it
-> prevents, and never said where one comes from. Two things already written point
-> the same way — §4.4 has an Inoculist *preserve* antigens rather than make them,
-> and §4.x speaks of "antigens the agent had **earned**" — so Rule 2.18a states
-> what the rest was assuming.
+**Rule 2.18d** — An antigen **decays from the moment it exists**, at a rate fixed
+at synthesis from the **synthesising agent's** genotype. A well-made antigen
+outlasts a poor one and carries that quality wherever it goes.
+
+**Rule 2.18e** — Antigens are **information**. They are shared over A2A, **copied
+rather than transferred**, and giving one costs the giver nothing.
+
+**Rule 2.18f** — Recovery follows from coverage (Rule 2.18c), or is **immediate at
+a Sanatorium** (`construction-spec.md` §2). Nothing else ends an infection.
+
+> This replaces an earlier reading in which an antigen was earned on recovery and
+> matched one strain. Synthesis-during-infection is better in four ways, and one
+> of them changes the economics of the whole document.
 >
-> **Immunity must be paid for in illness.** Every antigen in the world traces to
-> somebody having been sick, which is what makes an Inoculist's bank valuable and
-> a depreciating asset both at once (§4.4): the stock is finite, it is drawn from
-> real past epidemics, and Rule 2.10a's descent means it covers newer strains
-> progressively worse.
+> **Recovery becomes something an agent does rather than waits out.** Detection
+> Latency and Synthesis Speed make the immune response a *race* against the
+> strain's replication, so severity and duration come apart into two heritable
+> things instead of one.
 >
-> **Rule 2.18b gives the Sanatorium its purpose and its price.** Natural recovery
-> is free and slow, scaled by a heritable defence; a Sanatorium is instant and
-> costs a four-contributor construction that the flood destroys every cycle. An
-> agent with high Resistance rarely needs one, which is precisely why the
-> construction is a coalition asset rather than a personal one.
+> **Partial coverage makes immunity combinatorial.** Because Rule 2.18b unbinds
+> antigens from strains, a novel pathogen is not a blank wall — an agent may
+> already hold two antigens that together cover it. That is what §2.10a's descent
+> was reaching for: strains inherit signatures from their parents, so accumulated
+> coverage degrades gracefully rather than failing at the first mutation.
 >
-> Note what Rule 2.18c does *not* allow. An Inoculist confers immunity without
-> illness, so a banked antigen is the only route to protection that skips the
-> disease — and since banks are small and bounded (Rule 2.20a), that route is
-> rationed rather than open. Triage, not medicine.
-period derived from the agent's genotype**, then lapses. Proposed derivation: the
-**geometric mean of Knowledge and Longevity** — how well the agent recognises,
-and how robust its constitution.
-
-**Rule 2.20** — While an antigen is retained, re-exposure to the matching
-signature produces no infection. Once it lapses, the agent is vulnerable again.
-
-> **Waning immunity is what keeps the arms race alive**, and it is the reason
-> Rule 2.14 matters more than it looks.
+> **Antigens are the only non-rival good in the design.** Cargo, berths, capacity
+> and piles are all diminished by being shared; an antigen is copied, so a giver
+> loses nothing. That is a domain where cooperation is *free*, inside a document
+> where it is otherwise always costly — and it yields a testable prediction from
+> our own results. `genome-spec.md` Rule 12.15 found that Cooperativeness expresses
+> only when cooperating costs something. **So Cooperativeness should not predict
+> antigen sharing.** If it does, Rule 12.15 is wrong; if it does not, some other
+> locus is doing the work and it is worth knowing which.
 >
-> If immunity were permanent, an agent that survived enough strains would become
-> effectively invulnerable, and for that individual the Red Queen would stop
-> running. Worse, a long-lived population would accumulate universal immunity and
-> pathogens would cease to be a pressure at all — taking with them the check on
-> monoculture (§1.2) and the justification for sex (§1.1). Retention with an
-> expiry keeps everyone perpetually re-exposed.
+> **What stops this trivialising disease is Rule 2.18d.** A shared antigen is a
+> wasting asset, arriving already decaying at a rate set by whoever made it, so a
+> population cannot solve epidemiology once and be done. Coverage must be
+> continually reacquired, which keeps the arms race running.
 >
-> The division of labour is now clean and worth stating plainly. **Innate
-> immunity is genetic, permanent, and inherited. Adaptive immunity is earned,
-> temporary, and dies with the agent** (Rule 2.9). So surviving a plague is a
-> *tactical* advantage that fades, while breeding for resistance is the *strategic*
-> one that lasts — which is exactly the conclusion §1.1 needs, reached from the
-> other direction.
+> The **Inoculist** (§4.4) keeps its purpose and gains a sharper one: its bank
+> holds antigens **against decay**. It is not a distributor of something otherwise
+> unobtainable — anyone may copy an antigen — but a keeper of old coverage the
+> population has let lapse.
 
-### 2.6 Visibility
+**Rule 2.19** — The **holder modulates** an antigen's decay. Its intrinsic rate
+(Rule 2.18d) is scaled by the holder's retention, derived as the **geometric mean
+of Knowledge and Longevity** — how well the agent recognises, and how robust its
+constitution.
 
-**Rule 2.21** — **Infection is visible.** Alongside colour (`genotype-spec.md`
-§3.5), it is the second thing an agent broadcasts whether it wishes to or not.
+> Two terms rather than one, because an antigen now travels. Its intrinsic rate is
+> a fact about how it was made; retention is a fact about who carries it. The same
+> antigen lasts longer in a robust host, and a well-made one outlasts a poor one in
+> the same host — so both *whose* antigen you received and *who you are* matter,
+> which is what makes a good antigen worth asking for by name.
 
-> Attributes are hidden and this deliberately is not. Visible infection gives
-> agents something honest to act on: they can refuse contact with the obviously
-> sick, which makes avoidance a real strategy and gives disease a reason to evolve
-> toward mildness. An invisible plague selects only for resistance; a visible one
-> selects for resistance *and* social judgement, which is far more interesting in
-> a simulation about negotiation.
->
-> It also sits in productive tension with Rule 2.12. If infection is visible but
-> the *manipulation* is not — a strain that makes its host agreeable while
-> announcing itself — then agents face a genuine dilemma rather than a lookup: the
-> sick are contagious, and this one is being very reasonable about it.
-
-## 3. What this produces
-
-**Disassortative mating, without needing perception.** Parents with
-complementary immune profiles have offspring covering more antigen space, so
-those offspring survive at a higher rate. The alleles spread even though no
-agent can see immunity and none is choosing for it. Selection does the work that
-perception cannot — and if immune profiles were ever made perceptible, deliberate
-MHC-style mate choice would emerge on top of it.
-
-**A frequency-dependent arms race.** A strain matched to the commonest genotype
-prospers, which selects against that genotype, which changes what is common,
-which strands the strain. Neither side converges. This is the mechanism that
-keeps a population diverse without any rule mandating diversity.
-
-**Genuine value in the diversity that sponsorship threatens.** §1.2 — the check
-is automatic and needs no cap.
-
----
-
-## 4. Open questions
-
-**4.1 Decided** — 8 to 16 dimensions (Rule 2.0), the band in which immunity is
-meaningful but never complete.
-
-**4.2 Decided — no.** There is no skill that deliberately infects another agent.
-Disease is a hazard of the world, never a weapon in anyone's hand.
-
-> The reason is that pathogens already earn their place without a wielder. They
-> punish monoculture (§1.2), price connectivity (§1.3) and supply the Red Queen
-> argument for sexual reproduction (§1.1) — none of which needs anyone to aim
-> them. Making plague a targeting decision would crowd out the epidemiology that
-> made it worth having, and would push a population toward avoiding contact in a
-> design that cannot afford isolation (`genome-spec.md` Rule 2.3).
-
-**4.3 Decided — yes.** A strain's signature, replication factor, contagion
-factor, infection distance and parent UUID **are a genotype**, and are formalised
-as one. Strains are a second evolving population, selected in their own right.
-
-> Which turns the arms race from a metaphor into a mechanism. **Virulence now
-> settles where selection puts it rather than where a designer guesses.** The
-> replication-against-transmission trade-off in §2.1.2 stops being an argument
-> about how strains *ought* to behave and becomes an outcome to observe: strains
-> that kill their reach die with it, strains too mild are outcompeted for hosts,
-> and the population finds the intermediate on its own.
->
-> It also completes a symmetry the design had been building toward. Agents and
-> strains now both have: a genotype, mutation, descent recorded by UUID, and a
-> fitness landscape composed of the other population. **Neither side is the
-> environment; each is the other's.**
-
-**Rule 2.7a** — Replication, contagion and infection distance **share a fixed
-budget**, exactly as agents' physiological loci do (`genotype-spec.md` §3.10). A
-strain allocates; it does not accumulate.
-
-> The argument that forced a budget on agents applies unchanged: **a gene with no
-> trade-off is a setting.** Without one, selection drives every axis upward at
-> once and the population converges on a single strain that is severe, contagious
-> and far-reaching — which is not an ecology, it is an ending.
->
-> With one, a strain must choose what kind of disease to be. Reach costs
-> intensity; severity costs transmission. That is the virulence–transmission
-> trade-off (§2.1.2) enforced structurally rather than left to behaviour, and it
-> is what lets several strategies coexist — a mild endemic and a savage local
-> outbreak occupying different corners of the same budget.
-
-**4.4 Decided — yes, as a rare skill.** An **Inoculist** may preserve antigens
-past its own death and grant them to other living agents.
-
-> I had argued against this on the grounds that it blurs the innate-versus-adaptive
-> split the Red Queen argument depends on. Drift resolves the objection, and it is
-> worth setting out because it is what keeps both mechanisms necessary.
->
-> Novel strains descend from existing ones (Rule 2.10a). So a banked antigen covers
-> what has already been survived and the near descendants of it — **it defends
-> against the past.** Genetic recombination covers signature space nobody has met
-> yet — **it defends against the future.** Because strains keep drifting, a
-> stockpile of antigens is a depreciating asset: valuable now, less so each
-> generation, and never a substitute for a diverse immune profile.
->
-> So an Inoculist is powerful without being a replacement. It makes a lineage
-> resilient against the diseases of its own era, and no better prepared for the
-> next one — which is precisely the shape a vaccine bank should have.
+**Rule 2.20** — Immunity is **graded by coverage**, not binary. Re-exposure is
+resisted in proportion to how well the agent's combined antigens cover the
+signature, and as they decay vulnerability returns by degrees.
 
 **Rule 2.20a** — An Inoculist holds a **small, bounded bank** of antigens, and
 **granting one consumes it**.

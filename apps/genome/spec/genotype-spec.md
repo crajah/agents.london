@@ -112,6 +112,8 @@ them evolving straight to its maximum.
 | Sight | 1–100 | Distance at which it can sense |
 | reStamina | 0–1 | Regenerates stamina |
 | Attrition | 0–10000 | Share of **maximum** Stamina permanently lost on each victory |
+| Detection Latency | 0–10000 | Delay between infection and its detection (`pathogen-spec.md` 2.18a) |
+| Synthesis Speed | 0–10000 | Rate at which an antigen is synthesised once detected (2.18a) |
 | reMana | 0–1 | Regenerates mana |
 
 ### 3.2 Disposition — what an agent tends to do
