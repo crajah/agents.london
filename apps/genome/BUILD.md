@@ -24,6 +24,28 @@ particles, audio, 3D or lighting (`interface-spec.md` Rule 6.10); no tile grid
 route or cargo transfer outside agents (Rule 4.2); no decision budget as a spend
 control (`execution-spec.md` Rule 5.2).
 
+
+## User journeys — the acceptance criteria that matter
+
+Phases are organised by subsystem; these are what the subsystems are *for*. A
+phase is not done until the journeys it unblocks work end to end.
+
+| # | Journey | Unblocked by |
+| :--- | :--- | :--- |
+| J1 | Sign in with Google or Microsoft, get a world, get a first agent | 5, 5.4 |
+| J2 | Watch my world: agents moving, piles deepening and paling | 3 |
+| J3 | **Switch to observe a world I do not own** — follow an agent, pick a portal, traverse onward, jump from an inspector | 3.5 |
+| J4 | Follow one of my agents as it teleports, and get back home in one action | 3.5 |
+| J5 | Click an agent — mine or anyone's — and read its genotype and expression | 7 |
+| J6 | Chat with my agent; see whether I just gave an instruction or made a claim | 7 |
+| J7 | Ask my agent something it cannot answer, and have it broker the answer | 6, 7 |
+| J8 | Import contacts, propose, get confirmed, watch a portal appear | 5 |
+| J9 | Watch two agents meet and strike a trade, and see what each believed | 6, 7.4 |
+| J10 | Author a plan by conversation and watch agents build it | 10 |
+| J11 | Come back after two days and understand what happened while I was away | 12 |
+| J12 | See a flood countdown, and see who boards | 10, 12 |
+| J13 | Leave: export what is mine, delete the rest | 13 |
+
 ---
 
 ## Phase 0 — Foundations
@@ -137,7 +159,23 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Event subscription per world; **events on the wire, not frames** (2.2)
 - [ ] Own-agent ring (6.9d)
 
-**Done when:** a thousand agents render at 60fps and the client's predicted arrival matches the server's event.
+### 3.5 Navigation — J3, J4
+- [ ] **Follow an agent**, view accompanying it through a teleport (`interface-spec.md` Rule 5.3)
+- [ ] Portal selection from the map opens the destination world (5.3)
+- [ ] **Traverse onward** — a viewed world's portals are selectable, so the connected component walks (5.4)
+- [ ] Jump to an agent's home world from its inspector (5.3)
+- [ ] **Return home in one action**, always available (5.5)
+- [ ] Deep-linkable world and agent URLs; browser back behaves
+- [ ] Read-only affordances visibly distinct in a world the user does not own (Rule 13.2)
+
+### 3.6 The mundane
+- [ ] Loading, empty, error and disconnected states for the canvas and every panel
+- [ ] Reconnect and re-sync after a dropped subscription without a page reload
+- [ ] Clock skew handling — client interpolation must not drift from server time
+- [ ] Responsive layout; canvas and panels usable on a laptop screen
+- [ ] Keyboard navigation and focus order for all chrome; canvas has a text-equivalent agent list
+
+**Done when:** J2, J3 and J4 work; a thousand agents render at 60fps; the client's predicted arrival matches the server's event; and a dropped connection recovers silently.
 
 ---
 
@@ -171,7 +209,14 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Proposal → **mutual confirmation** creates the link (9.4, `genome-spec.md` Rule 6.2c)
 - [ ] Re-runnable import; declined proposals not re-raised (9.5)
 
-**Done when:** two accounts import contacts, confirm, and a portal appears in both worlds.
+### 5.4 Onboarding — J1
+- [ ] First run: OIDC sign-in → world generated → **first agent free** (`genome-spec.md` Rule 7.1)
+- [ ] World gets two kinds, two colours, piles, and its opening 30 portal slots (Rules 4.1, 4.9, 6.2a)
+- [ ] Explain the one thing that is not guessable: **you cannot reach four kinds alone** (Rule 2.3)
+- [ ] Contact import offered, never required — the world must be usable with zero connections
+- [ ] Account with no connections still runs: agents gather, deposit, and hit the four-kind wall visibly
+
+**Done when:** J1 and J8 work; a brand-new account with no contacts still has something to watch.
 
 ---
 
@@ -238,6 +283,42 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 ---
 
+## Phase 12 — Absence and attention — J11, J12
+
+The world runs unattended (`system-spec.md` Rule 2.2), so returning must be
+comprehensible. This is the phase most easily forgotten and most felt.
+
+- [ ] **Since-you-were-away digest** per world: births, deaths, trades, arrivals, infections, constructions
+- [ ] Digest is built from the `event` and `decision` tables, not a separate log
+- [ ] Push-worthy events, deliberately few: a flood countdown in a world you own, an agent of yours perishing, a berth offered to or surrendered by your agent, a plan of yours completed
+- [ ] Per-world and per-agent activity timeline, readable back in time
+- [ ] **Flood countdown surfaced prominently** wherever it applies (`construction-spec.md` Rule 4.8)
+- [ ] Quiet by default: no notification for routine gathering or movement
+
+**Done when:** J11 and J12 work — two days away is legible in under a minute.
+
+## Phase 13 — Account lifecycle and data — J13
+
+Contact import makes this non-optional rather than a courtesy.
+
+- [ ] Export everything a user owns: world, agents, genotypes, decisions, chats
+- [ ] Delete an account: world, agents, keys, connections, and **imported contact material**
+- [ ] Deletion must not orphan other users' data — a connection is mutual, so removal is two-sided
+- [ ] Non-user contacts were never stored (`system-spec.md` Rule 9.3); prove it with a test
+- [ ] Revoke OAuth grants; revoke and re-key user-supplied model credentials (`execution-spec.md` Rule 9.3)
+- [ ] Retention: decision record kept for the run (`system-spec.md` Rule 6.1); telemetry on its own schedule (6.2)
+
+**Done when:** J13 works and a deleted account leaves nothing behind but the other side of a severed connection.
+
+## Phase 14 — Admin and operability
+
+- [ ] Inspect a world: lease holder, queue depth, oldest due event, last tick
+- [ ] **Find a stalled world** — a world where nothing happens is indistinguishable from a world where nothing was due (`system-spec.md` Rule 8.2)
+- [ ] Rebuild a world's queue from Postgres on demand (Rule 8.3)
+- [ ] Replay a decision from its record for debugging, without re-running the world
+- [ ] Pause and resume a world; drain a worker for deploy
+- [ ] Cost per world and per user, with the biggest spenders visible
+
 ## Phase 11 — Operations
 
 - [ ] Decision record retention distinct from telemetry (`system-spec.md` Rule 6.1)
@@ -246,6 +327,18 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Key encryption at rest; keys never in a decision record (Rule 9.3)
 
 ---
+
+## Testing strategy
+
+- [ ] **Property tests** for every closed form: position, pile quantity, decay, opinion update — a stored value that could be derived is a defect
+- [ ] **Fail-closed test** for realm scoping (Phase 0.3), asserted at the repository boundary
+- [ ] **Flush-and-resume test**: wipe Redis mid-run, confirm the simulation continues (`system-spec.md` Rule 8.3)
+- [ ] **Determinism harness**: same seed and same scripted decisions reproduce the same world, so a divergence is traceable
+- [ ] **In-world validation replay**: reproduce `validation/` results against live agents, not a harness (Phase 2 done-when)
+- [ ] **Frame budget in CI** — a second atlas or a stray filter must fail the build, not degrade quietly (`interface-spec.md` Rule 6.12)
+- [ ] **Cost regression**: assert calls-per-decision, so an agentic loop cannot silently multiply spend (`execution-spec.md` Rule 8.3)
+- [ ] **Soak test**: one world, 24h unattended, zero writes while agents travel
+- [ ] Load: 1,000 agents in one world, 100 worlds on one worker
 
 ## Risk register
 
@@ -257,6 +350,10 @@ Early payoff, and it tests interface assumptions against a real tick.
 | Second texture atlas kills batching | `interface-spec.md` 6.12 | Frame-time budget in CI |
 | Agent-facing read reuses a user-facing path | `interface-spec.md` 1.1 | Separate modules, no shared repository |
 | Model pool drifts below 1.5× | `execution-spec.md` 10.6 | Screen re-run gated on pool change |
+| Stalled world looks identical to a quiet one | `system-spec.md` 8.2 | Phase 14 lease and queue-depth view |
+| Client interpolation drifts from server clock | `interface-spec.md` 6.13 | Arrival-event comparison assertion |
+| Digest rebuilt from a side log that diverges | Phase 12 | Digest derives from `event`/`decision` only |
+| Deleted account leaves contact material behind | `system-spec.md` 9.3 | Phase 13 deletion test |
 
 ## Open, and answered only by running
 
