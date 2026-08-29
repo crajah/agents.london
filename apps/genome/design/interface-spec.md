@@ -234,6 +234,26 @@ wears that pair, and one born of two parents wears one colour from each
 > pair as information about character. Rule 4.1's belief-against-truth view is
 > where that would first become visible.
 
+**Rule 6.9h** — A portal is a **hollow ring split into two halves**, each half in
+one of the **destination world's** two colours (`genome-spec.md` Rule 4.9). It is
+static, larger than an agent, and hollow.
+
+> A portal wearing its destination's pair **names where it goes without a label**,
+> because a world's identity simply is those two colours. An agent standing at a
+> portal can be seen to be leaving for somewhere specific, and a user can read a
+> world's whole set of exits at a glance — which, under Rule 6.2d, is the same
+> thing as reading the first degree of that user's connection graph.
+>
+> **Hollow and static is what keeps it from being mistaken for an agent.** Both
+> are two-coloured shapes on the same palette, so the silhouette has to carry the
+> distinction: agents are small, filled and moving; portals are large, hollow and
+> fixed. That difference survives at any zoom, where a colour difference would
+> not.
+>
+> This completes the visual grammar, and it uses one palette throughout. Agents
+> are lineage, piles are kind and fill, portals are destination — nothing on the
+> map needs text, and everything on it is something an agent could also see.
+
 **Rule 6.9e** — A pile is a **soft cloud** in its kind's colour. **Lightness
 encodes fill** — pale when nearly exhausted, full A100 at capacity
 (`genome-spec.md` Rule 4.9). **Size encodes capacity**, not quantity.
