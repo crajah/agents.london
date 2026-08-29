@@ -1422,7 +1422,8 @@ for it.
 | | Loci |
 | :--- | :--- |
 | Robust across both models and both backgrounds | Aggression · Curiosity · Fecundity · Vindictiveness · Wanderlust |
-| Fail under realistic backgrounds | Cooperativeness · Amenability · Honesty · Patience · Reciprocity · Credulity |
+| Pass on the deployed tier, fail on DeepSeek — a portability caveat, not a design flaw | Amenability · Credulity · Honesty · Loyalty · Patience · Prudence · Reciprocity |
+| **Fail on the deployed tier**, and so must carry their weight mechanically | **Cooperativeness · Selectivity** |
 
 **Rule 12.15** — **Cooperativeness** is expressed too weakly to bear §5.7–5.8 on
 prompt alone. At n = 360 its choice rate moves only 0.20 → 0.47 across the entire
