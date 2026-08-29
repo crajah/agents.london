@@ -193,9 +193,9 @@ only the user can see**.
 > opening it is a reminder that they know more than the agents do. Put a genotype
 > on the map and that distinction quietly disappears.
 
-**Rule 6.9** — Drawn on the map: agents by their two colours, piles by kind colour
-with size scaled to quantity, constructions, **first-degree portals only**
-(`genome-spec.md` Rule 6.2d), and a flood countdown when one is running.
+**Rule 6.9** — Drawn on the map: agents, piles, constructions, **first-degree
+portals only** (`genome-spec.md` Rule 6.2d), and a flood countdown when one is
+running.
 
 **Rule 6.9a** — An agent is a **disc in its first colour with an equilateral
 triangle in its second**, the triangle pointing along its heading. That is the
@@ -207,6 +207,38 @@ agent keeps the heading it arrived on.
 
 **Rule 6.9c** — Both shapes are **tinted sprites from one source texture**, not
 per-frame vector drawing, so batching holds (Rule 6.12).
+
+**Rule 6.9e** — A pile is a **soft cloud** in its kind's colour. **Lightness
+encodes fill** — pale when nearly exhausted, full A100 at capacity
+(`genome-spec.md` Rule 4.9). **Size encodes capacity**, not quantity.
+
+**Rule 6.9f** — The tint is a **pure function of the closed form and the clock**
+(`execution-spec.md` Rule 2.3). There is no animation system; a regenerating pile
+simply deepens.
+
+> Two channels, each carrying something the other cannot, and neither needing a
+> frame of state.
+>
+> **Separating capacity from fill is what makes a map readable at a glance.** Were
+> size to track quantity, a large depleted pile and a small full one would look
+> alike and the difference between *worked out* and *never much* would be
+> invisible. With size fixed to capacity, a wide pale cloud says a rich pile has
+> been stripped and a small saturated one says a modest pile is untouched — and
+> those call for opposite decisions.
+>
+> **Depletion becomes legible across a whole world.** A map of pale clouds is an
+> exhausted world and a map of saturated ones is a wealthy one, readable without
+> inspecting anything. It also makes Rule 4.13's ceiling visible: when aggregate
+> stock halts regeneration, the map simply stops deepening.
+>
+> **And it is free.** Quantity is already derived from `(qty_at, measured_at,
+> rate, cap)`, so the tint is `lerp(white, kindColour, qty/cap)` evaluated at draw
+> time. Nothing is stored, nothing is animated, and a pile mined while the user
+> watches pales in real time because the arithmetic says so.
+>
+> The grammar is worth keeping consistent: **agents are crisp geometry, resources
+> are soft clouds.** One glance distinguishes what decides from what is decided
+> over.
 
 **Rule 6.9d** — **Ownership may be marked** — a ring on the user's own agents —
 because it discloses nothing about an agent that the agent does not already know
