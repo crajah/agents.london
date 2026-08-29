@@ -1217,11 +1217,12 @@ fixed at 2000 units for the whole simulation.
 nothing can be stranded by one lapsing.
 
 
-**11.12 Resolved** — the genotype is never decorative. Every locus drives a
-computed faculty as well as a prompt expression, and a locus that cannot be given
-one is not added (`genotype-spec.md` §3.9). Validation remains worth doing, but it
-now measures how much the *prompt* adds on top of a mechanical effect that is
-guaranteed either way.
+**11.12 Resolved** — the genotype is never decorative: every locus drives a
+computed faculty as well as a prompt expression (`genotype-spec.md` §3.9).
+Validation of the *prompt* half is specified in §12.3.1 — per locus, against a
+prediction derived from each agent's own genotype, testing rank correlation
+rather than fit to an invented curve, with the passing threshold fixed before
+measurement.
 
 **11.13 Resolved** — provenance is runtime metadata, automatic and unfalsifiable,
 and an owner may always see the chain behind anything their agent tells them
@@ -1325,6 +1326,127 @@ how that is validated. Vary one locus, hold the rest, and measure whether conduc
 separates. The threshold that counts as working should be agreed before it is
 measured rather than argued about afterwards — and where a disposition proves not
 to bite, the answer is to give it a faculty, not a stronger adjective.
+
+#### 12.3.1 Validating disposition expression
+
+Rule 3.19 of `genotype-spec.md` guarantees each locus drives a computed faculty,
+so the genotype can never be decorative. It does **not** guarantee that the
+*prompt* half works — and the two halves do different jobs. A faculty governs the
+magnitude of an outcome given a choice; the prompt governs whether the choice is
+made. If expression fails, the population varies in capability while barely
+varying in **policy**, and every game-theoretic result this simulation exists to
+produce lives in policy variation.
+
+**Rule 12.10** — Disposition expression is validated **per locus**, against a
+prediction derived from each agent's own genotype, before a runtime is built.
+The other loci are **randomised, never pinned to a constant**, for the reason
+given under "Measured result" below.
+
+**Rule 12.11** — The test is of **ordering, not of magnitude.** Derive from each
+agent's locus value an expected *rank* in the relevant behaviour, then measure
+rank correlation between predicted and observed across a population spanning the
+locus range. A locus passes if the correlation is significant and monotonic.
+
+> **Ordering, because any target curve would be invented.** Asserting that
+> Aggression 8000 *should* produce a 0.8 fight rate tests whether the model
+> matches a number nobody derived from anything. A model could respond perfectly
+> well on a different curve and fail. What the design actually requires is that
+> more of a disposition reliably produces more of the behaviour — and that is a
+> rank correlation, not a fit.
+>
+> **Per locus, because the remedy is per locus.** A single global criterion
+> answers "does expression work", which is not an actionable answer. Testing each
+> disposition separately says Aggression works, Patience does not, Loyalty is
+> noise — and Rule 3.20b's remedy, reinterpreting a locus toward a stronger
+> faculty, is applied to one locus at a time.
+>
+> **And it detects the failure a two-arm test cannot.** Comparing only extremes
+> can show a large, clean separation produced by a *step*: the model reacting to
+> "very high" and "very low" while treating everything between as identical. That
+> would pass a threshold test and fail the simulation, because selection operates
+> on small differences and a step function offers it nothing to climb.
+
+**Rule 12.12** — The passing correlation, and the population size, are fixed
+**before** the measurement is taken.
+
+> Not procedural fussiness. Measure first and there is real pressure to accept a
+> weak result, because the alternative is rework already paid for.
+
+##### Why the allocation budget does not interfere
+
+Varying one locus while holding the rest constant is impossible for the
+**physiological** loci: they share a fixed budget (`genotype-spec.md` §3.10), so
+raising one lowers every other expressed value, and no single-locus experiment is
+available.
+
+That objection does not apply here, and the reason is a useful accident.
+**Dispositions sit outside the budget** (Rule 3.23) — they are not shares of
+anything, so each can be varied independently while the rest stay fixed. And
+dispositions are precisely the loci whose prompt expression matters most: the
+budgeted physiological loci already have strong, unambiguous faculties, so
+whether the model attends to Sight or Stamina changes rather little.
+
+**The loci that most need this test are exactly the ones the design already made
+independently testable.** That was not planned, but it means the experiment is
+clean rather than confounded, and it can be run against nothing more than a
+prompt template and the model router that already exists.
+
+#### 12.3.2 Measured result
+
+Run before any runtime existed, over 9,144 decisions across two model families
+(`apps/genome/validation`, full data and method in `RESULTS.md`).
+
+**Prompt expression works, and it is semantic.** Under randomised backgrounds,
+12 of 14 dispositions moved behaviour at p ≤ 0.01. The controls carried this:
+varying Curiosity moved the *aggression* decision at ρ = 0.00 while varying
+Aggression moved it at ρ = 0.87. Without that mismatch control the result would
+have been equally consistent with the model merely acting more extremely whenever
+any number was high.
+
+**Rule 12.13** — Validation randomises the non-target loci. Holding them at a
+constant is not a neutral control and its results are not admissible.
+
+> This inverted a conclusion. With the other 13 loci pinned to 5000, half the
+> sample looked like step functions — Aggression read `0 0 0 0 0 1 1 1 1`, one
+> jump doing all the work, exactly the failure §12.3.1 warns about. Randomising
+> the background nearly tripled the graded band (23 → 61 levels of 126) and
+> turned that cliff into a slope. **A flat artificial background makes the model
+> treat the varying locus as a switch**; a realistic one restores the gradient
+> that selection needs. The alarm was an artifact of the measurement.
+
+**Rule 12.14** — Expression strength is **measured per locus and recorded**, not
+assumed uniform. A locus that fails under randomised backgrounds must carry its
+weight in its computed faculty (Rule 3.20b); the prompt may not be relied upon
+for it.
+
+| | Loci |
+| :--- | :--- |
+| Robust across both models and both backgrounds | Aggression · Curiosity · Fecundity · Vindictiveness · Wanderlust |
+| Fail under realistic backgrounds | Cooperativeness · Amenability · Honesty · Patience · Reciprocity · Credulity |
+
+**Rule 12.15** — **Cooperativeness** is expressed too weakly to bear §5.7–5.8 on
+prompt alone. At n = 360 its choice rate moves only 0.20 → 0.47 across the entire
+locus range. The bulk of its effect must be mechanical.
+
+> Worth stating plainly because it is the most uncomfortable result. §5.7–5.8
+> make collaboration the central strategy of the simulation, and the disposition
+> carrying that intent is among the weakest-expressing of the fourteen. Had this
+> been discovered after the runtime existed, the fix would have been a migration
+> rather than a paragraph.
+
+**Rule 12.16** — Agent decisions run on the **economy tier**. Reasoning
+capability does not predict fidelity at following a stated disposition.
+
+> `gemini-3.5-flash-lite` beat `DeepSeek-V3.2` on every measure — 12 passing loci
+> against 6, mean ρ 0.49 against 0.30. DeepSeek's cross-talk exceeded its signal
+> on some loci: Honesty leaked into the *Patience* decision at ρ = −0.31, larger
+> than its own matched Honesty effect of 0.21. Zero unparsed responses in either
+> run, so this is not a formatting artifact. §12.4's cost question resolves in the
+> favourable direction, which was not the expected outcome.
+
+**Rule 12.17** — A weak per-locus verdict is **provisional until retested with at
+least three distinct scenarios**, since one scenario cannot separate "the
+disposition does not express" from "this situation did not isolate it".
 
 ### 12.4 What the hybrid costs and buys
 
