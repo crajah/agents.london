@@ -243,6 +243,26 @@ agent keeps the heading it arrived on.
 **Rule 6.9c** — Both shapes are **tinted sprites from one source texture**, not
 per-frame vector drawing, so batching holds (Rule 6.12).
 
+**Rule 6.9i** — An **infected agent is drawn with a broken disc outline**.
+Infection is publicly visible (`pathogen-spec.md` Rule 2.21), so it belongs on the
+map by Rule 6.8.
+
+> This corrects an omission in Rule 6.9. Attributes are hidden and colour is the
+> sole visible *attribute*, but infection is the second thing an agent broadcasts
+> whether it wishes to or not — and Rule 6.8 says the canvas shows what agents can
+> see. Leaving it off would have hidden from the user something every agent in the
+> world can read.
+>
+> A broken outline rather than a tint, because the two tints are already spoken
+> for by lineage (Rule 6.9g) and a third colour would compete with them. It is
+> also distinct from the ownership ring (Rule 6.9d), which sits outside the disc
+> and is solid — silhouette again carrying the distinction rather than hue.
+>
+> The mechanic it makes legible is worth the pixel. Rule 2.21 exists so agents can
+> refuse contact with the obviously sick; a user watching a world can now see the
+> same avoidance happening, and watch a strain move through a population as
+> outlines break.
+
 **Rule 6.9g** — The colour pair is read as **lineage**. A world's identity is the
 pair of its two kinds (`genome-spec.md` Rule 4.9); an agent materialised there
 wears that pair, and one born of two parents wears one colour from each

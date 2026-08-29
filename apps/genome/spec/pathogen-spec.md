@@ -333,7 +333,40 @@ restoring the affected attributes toward baseline.
 > names the counter. Worth renaming before implementation if the audience is
 > likely to include anyone who will read it the other way.
 
-**Rule 2.19** — An antigen **persists in the immune system for a retention
+**Rule 2.18a** — An antigen is **earned by recovering from an infection**, and
+matches the signature of the strain recovered from. There is no other way to
+originate one.
+
+**Rule 2.18b** — Recovery is **natural**, after a period derived from the agent's
+**Infection Resistance** (§2.2), or **immediate** at a **Sanatorium**
+(`construction-spec.md` §2). Nothing else ends an infection.
+
+**Rule 2.18c** — An **Inoculist** (§4.4) may **transfer** a banked antigen to
+another agent, which confers it without the illness. Transfer moves an antigen;
+it never creates one.
+
+> The specification described what an antigen does, how long it lasts and what it
+> prevents, and never said where one comes from. Two things already written point
+> the same way — §4.4 has an Inoculist *preserve* antigens rather than make them,
+> and §4.x speaks of "antigens the agent had **earned**" — so Rule 2.18a states
+> what the rest was assuming.
+>
+> **Immunity must be paid for in illness.** Every antigen in the world traces to
+> somebody having been sick, which is what makes an Inoculist's bank valuable and
+> a depreciating asset both at once (§4.4): the stock is finite, it is drawn from
+> real past epidemics, and Rule 2.10a's descent means it covers newer strains
+> progressively worse.
+>
+> **Rule 2.18b gives the Sanatorium its purpose and its price.** Natural recovery
+> is free and slow, scaled by a heritable defence; a Sanatorium is instant and
+> costs a four-contributor construction that the flood destroys every cycle. An
+> agent with high Resistance rarely needs one, which is precisely why the
+> construction is a coalition asset rather than a personal one.
+>
+> Note what Rule 2.18c does *not* allow. An Inoculist confers immunity without
+> illness, so a banked antigen is the only route to protection that skips the
+> disease — and since banks are small and bounded (Rule 2.20a), that route is
+> rationed rather than open. Triage, not medicine.
 period derived from the agent's genotype**, then lapses. Proposed derivation: the
 **geometric mean of Knowledge and Longevity** — how well the agent recognises,
 and how robust its constitution.
