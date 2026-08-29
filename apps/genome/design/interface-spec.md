@@ -208,6 +208,32 @@ agent keeps the heading it arrived on.
 **Rule 6.9c** — Both shapes are **tinted sprites from one source texture**, not
 per-frame vector drawing, so batching holds (Rule 6.12).
 
+**Rule 6.9g** — The colour pair is read as **lineage**. A world's identity is the
+pair of its two kinds (`genome-spec.md` Rule 4.9); an agent materialised there
+wears that pair, and one born of two parents wears one colour from each
+(`genotype-spec.md` Rule 3.3).
+
+> Which makes the map a **visible genealogy**, and it costs nothing beyond the two
+> tints already there.
+>
+> An agent wearing its world's own pair is native stock. A mismatched pair is the
+> descendant of two worlds, and *which* two is legible at a glance. So the
+> composition of a world tells you its history without a single label: a world of
+> matched pairs has bred inward and traded little, while a world of mixed pairs
+> has been reaching outward for generations. **Openness has a colour, and it is
+> the only demographic statistic the design renders for free.**
+>
+> There is a sharper reason to get this right. Colour is the *only* thing agents
+> can see about one another (`genotype-spec.md` Rule 3.4), so agents are reading
+> the same signal the user is — and Rule 6.9c of `genotype-spec.md` leaves open,
+> deliberately, whether they learn to act on it. Prejudice-by-provenance, if it
+> emerges, will emerge on exactly this channel.
+>
+> That gives the map a second job. A user watching a world is watching the
+> evidence for an open empirical question: whether agents begin treating a colour
+> pair as information about character. Rule 4.1's belief-against-truth view is
+> where that would first become visible.
+
 **Rule 6.9e** — A pile is a **soft cloud** in its kind's colour. **Lightness
 encodes fill** — pale when nearly exhausted, full A100 at capacity
 (`genome-spec.md` Rule 4.9). **Size encodes capacity**, not quantity.
