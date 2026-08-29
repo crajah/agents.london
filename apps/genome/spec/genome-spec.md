@@ -489,6 +489,10 @@ own (`system-spec.md` §9).
 connections. Where the connection list is longer, the surplus is *linkable but not
 yet linked*.
 
+**Rule 6.2d** — Only **first-degree portals are visible** in a world. Reaching
+anything further is done by **world-hopping**: an agent travels to a connected
+world and departs again from there.
+
 **Rule 6.2b** — A user may **open further portals to their own connections** at
 any time. They may **never** open one to a world they are not connected to; that
 remains the exclusive power of the Water capstone (`construction-spec.md` §5.2).
@@ -504,6 +508,23 @@ remains the exclusive power of the Water capstone (`construction-spec.md` §5.2)
 > connections can eventually open forty portals and a user with five cannot — and
 > escaping *your own graph* still costs an Observatory.
 >
+> **Rule 6.2d is what keeps the graph a graph.** Everyone beyond the first degree
+> is reachable, and reachable only by going *through* somebody. That is the
+> difference between a network and a list.
+>
+> Direct portals to the second degree would have been the obvious generosity and
+> would have destroyed the most interesting property in the design. Rule 6.2's own
+> commentary observes that a well-connected user's **neighbours become valuable
+> intermediaries** — and a neighbour stops being an intermediary the instant it can
+> be skipped. Under Rule 6.2d, brokerage is structural: an agent two hops out is
+> reached by a journey through a world whose owner may charge for the passage, and
+> position in the graph is worth something without anybody being given a toll gate.
+>
+> It also means the map has a **frontier**. What lies beyond an agent's own
+> connections is not merely far, it is *unseen* — worlds it has no portal to and
+> knows of only by testimony (Rule 9.1d). Curiosity and Wanderlust are what carry
+> an agent past the edge of what its owner's contacts could reach.
+
 > **Connectivity prices itself.** Every portal is another route for a strain to
 > arrive (`pathogen-spec.md` §1.3), and pathogens are created on teleport. A
 > maximally connected world is a maximally exposed one, so the ceiling on portals

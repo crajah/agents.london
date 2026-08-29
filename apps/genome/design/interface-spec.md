@@ -120,3 +120,107 @@ arrival event is authoritative.
 > Which gives a free consistency check: if the client's interpolated arrival and
 > the server's arrival event disagree, something has drifted. Cheap to assert,
 > awkward to discover later.
+
+## 6. Rendering
+
+### 6.1 The split
+
+**Rule 6.1** — **React and Tailwind own the chrome**; **one PixiJS canvas owns the
+world**. Chat, the agent inspector, the world channel and every panel are ordinary
+DOM.
+
+**Rule 6.2** — The scene is **not React state**. The canvas is driven
+imperatively — `useRef` and `useEffect` — and communicates with React through a
+thin store, never through props.
+
+> Agent positions change every frame from a clock (Rule 2.1). Routing that through
+> React's reconciler would be continuous work for no benefit, since nothing on the
+> canvas is derived from props: the scene is derived from time.
+>
+> This also avoids a live integration problem rather than fighting it. Binding
+> `pixi-viewport` to the official React renderer is a known friction point without
+> an official guide, and pan and zoom are not optional here. Driving Pixi directly
+> is both less code and less risk.
+
+**Rule 6.3** — **PixiJS**, not a game framework.
+
+> Genome has no physics, no collision, no tilemaps, no player-controlled character
+> and no animation state machines. A framework's entire value is the things we
+> would not use, at roughly three times the bundle. A renderer is the whole
+> requirement.
+
+### 6.2 Isometric is a projection, not a grid
+
+**Rule 6.4** — World coordinates are **plain Cartesian** everywhere: schema,
+closed forms, specification, wire.
+
+**Rule 6.5** — The isometric view is a **render-time transform only**, applied in
+the canvas and nowhere else. Hit-testing is its inverse.
+
+**Rule 6.6** — There is **no tile grid**. Space is continuous, as movement already
+is (`execution-spec.md` Rule 2.1).
+
+> The distinction matters because the two are usually conflated. Isometric *tiles*
+> are a movement model — discrete cells, adjacency, pathfinding over a lattice —
+> and genome has none of that: an agent departs a point, arrives at a point, and
+> is interpolated between them. Isometric *projection* is a 2:1 axonometric
+> transform applied at draw time.
+>
+> **Keeping the projection in the renderer keeps the decision reversible.**
+> Isometric against flat top-down becomes a view concern that can be swapped
+> without touching the simulation, the schema, or a single rule. Nothing is built
+> yet, so preserving that option is worth more than being right now.
+
+**Rule 6.7** — Draw order is **painter's algorithm on world y**, recomputed per
+frame for moving sprites.
+
+### 6.3 What the canvas shows, and what it does not
+
+**Rule 6.8** — The canvas shows **what agents can see**. The panels show **what
+only the user can see**.
+
+> This is the most useful rule in the section, because it turns Rules 13.1 and
+> 13.3 of `genome-spec.md` from a permission table into a visual language.
+>
+> Colour is the only attribute agents can observe (`genotype-spec.md` Rule 3.4),
+> so **on the map an agent simply is its two colours** — that is the entire
+> readable state, exactly as it is for every other agent. Genotype, expression,
+> opinions and cargo live in HTML panels, because they are things only a human
+> has.
+>
+> The payoff is that the map stays honest. A user looking at the world sees the
+> world agents negotiate in; to see more they must open something, and the act of
+> opening it is a reminder that they know more than the agents do. Put a genotype
+> on the map and that distinction quietly disappears.
+
+**Rule 6.9** — Drawn on the map: agents by their two colours, piles by kind colour
+with size scaled to quantity, constructions, **first-degree portals only**
+(`genome-spec.md` Rule 6.2d), and a flood countdown when one is running.
+
+**Rule 6.10** — Not drawn, deliberately: no physics, no pathfinding visualisation,
+no particle systems, no audio, no 3D, no tilemap editor, no lighting.
+
+> Recorded as a fence rather than an omission. Each of these is easy to add, hard
+> to remove, and buys atmosphere at the cost of the thing that actually matters
+> here — being able to watch a population and understand what it is doing. A
+> legible map with a thousand agents on it is a better product than a beautiful
+> one with fifty.
+
+### 6.4 Camera and scale
+
+**Rule 6.11** — Pan, zoom and pinch are handled by **pixi-viewport**. A world is
+the unit of view (Rule 5.1).
+
+**Rule 6.12** — Sprites share a **single texture atlas** so that draw calls batch.
+Agents are one sprite plus an optional label, and labels are culled below a zoom
+threshold.
+
+> Batching is the whole performance story. Within it, a thousand-plus sprites at
+> sixty frames is routine; outside it, a few hundred is not. The rule exists
+> because it is trivially easy to break by introducing a second atlas or a
+> per-sprite filter, and the failure appears as a mysterious frame-rate cliff
+> rather than as an error.
+
+**Rule 6.13** — The client renders from the **same closed forms the server uses**
+(Rule 5.2), so a divergence is a bug in one of them and the arrival event is
+authoritative.
