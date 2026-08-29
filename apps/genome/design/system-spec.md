@@ -69,18 +69,21 @@ cross-world leak, not an empty result.
 DDL is forbidden** — genome never issues CREATE TABLE, and a migration file is a
 defect, not a convenience.
 
-**Rule 3.2b** — The substrate mapping, stated once: post-graph realm **`genome`**
-is the one schema; **each world is a post-graph space**; agents' private
-knowledge stores are **post-graph-rag** with agent-keyed spaces
-(`genome-spec.md` §8). The specification's own word *realm* (a world) maps to a
-post-graph **space** — the naming collision is resolved here and nowhere else.
+**Rule 3.2b** — Genome realms map to post-graph realms **one-to-one**: each
+world is its own post-graph realm, and the single agents realm
+(`genome-spec.md` §3 Rule 3.1) is the post-graph realm `genome_agents`, with
+**each agent a space** in it and private knowledge on post-graph-rag. Whether a
+realm is a physical schema or a logical column is post-graph's own
+`SCHEMA_PER_REALM` deployment flag — so Rule 3.5's deferred
+schema-per-realm decision stays deferred, as **configuration rather than
+architecture**.
 
 > Rule 3.5 of `genome-spec.md` chose logical realms in one schema precisely so
 > scale stays a configuration question; post-graph spaces are that mechanism
 > already built, hardened by the services running beside genome. Hand-rolled
 > tables would have duplicated the substrate the design names (Rule 1.1) and
 > quietly created a second tenancy model to keep consistent with the first —
-> which was attempted once, caught, and deleted.
+> which was attempted once, caught, and deleted. (An intermediate one-realm-many-spaces mapping was also tried and replaced by the one-to-one rule above.)
 
 **Rule 3.3** — The shapes that matter are **intents and events**, not states:
 

@@ -59,8 +59,8 @@ No behaviour. Everything later assumes this shape.
 
 ### 0.2 Storage shapes — on post-graph, never raw DDL (`system-spec.md` Rules 3.2a/3.2b)
 - [x] ~~SQL migration~~ — written, caught, deleted; post-graph owns all DDL
-- [ ] `ensure_schema`: vertex tables `worlds, agents, piles, portals, events, decisions`; edge `opinion_of` — realm `genome`, idempotent
-- [ ] World = post-graph **space**; movement intents and decisions as **append-only vertex data**
+- [ ] `ensure_world_realm` per world (`world_meta, piles, portals, events, presence`); `ensure_agents_realm` once (`agents, decisions`, edge `opinion_of`) — idempotent, post-graph owns DDL
+- [ ] Realms **one-to-one**: world = its own post-graph realm; agents realm = `genome_agents` with **agent-keyed spaces**; movement and decisions as **append-only vertex data**; presence lives in the world's realm (Rule 6.10)
 - [ ] Agent knowledge stores on **post-graph-rag**, agent-keyed spaces (`genome-spec.md` §8)
 - [ ] Later phases add their vertex/edge tables where the work lands: `objectives, negotiations` (6), `chats` (7), `infections, strains, antigens` (9), `constructions, plans, berths, ark_manifests` (10)
 - [ ] Seed fixtures; ensure_schema idempotence test against the in-cluster DB (throwaway pod)
