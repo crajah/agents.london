@@ -14,7 +14,10 @@ Substrate mapping (system-spec.md Rules 3.2a/3.2b):
 Whether a post-graph realm is a physical schema or a logical column is the
 deployment flag SCHEMA_PER_REALM — post-graph's own toggle — so genome-spec.md
 Rule 3.5's "decide later whether schema per realm is needed" stays decided
-later, as configuration rather than architecture.
+later, as configuration rather than architecture. **Genome does not set the
+flag** (user decision, 2026-08-29): services construct AsyncPostGraph without
+passing schema_per_realm, deferring entirely to the environment and post-graph's
+own default. Do not copy the registries' `os.getenv(..., "1")` default here.
 
 Fail-closed (BUILD Phase 0.3): every world method takes the world realm first,
 every agent method the agent uuid; missing either raises. No defaults, ever.
