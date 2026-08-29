@@ -143,7 +143,7 @@ another agent's instructions).
 | Skill | Effect | Why it is interesting |
 | :--- | :--- | :--- |
 | **Porterage** | Carries more. | Fewer round trips; each one riskier. A clean risk/throughput trade. |
-| **Prospecting** | Finds richer deposits on a procedurally generated map. | Makes the map (`genome-spec.md` Rule 5.2) worth reading rather than crossing. |
+| **Prospecting** | Finds richer deposits on a procedurally generated map. | Makes the map (`genome-spec.md` Rule 5.2) worth reading rather than crossing. **Abroad it prospects for others:** under `genome-spec.md` Rule 4.7 no agent mines outside its birth world, so a deposit found in a foreign world is something to sell to its natives, never to work. |
 | **Caching** | Leaves cargo in a foreign world, to be collected later. **A cache does not suspend decay** (Rule 5.4). | Modest insurance against stranding: a lost agent's cargo need not be lost with it. Deliberately not a warehouse. |
 
 **Rule 5.4** — **A cache continues to decay** at the caching agent's rate

@@ -1161,8 +1161,12 @@ Every unit spent on building is a unit not spent on agents.
 **The construction hierarchy is specified in `construction-spec.md`** —
 eighteen constructions across five branches keyed to the colour families, each
 relaxing a constraint stated elsewhere in these documents, with the Ark at the
-top requiring something made from all 20 kinds. **Still deferred:** flood frequency,
-warning, and scope (one world or many), and what a flood destroys.
+top requiring something made from all 20 kinds. The flood itself is settled
+there too: **frequency** is a per-world clock drawn uniformly between 15 and 30
+days and not disclosed (`construction-spec.md` Rule 4.7), **warning** is a
+two-day visible countdown (Rule 4.8), **scope** is one world at a time since each
+carries its own clock, and **what it destroys** is constructions, deposited stock
+and pile progress, with the Ark alone surviving (§5.1).
 
 > One question should be settled early because it decides whether the Ark has any
 > stakes at all: **Rule 7.2 regenerates any perished agent in its home world.** If
