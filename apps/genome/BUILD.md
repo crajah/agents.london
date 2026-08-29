@@ -189,6 +189,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 ### 4.2 World generation
 - [ ] Two kinds per world from 20; colours from the A100 palette (Rules 4.1, 4.9)
 - [ ] Piles with individual regeneration rates (4.6); random portal placement (6.2e)
+- [ ] World generation reads its quantities from [`spec/calibration-spec.md`](spec/calibration-spec.md) — pile count, placement, capacity and rate ranges, and how the two kinds are chosen
+- [ ] Founder genotype: uniform about a recorded per-world centre (`genotype-spec.md` 3.2a/3.2b)
+- [ ] Founder surnames — Rule 7.14 covers progeny only
 - [ ] First agent free (7.1); materialisation costs 8 units (2.1)
 
 ### 4.3 Transfer
@@ -360,12 +363,19 @@ and need a decision before the phase that meets them.
 - [x] **A user with zero connections is permanently stuck at one agent.** Resolved: every world holds a permanent portal to an ownerless **commons** (`genome-spec.md` Rule 6.2f), whose only exit is the way in (6.2g) so the topology is preserved.
 - [x] **Account deletion conflicts with permanent links.** Resolved: the world is **tombstoned** (Rule 3.6) — kinds, colours, piles and portals persist ownerless; everything personal is deleted.
 
+### Found by journey-tracing, resolved
+- [x] **The specification contained no quantities at all** — no map size, no speed, no collection rate, no pile count, no founder distribution. 378 rules and not one number governing tempo. Now [`spec/calibration-spec.md`](spec/calibration-spec.md), with crossing time set at ~6h, calibrated against §4.2's own claim about the two-day countdown.
+- [x] **Founder genotype was undefined** — the starting condition of the whole evolutionary experiment. Resolved: uniform within a world about a per-world centre, with the centre **recorded** so structure findings can control for it (`genotype-spec.md` Rules 3.2a/3.2b).
+- [x] **A berth's fate on death was undefined.** Resolved: lost, returning to unassigned (`construction-spec.md` Rule 3.7g).
+
 ### ⚠ Still unresolved
 - [x] **Ark capacity has no number.** Resolved: **twelve slots**, an agent costing one, a construction its contributor count, stock one per unit (`construction-spec.md` Rule 4.3b) — oversubscribed by construction.
 - [x] **How a berth claim becomes a specific agent's berth.** Resolved: berths arrive **unassigned** and the user's own agents contest them (Rules 3.7e/3.7f). Presence settles what argument did not. Supersedes commentary that had the owner allocate directly.
 - [x] **Carrier death mid-portage.** Resolved: the construction is **set down where the party stands** and any group of the required number of distinct users may take it up, strangers included (Rule 3.12a).
 - [x] **Where a foreign agent emerges after boarding.** Resolved: **in the world where the Ark came to rest** — its host's — whoever owns the agent (Rule 4.3c). A survivor is a guest with a journey ahead of it.
 - [ ] ⚠ **Which world a strain is created in on teleport** — origin or destination (`pathogen-spec.md` §2).
+- [ ] ⚠ **Twelve quantities remain unset**, each blocking a named phase — see [`spec/calibration-spec.md`](spec/calibration-spec.md) §4. Two are experiments in their own right: the **Longevity → lifespan** mapping (§11.2 calls it the first thing to calibrate) and the **mutation step size**, which decides whether selection has anything to climb.
+- [ ] ⚠ **Trade that would breach the 15-unit cargo ceiling** (`genome-spec.md` Rule 4.16) — rejected outright, or partially accepted as Rule 4.19 does for deposits?
 
 ### Resolved by existing rules, recorded so they are not re-litigated
 - [x] Agent mid-journey inside a flooding world is present and dies; passage is instantaneous so there is no third state (`genome-spec.md` Rule 6.1a).

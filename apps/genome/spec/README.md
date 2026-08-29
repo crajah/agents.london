@@ -19,3 +19,5 @@ it specifies and where the implementation lives, then states rules as numbered
 `Rule N.M` with the reasoning attached — the existing specs argue for each rule
 rather than only asserting it, and their rule numbers are cited from code and
 commit messages.
+
+- [`calibration-spec.md`](calibration-spec.md) — every quantity the simulation needs, in one place; what is set, and what is still open.
