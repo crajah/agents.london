@@ -108,12 +108,17 @@ across four situations:
 | Asker is a foreigner and cannot mine it | 0.22 | 0.50 |
 | Asker is a local rival who can | 0.07 | 0.29 |
 
-Situation spans 0.93; the locus spans at most 0.50 within any one of them. Two
-predictions held and one failed: desperation overrides the locus entirely (flat
-1.00, as intended), the rule that mining is confined to the birth world changes
-telling behaviour threefold in the predicted direction — but a **costless act does
-not discriminate at all** (ρ = 0.11, p = 0.12). Cooperativeness is only visible
-when cooperating costs something.
+Situation spans 0.93; the locus spans at most 0.50 within any one of them — so
+stakes decide and temperament modulates. But the locus itself is sound: it clears
+the pre-registered bar in **both** scenarios that carry a consequence (ρ = 0.32
+and 0.35) and fails only in the one built to have none (ρ = 0.11, p = 0.12).
+
+A costless act is not the same as a consequenceless one. Revealing a pile spends
+no unit and consumes no action, yet still costs, because piles are finite and a
+rival who learns of one may empty it. Genome contains almost no genuinely
+inconsequential interaction, so the failing case is a boundary condition rather
+than a typical one — an artifact of how the scenario was built, not a property of
+the locus.
 
 ## Limitations
 
