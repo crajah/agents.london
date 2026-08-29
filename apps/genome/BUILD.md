@@ -61,6 +61,7 @@ No behaviour. Everything later assumes this shape.
 - [x] ~~SQL migration~~ — written, caught, deleted; post-graph owns all DDL
 - [ ] `ensure_world_realm` per world (`world_meta, piles, portals, events, presence`); `ensure_agents_realm` once (`agents, decisions`, edge `opinion_of`) — idempotent, post-graph owns DDL
 - [ ] Realms **one-to-one**: world = its own post-graph realm; agents realm = `genome_agents` with **agent-keyed spaces**; movement and decisions as **append-only vertex data**; presence lives in the world's realm (Rule 6.10)
+- [ ] **SCHEMA_PER_REALM is not set by genome** — services construct the client without it; the environment decides. Do not copy the registries' `"1"` default
 - [ ] Agent knowledge stores on **post-graph-rag**, agent-keyed spaces (`genome-spec.md` §8)
 - [ ] Later phases add their vertex/edge tables where the work lands: `objectives, negotiations` (6), `chats` (7), `infections, strains, antigens` (9), `constructions, plans, berths, ark_manifests` (10)
 - [ ] Seed fixtures; ensure_schema idempotence test against the in-cluster DB (throwaway pod)
