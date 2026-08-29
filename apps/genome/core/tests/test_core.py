@@ -114,21 +114,20 @@ class TestOpinion(unittest.TestCase):
 
 
 class _FakeClient:
-    """Captures post-graph calls so the store's contract is testable without a
-    database: every call must carry realm='genome' and a non-empty space."""
+    """Captures post-graph calls: every call must carry a non-empty realm."""
     def __init__(self):
         self.calls = []
 
     def _record(self, method, kw):
-        assert kw.get("realm") == store.REALM, "realm must always be 'genome'"
-        assert kw.get("space"), "space must always be present"
+        assert kw.get("realm"), "realm must always be present"
         self.calls.append((method, kw))
 
     async def upsert_vertex(self, table, **kw): self._record("upsert", kw)
     async def add_vertex_data(self, table, **kw): self._record("append", kw)
     async def add_edge(self, table, **kw): self._record("edge", kw)
     async def get_vertices(self, table, **kw): self._record("get", kw); return []
-    async def create_vertex_table(self, *a, **kw): pass
+    async def create_vertex_table(self, *a, **kw):
+        assert kw.get("realm"), "DDL must name its realm"
     async def create_edge_table(self, *a, **kw): pass
 
 
@@ -138,32 +137,37 @@ def _run(coro):
 
 
 class TestStoreGuard(unittest.TestCase):
-    def test_missing_space_fails_closed(self):
+    def test_missing_scope_fails_closed(self):
         s = store.GenomeStore(_FakeClient())
-        for call in (s.agents_in(None), s.agents_in(""), s.due_events(None, "t"),
-                     s.put_agent(None, "a", {})):
+        for call in (s.agents_in(None), s.agents_in(""),
+                     s.due_events(None, "t"), s.put_agent(None, {}),
+                     s.set_presence("w1", None, True),
+                     s.record_decision("", {})):
             with self.assertRaises(store.UnscopedError):
                 _run(call)
+        with self.assertRaises(store.UnscopedError):
+            _run(store.ensure_world_realm(_FakeClient(), None))
 
-    def test_every_call_carries_realm_and_space(self):
+    def test_world_realm_is_one_to_one(self):
+        # a world's data lives in a realm named by the world itself
         c = _FakeClient(); s = store.GenomeStore(c)
-        _run(s.put_agent("world-1", "agent-1", {"alive": True}))
-        _run(s.record_decision("world-1", "agent-1", {"choice": "mine"}))
-        _run(s.agents_in("world-1"))
-        self.assertEqual(len(c.calls), 3)  # _FakeClient asserts realm+space
+        _run(s.put_pile("world-1", "pile-9", {"kind": 3}))
+        _run(s.schedule("world-1", "ev-1", "t1", "arrival", "a-1", {}))
+        self.assertTrue(all(kw["realm"] == "world-1" for _, kw in c.calls))
 
-    def test_decisions_are_append_only(self):
+    def test_agent_data_lives_in_agents_realm_with_agent_space(self):
         c = _FakeClient(); s = store.GenomeStore(c)
-        _run(s.record_decision("world-1", "agent-1", {"choice": "mine"}))
-        method, _ = c.calls[0]
-        self.assertEqual(method, "append")  # add_vertex_data, never upsert
+        _run(s.put_agent("agent-7", {"alive": True}))
+        _run(s.record_decision("agent-7", {"choice": "mine"}))
+        for _, kw in c.calls:
+            self.assertEqual(kw["realm"], store.AGENTS_REALM)
+            self.assertEqual(kw["space"], "agent-7")
 
-    def test_movement_is_appended_history(self):
+    def test_decisions_and_movement_append_only(self):
         c = _FakeClient(); s = store.GenomeStore(c)
-        _run(s.set_movement("world-1", "agent-1",
-                            {"from_x": 0, "from_y": 0, "to_x": 1, "to_y": 1,
-                             "departed_at": "t0", "arrives_at": "t1"}))
-        self.assertEqual(c.calls[0][0], "append")
+        _run(s.record_decision("agent-7", {"choice": "mine"}))
+        _run(s.set_movement("agent-7", {"to_x": 1.0}))
+        self.assertEqual([m for m, _ in c.calls], ["append", "append"])
 
 
 if __name__ == "__main__":

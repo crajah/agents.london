@@ -167,9 +167,11 @@ agents, and nothing regenerates or is deposited there.
 > the user's: identity, agents, genotypes, chats, keys, opinions and their
 > queryable corpus. The shell that other people's worlds depend on stays.
 
-**Rule 3.5** — A world is a **realm**, but realms are **not schemas**. All realms
-live in one schema, discriminated logically. Whether to promote realms to physical
-schemas is deferred until scale demands it.
+**Rule 3.5** — A world is a **realm**, mapping **one-to-one onto a post-graph
+realm** (`system-spec.md` Rule 3.2b). Whether a realm is a physical schema or a
+logical column is post-graph's `SCHEMA_PER_REALM` deployment flag; the promotion
+decision is deferred until scale demands it, and flipping it is configuration,
+not migration.
 
 > This removes the scaling limit that stood here before. Schema-per-world scales
 > with user count and would have failed around a million users exactly as
