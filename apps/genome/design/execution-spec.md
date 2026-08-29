@@ -131,31 +131,58 @@ intent              →  event enqueued at that time
 | Economy inference | which pile, press on or turn home, accept or decline | routed cheap |
 | Higher inference | negotiation, deception, coalition-forming, Ark bargaining | routed up |
 
-**Rule 5.2** — There is **no decision budget**. An agent thinks as often as
-events give it cause to.
+**Rule 5.2** — Every agent carries a **decision budget** that accrues
+continuously. It exists to make deliberation scarce, **not** to control cost.
 
-> Deliberately unlimited, and the cost is recorded rather than capped so that the
-> decision to cap can be taken later on evidence instead of guesswork.
->
-> The arithmetic does not go away for being unenforced. At 10⁶ agents making ten
-> decisions a day that is **10⁷ inference calls**, near 115/sec sustained, roughly
-> 15B tokens — order **$1.5k/day** at economy-tier pricing, scaling linearly with
-> population. It remains the dominant cost in the system by a wide margin.
->
-> Two things follow from leaving it uncapped. **Rule 12.16 is worth more, not
-> less**: with no ceiling on volume, the finding that the economy tier follows a
-> stated disposition *better* as well as more cheaply is the only thing keeping
-> the number in this range at all. And **§9 matters more**, since a user supplying
-> their own key is choosing to carry a cost nobody is limiting.
->
-> Recorded for when this is revisited: metering per agent, per world and per user
-> should exist from the start even while nothing is enforced. Measuring later is
-> easy; measuring *retrospectively* is impossible, and a cap chosen without a
-> distribution to look at would be the same guess this rule declines to make.
+**Rule 5.2a** — The budget **never prevents an agent from acting**. An agent with
+none continues its current intent; with no intent, it remains where it is. It
+never freezes, never queues, and never waits for credit.
 
-**Rule 5.3** — Should a limit ever be introduced, an agent that reaches it
-**continues its current intent** rather than stopping. Running out of judgement is
-not running out of motion.
+**Rule 5.2b** — Only **discretionary** deliberation is charged:
+
+| | Charged | Always affordable |
+| :--- | :--- | :--- |
+| Arrival, encounter, opportunity | | deciding what to do |
+| An offer put to it | countering | accepting or declining |
+| An intent already formed | reconsidering it | continuing it |
+
+> The line is between deliberation an agent **cannot avoid** and deliberation it
+> **chooses to spend on**, and putting it there gets the mechanic without the
+> failure mode.
+>
+> **A broke agent becomes a take-it-or-leave-it agent.** It can always say yes or
+> no; it simply cannot haggle. That is bargaining from weakness in its most
+> legible form — the agent is not disabled, it is *inflexible*, and a counterparty
+> that notices can press the advantage.
+>
+> **The fallback must stay non-strategic.** Continuing an existing intent is not a
+> heuristic about what is *wise*, and it must not become one. A free fallback that
+> chose the nearest pile or the richest counterparty would supply behaviour, which
+> `genome-spec.md` Rule 12.5 forbids the specification from doing — and if agents
+> spent much of their time on that path, the emergent behaviour on display would
+> be the fallback's rather than the population's.
+>
+> **The budget is sized so ordinary life never touches it.** A routine day is
+> about five decisions (destination, mine or move on, press on or turn home,
+> engage or ignore, breed or not). Only sustained negotiation should drain it,
+> which is the only place the scarcity is wanted.
+
+**Rule 5.2c** — The budget is a **rule of the world**, identical for every agent,
+and is **not** affected by whose credentials pay for the inference (§9).
+
+> This closes a hole that §9 would otherwise open the moment it shipped. If
+> supplying your own key bought a larger budget, a user who paid could out-argue
+> one who did not, deliberation would follow money rather than genotype, and every
+> negotiation outcome would be confounded by billing.
+>
+> Bring-your-own-key changes **who is charged**, never **what an agent may do**.
+
+> The cost arithmetic is unchanged by any of this and is worth keeping in view:
+> at 10⁶ agents deciding ten times a day, ~10⁷ calls and order $1.5k/day, still
+> the dominant cost in the system. Metering per agent, world and user should exist
+> from the start. Measuring later is easy; measuring retrospectively is impossible.
+
+**Rule 5.3** — Running out of judgement is not running out of motion (Rule 5.2a).
 
 ## 6. The record
 
@@ -178,27 +205,25 @@ statistical reproducibility and a complete decision record.
 resident process on either side; the state of the exchange lives in the event
 payload and each turn is a fresh decision invocation.
 
-**Rule 7.2** — A negotiation is bounded by an **explicit maximum number of
-turns**, and ends without agreement when it is reached.
+**Rule 7.2** — A negotiation ends when a participant **cannot afford to
+continue**, or at an **explicit maximum number of turns**, whichever comes first.
 
-> This rule exists because Rule 5.2 removed what used to bound it, and the gap is
-> worth recording rather than quietly patching.
+> Both bounds are kept because they do different work.
 >
-> When decisions were budgeted, a negotiation terminated naturally: turns cost
-> inference, so haggling ended when a participant ran out. That gave a property
-> nobody designed — **the inference budget was a bargaining resource**, patience
-> was purchasable and finite, and an agent negotiating late in its day negotiated
-> from weakness. With no budget there is no such pressure, and two agents with
-> incompatible positions would exchange offers indefinitely.
+> The **turn cap** guarantees termination. Two well-supplied agents with
+> incompatible positions would otherwise exchange offers indefinitely, and no
+> amount of scarcity fixes a case where neither party is short.
 >
-> An explicit cap is the correct replacement and a plainer one. It is a rule of
-> the world rather than an emergent scarcity, and it should be set high enough
-> that reaching it means genuine deadlock rather than an interrupted deal.
+> The **budget** is what makes patience cost something. Under a cap alone an agent
+> never faces a real choice about whether a deal is worth another turn — it simply
+> runs out of allowance, which is an interruption rather than a decision. With
+> both, the question *is this worth one more exchange* has an answer that differs
+> between agents and across a day.
 >
-> The dormant property is recorded here because it is the strongest argument for
-> reintroducing a budget later: a cap makes negotiations terminate, but only
-> scarcity makes patience *cost* something, and only then does an agent face a
-> real decision about whether this deal is worth another turn.
+> The asymmetry is the point. An agent that has deliberated all day negotiates
+> from weakness against one that has not, and under Rule 5.2b it can still accept
+> or decline — it just cannot counter. Nobody designed that; it falls out of
+> charging for judgement while refusing to charge for action.
 
 **Rule 7.3** — A2A carries two kinds of content, and they are handled
 differently:

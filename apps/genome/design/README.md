@@ -22,12 +22,16 @@ sparse, which is what makes a per-event cost model viable at all.
 and the clock; pile quantities from a closed form. The tick does not advance the
 world, it drains an event queue — so cost scales with *events*, not with agents.
 
-**Inference is the cost, and it is deliberately uncapped.** Everything else is
-arithmetic and effectively free. At 10⁶ agents deciding ten times a day this is
-order $1.5k/day and dominates every other cost in the system — but no budget is
-enforced (`execution-spec.md` Rule 5.2). Metering exists from the start so a
-ceiling can later be chosen from a distribution rather than guessed at, and users
-may supply their own credentials (§9).
+**Deliberation is scarce; action never is.** Agents carry a decision budget
+(`execution-spec.md` Rule 5.2) that exists to make patience cost something, not to
+control spend. It charges only *discretionary* thinking — countering an offer,
+reconsidering a plan — and never blocks an agent from acting, so a spent agent
+becomes take-it-or-leave-it rather than frozen. It is identical for every agent
+and unaffected by whose key pays (§9), so deliberation never follows money.
+
+Inference remains the dominant cost regardless — order $1.5k/day at 10⁶ agents
+deciding ten times daily — and is metered from the start even though the budget
+is a game rule rather than a spend limit.
 
 ## Open, and a decision for the specification rather than the design
 
