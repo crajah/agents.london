@@ -347,3 +347,73 @@ comparisons across agents must account for it.
 > column, which §6.1 already requires. It does mean any claim about *evolution*
 > drawn from a mixed-model population needs the model held constant or controlled
 > for, exactly as the validation held it constant to say anything at all.
+
+## 10. Which model an agent thinks with
+
+**Rule 10.1** — An agent is assigned its models **at random on creation**, one per
+tier (§5.1). The assignment is a property of the agent, not of its owner.
+
+**Rule 10.2** — The assignment is **not heritable**. Offspring draw fresh, and a
+parent's substrate is never passed on.
+
+> Deliberately non-heritable, because heritability would destroy the very
+> heterogeneity this is for. A model that expressed dispositions more faithfully
+> would confer an advantage, selection would act on it, and the population would
+> converge on a single substrate within a few generations. Random assignment holds
+> the diversity open indefinitely.
+
+**Rule 10.3** — The assignment **survives regeneration**. An agent restored under
+`genome-spec.md` Rule 7.2 thinks with the models it was created with.
+
+> Otherwise every death would silently change what kind of behaver an agent is,
+> and the opinions others hold of it (`genotype-spec.md` §6.3) would be estimates
+> of somebody else. Reputation requires that the thing being estimated persists.
+
+**Rule 10.4** — A model **withdrawn from the pool** is re-rolled on the agent's
+next regeneration, and until then the tier default stands in.
+
+> The same shape as `skills-spec.md` Rule 1.3a for a withdrawn tool, and for the
+> same reason: nothing may permanently carry a dead pointer, and a re-roll
+> triggered from outside the simulation cannot be gamed from inside it.
+
+**Rule 10.5** — A user's credentials (§9) determine **who pays**, never **which
+model** an agent thinks with. Where a supplied key cannot serve an agent's
+assigned model, the platform default is used for that agent.
+
+> The direct extension of Rule 5.2c. If bringing a key changed an agent's
+> substrate, the randomisation would be broken by whoever paid, and model choice
+> would correlate with owner wealth rather than with nothing at all.
+
+### 10.1 Why randomisation is the safe choice, measured
+
+**Rule 10.6** — The **genotype must dominate the substrate**. The share of
+behavioural variance attributable to model assignment is measured and must remain
+below the share attributable to the genotype.
+
+> The risk in heterogeneous models is precise and worth stating: if swapping an
+> agent's model moves its behaviour more than sweeping a locus does, then the
+> simulation is about models rather than about evolution, and the genotype is
+> decorative in exactly the sense `genome-spec.md` §11.12 forbids.
+>
+> Measured against the validation data, it is not close:
+>
+> | | mean effect |
+> | :--- | ---: |
+> | Sweeping a locus 0 → 10000, model held | **0.58** |
+> | Swapping the model, locus held | 0.17 |
+> | **Ratio** | **3.3×** |
+>
+> Every one of the fourteen dispositions exceeds 2×, from Cooperativeness at 2.0
+> to Aggression at 6.2. The genotype is the dominant driver on every locus tested
+> and by a comfortable margin, so random assignment adds variance without drowning
+> what is being selected on.
+>
+> **Randomisation also improves the statistics rather than damaging them.** Had
+> users chosen models, the model would correlate with whatever kind of user chose
+> it and no analysis could separate the two. Assigned at random it is a
+> *randomised covariate*: uncorrelated with genotype by construction, its effect
+> estimable, and controllable in any comparison that needs it.
+>
+> Re-measure when the pool changes. The 3.3× holds for the two families tested;
+> a model far worse at following a stated disposition would narrow it, and the
+> ratio is the quantity that decides whether the pool is admissible.
