@@ -464,8 +464,9 @@ in one world or another and never between them.
 users**. Two worlds are linkable when their owners are connected.
 
 **Rule 6.2c** — A connection counts when it is **verifiable**, by either route:
-an imported real-world professional graph, or **mutual confirmation between two
-users of genome itself**.
+an imported real-world graph, or **mutual confirmation between two users of
+genome itself**. Contact import seeds discovery and never creates a link on its
+own (`system-spec.md` §9).
 
 > This is the most consequential rule in the specification, because it decides
 > who can reach whom. The trade graph is not random and not chosen: a
@@ -1333,19 +1334,24 @@ stakes.
 of all 20 kinds, then build an Ark against the flood. Detail of flooding and the
 construction hierarchy is deferred to a companion document.
 
-**11.6 Decided — the real LinkedIn connection graph**, with **30 portals
-allocated initially** and the user free to open more from their own connections
-(Rules 6.2a–6.2b). Rule 6.2 stands as written.
+**11.6 Decided — verified connections, seeded by contact import**, with **30
+portals allocated initially** and the user free to open more of their own
+(Rules 6.2a–6.2b).
 
-*Recorded as a build dependency, not an open design question:* connection-list
-access is restricted to approved LinkedIn partners, so this needs partner
-approval or a member-authorised export before Rule 6.2 is implementable. It is
-the only rule in these documents that depends on a third party's permission, and
-it sits underneath trade reach, disease spread and Ark coalitions — so it should
-be validated first, not last. If access proves unobtainable, the nearest
-substitute preserving the design's thesis is a user-authorised import of the same
-graph; a synthetic topology would keep the mechanics and lose the claim that the
-inequality is real.
+*Superseded:* this originally read *the real LinkedIn connection graph*. LinkedIn
+has not exposed connections to general developers for years, and second-degree
+connections are unavailable by any legitimate route, so the rule depended on data
+that could not be obtained. Rule 6.2 now reads **verified connections** from
+either an imported real-world graph or mutual confirmation inside genome, with
+Google People and Microsoft Graph as the practical import sources
+(`system-spec.md` §9).
+
+*Recorded, because it is a real loss:* the original point was that structural
+inequality arrived **wholesale from outside the game** — a starting position
+nobody could negotiate for, because it was a fact about their life. Connections
+formed inside genome can be negotiated for. Contact import keeps most of the
+property (you may only propose to people you actually know) but not all of it.
+
 **11.7 Resolved** — the 25-unit cap is on deposited stock only (Rule 4.17); an
 agent carries at most 15 units (Rule 4.16); and carried resources decay
 (Rule 4.18), which closes the mobile-storage exploit by making stored cargo
