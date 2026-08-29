@@ -419,6 +419,43 @@ stock**, and therefore does not count against the host's 25-unit ceiling
 capacity**, allocated mechanically. For an Ark this means **berths**
 (Rule 4.3). The host is credited for every prerequisite tier it built alone.
 
+**Rule 3.7a** — A berth, once held by an agent, is **the agent's to exchange**.
+It may be given or traded to another agent.
+
+**Rule 3.7b** — A berth changes hands like any other bargain: the parties must be
+**co-located** (`genome-spec.md` Rule 9.1b) and both must agree. It may be
+exchanged at any time, **including during the countdown**.
+
+**Rule 3.7c** — An agent holds **at most one berth**. A claim beyond that is a
+holding to be traded, never a second seat.
+
+> A berth is the most valuable thing in the simulation, and Rules 3.7a–3.7c are
+> what make that fact do some work rather than merely be true.
+>
+> **It is the one good with no adequate price.** A berth is worth everything an
+> agent has earned — its map, its gained attributes, its antigens, its standing
+> with counterparties (Rule 4.9). Cargo caps at fifteen units
+> (`genome-spec.md` Rule 4.16), so no quantity of resources an agent can carry
+> comes close. **Berths therefore cannot be bought, only exchanged for things that
+> are not goods**: a reciprocal claim, a coalition's protection, a debt, kinship.
+> That is precisely the region of game theory the design exists to explore, and
+> nothing else in it forces a non-market trade.
+>
+> **It makes genuine sacrifice possible, and measurable.** An agent that hands over
+> its berth dies in the water and loses everything it learned so that another does
+> not. That is the strongest altruistic act available anywhere in these documents,
+> and because lineage is recorded (`genome-spec.md` §7) and dispositions are
+> heritable, it is *observable*: whether berths flow toward kin, toward
+> reciprocators, or toward whoever argued best is a question the simulation can
+> answer rather than assume. Hamilton's rule has a test here.
+>
+> **And a user cannot compel an agent to keep it.** Under Rule 13.5 an owner's
+> instruction sets an objective and the agent decides how to serve it, so an agent
+> may give away the berth its owner spent a coalition's resources to earn. That is
+> uncomfortable by design. `genome-spec.md` §12 says choices are made rather than
+> computed, and this is the sharpest case: if a user could veto it, the berth would
+> be property and the sacrifice would be theatre.
+
 ### 3.5.1 Why the claim is enforced and not promised
 
 **Rule 3.7 is the difference between this mechanic working and being dead on
@@ -483,16 +520,15 @@ in the nascent world. One not carried is destroyed with everything else
 > Rule 4.3 is what makes the Ark interesting rather than merely expensive, and
 > Rule 4.3a is what makes it worth building at all.
 >
-> **It is the answer to evacuation** (§4.2.3), and the answer is that there is no
-> such thing for agents. Rule 4.9 claims every agent of the world wherever it
-> stands, so sending them abroad saves nothing at all. What a prepared coalition
-> can carry out is *property* — branch roots under Rule 3.10, while the capstones,
-> needing three to five distinct users assembled at one spot inside two days, are
-> not going anywhere.
+> **It is the answer to evacuation** (§4.2.3). Agents that can reach a portal in
+> two days leave and live (Rule 4.11); agents several hops out do not. Property is
+> harder — a prepared coalition carries out its branch roots under Rule 3.10,
+> while the capstones, needing three to five distinct users assembled at one spot
+> inside two days, are not going anywhere.
 >
-> So an agent may save what it built and never what it learned. A berth is the only
-> thing that saves the agent, an Ark can carry a Forge through the water, and no
-> amount of packing substitutes for either.
+> So evacuation saves the agents you positioned well and the cheapest tier of what
+> you built. A berth saves the rest, an Ark can carry a Forge through the water,
+> and no amount of packing substitutes for either.
 >
 > **And it converts the Ark into a collective allocation problem under a
 > deadline**, which is the sharpest thing in the design. Capacity is shared among
@@ -599,35 +635,47 @@ disclosed**.
 **Rule 4.8** — **Two days before a flood, a countdown becomes visible** to every
 agent in that world, visitors included.
 
-**Rule 4.9** — A flood claims **every agent of that world, wherever it is**. An
-agent abroad is claimed exactly as one standing in the water is.
+**Rule 4.9** — A flood kills **every agent present in the world** when it
+arrives, **whether or not it is their home world**. Visitors die with natives.
 
 **Rule 4.10** — A **berth on an Ark is the only exemption.** Nothing else saves an
-agent: not distance, not a construction, not another user's world.
+agent that is present: not a construction, not standing, not whose world it is.
 
-> Rule 4.9 is the rule that makes the Ark the centre of the design rather than one
-> building among eighteen, and it is worth being clear about what it costs.
+**Rule 4.11** — An agent **elsewhere when the water comes is untouched**. Presence
+is the criterion, and only presence.
+
+> Three consequences, and the second is the one that changes how the map is read.
 >
-> **Agents cannot be evacuated.** Sending them abroad is not a strategy, and there
-> is no clever positioning that substitutes for a berth. What is lost is everything
-> *earned* — knowledge, gained attributes, retained antigens, cargo (§5.1) — none
-> of which regeneration restores (`genome-spec.md` Rule 7.3). The agent itself
-> returns; what it had learned does not.
+> **What is lost is everything earned** — knowledge, gained attributes, retained
+> antigens, cargo (§5.1) — none of which regeneration restores
+> (`genome-spec.md` Rule 7.3). The agent returns; what it had learned does not. A
+> berth is the only thing that carries an agent's earned life across the water.
 >
-> **So the two-day countdown is about property and passage, never about people.**
-> A prepared coalition spends it carrying out branch roots (Rule 3.10) and settling
-> who boards. Rule 4.8 tells visitors the clock because a foreign world's flood
-> date is worth knowing — the Observatory sells exactly that — not because a
-> visitor is in danger. Visitors belong to other worlds and are claimed by their
-> own floods, not by this one.
+> **Travel becomes genuinely dangerous.** Standing in a foreign world when its
+> clock runs out kills an agent as surely as standing in its own. Wanderlust
+> (`genotype-spec.md` §3.2) now carries a real hazard rather than a cost in decay
+> and distance, and the question *when does this world flood* stops being strategy
+> and becomes survival.
 >
-> **And it puts a ceiling on accumulation that nothing else in the design
-> provides.** Every fifteen to thirty days a world's entire population is stripped
-> back to its genotype unless berthed. An agent cannot compound knowledge
-> indefinitely, a lineage cannot ride one exceptional map forever, and the
-> advantage that survives a cycle is the advantage a coalition chose to save. That
-> is a periodic equaliser with a social filter on it, and it is the strongest
-> reason the flood exists at all.
+> **Which gives the Observatory a life-and-death function.** It reveals other
+> worlds' flood clocks (§4.2.1), and under Rule 4.9 that is no longer an
+> optimisation — it is the difference between sending agents somewhere and sending
+> them somewhere that is about to drown. Flood-clock intelligence becomes the most
+> valuable thing an agent can carry out of a foreign world, and one of the few
+> pieces of knowledge worth crossing a map to buy. Rule 4.8 warns visitors for
+> exactly this reason: it is a hazard notice, not a courtesy.
+>
+> **The two-day window is now a real evacuation.** Agents near a portal can leave;
+> agents deep in the map or several hops out cannot. A berth is insurance for the
+> ones that cannot run, and the berth market is priced by how far a coalition's
+> agents habitually range.
+>
+> *Recorded honestly:* this weakens the flood as an equaliser. An agent that
+> reliably evacuates keeps its knowledge across cycles, so accumulation is bounded
+> by **Longevity** (`genotype-spec.md` §3.4) rather than by the water. The flood
+> still strips a world's stock, piles and constructions, and still takes everyone
+> who misjudged the clock — but a careful, well-placed agent can compound
+> indefinitely, and that is a property to watch rather than one to assume away.
 
 ### 4.2.1 Why per-world clocks change everything
 
