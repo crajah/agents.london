@@ -1050,6 +1050,30 @@ objective**, to **acquire resources**. The specification does not say how.
 Negotiation, testimony, coordination and the agreement to breed are all carried
 over it.
 
+**Rule 9.1b** — Agents must be **co-located to negotiate**. A2A carries the
+exchange, but the parties must have met on the map (§5) — there is no bargaining
+at a distance.
+
+> Rule 9.1b is the more consequential half, because it decides what the map is
+> *for*.
+>
+> **Travel becomes speculative.** If deals could be struck remotely, an agent
+> would negotiate at leisure and journey only to settle — the map would be a
+> delivery problem and the teleport graph a logistics constraint. Requiring a
+> meeting means every trade costs a journey *before* a word is exchanged, so an
+> agent must decide whom to approach while knowing almost nothing about them.
+>
+> **And it is colour that it decides on.** Attributes are hidden (Rule 6.6) and
+> colour is the only visible trait (Rule 3.4), so the choice of whom to cross a
+> world for is made on provenance and prior opinion alone. That is what gives
+> Rule 6.9a's general opinion something to do, what makes Curiosity and Wanderlust
+> more than flavour, and what makes a wasted journey a real cost.
+>
+> Note the asymmetry with Rule 4.2, which is deliberate: cargo was always going to
+> change hands face to face. This extends the same constraint upstream to the
+> conversation, so that meeting is the *precondition* for a deal rather than its
+> final step.
+
 > Naming the substrate matters more here than it usually would, because A2A is
 > what an *opinion* (`genotype-spec.md` §6.3) is built from. Attributes are
 > hidden, so everything one agent believes about another it learned by watching
