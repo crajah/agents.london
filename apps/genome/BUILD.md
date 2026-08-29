@@ -309,6 +309,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Plan grammar cannot express an effect (`interface-spec.md` Rule 3.5, `genome-spec.md` Rule 13.7)
 - [ ] Flood clock 15–30 days undisclosed; two-day countdown (`construction-spec.md` Rules 4.7, 4.8)
 - [ ] **Kills every agent present, native or visitor**; berth is the only exemption; those elsewhere untouched (4.9–4.11)
+- [ ] Partial hull persists across floods while building (4.4a); **a successful voyage spends the Ark** (4.4b); an unused Ark is not spent (4.4c)
+- [ ] Wreck state: decaying hull is unboardable, uncontributable, unsalvageable
 
 ---
 

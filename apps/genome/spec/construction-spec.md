@@ -686,6 +686,39 @@ ever, prerequisites for *further* contribution included.
 > the one thing the coalition is accumulating — which is the Ark's own story told
 > about its construction.
 
+**Rule 4.4b** — A successful voyage **spends the Ark**. Once it has carried a
+manifest through a flood, the hull **decays to nothing** — quickly enough that it
+cannot serve a second flood — and while decaying it can be neither contributed
+to, boarded, salvaged nor dismantled (Rule 3.13 applies to the wreck as to
+anything else).
+
+**Rule 4.4c** — An Ark that carried **nobody** is not spent. Use, not survival, is
+what consumes it.
+
+> **One keel, one voyage.** The hull accumulates across floods while it is being
+> built (Rule 4.4a), survives the flood it serves (Rule 4.4), and then it is done —
+> a wreck on the new world's shore, briefly, and gone.
+>
+> What this buys is that **the Ark race never ends and berths never cheapen**.
+> Under a persistent hull, a coalition that survived once started every later
+> cycle owning the one thing that takes eight users to make, and berth scarcity —
+> the engine of §4.2's entire bargaining drama — decayed with each cycle survived.
+> Spent hulls make every flood a fresh coalition problem: the negotiation, the
+> triage and the sacrifice recur forever, which is what a simulation about
+> cooperation actually wants recurring.
+>
+> **What it deliberately gives up** is recorded in §5.6 below, now superseded:
+> advantage no longer compounds across cycles through hull ownership. What an
+> experienced coalition keeps is everything Rule 4.5 saved — its agents entire,
+> their knowledge, the carried constructions — and the *knowing how*: the
+> partnerships, the routes, the practised sequence. Institutional memory instead
+> of capital, which is the sharper claim anyway.
+>
+> Rule 4.4c keeps the incentive honest at the margin. A coalition whose Ark stood
+> empty through a flood — everyone evacuated, or everyone drowned — still owns it,
+> because nothing was used. The hull is consumed by the service it renders, not by
+> the weather.
+
 **Rule 4.5** — Agents sheltered in the Ark survive **entire** — cargo, knowledge,
 gained attributes and retained antigens intact.
 
@@ -901,20 +934,23 @@ constructions, deposited stock and pile progress destroyed, the Ark alone
 surviving. What an Ark saves is everything *earned* — knowledge, gained
 attributes, antigens, cargo — none of which regeneration restores.
 
-**5.6 Decided** — the **Ark persists; its prerequisites do not.** A user emerges
-owning a hull and must rebuild the seventeen constructions beneath it.
+**5.6 Superseded** — this originally read *the Ark persists; a user emerges
+owning a hull*, on the argument that surviving one flood should make the next
+easier and that advantage would compound across cycles through cooperation.
+Rules 4.4b–4.4c reverse it: **a successful voyage spends the Ark**, and no user
+ever emerges owning a hull.
 
-> Thematically exact — Noah lands and the world is empty — and mechanically it
-> does the right thing. **Surviving one flood makes the next materially easier
-> without making it trivial**: the coalition keeps the single thing that cannot be
-> rebuilt quickly, and must still reassemble everything that feeds it, with all
-> the partners and all the negotiation that implies.
+> The original argument was real and the reversal knowingly pays its price. What
+> was prized — an established coalition starting later cycles from a better
+> position — made berth scarcity a wasting asset: each survived flood cheapened
+> the very thing §4.2's bargaining depends on, until an old coalition faced no
+> hard choices at all. A spent hull keeps triage, negotiation and sacrifice
+> recurring every cycle, forever.
 >
-> It also means an established coalition and a new one are not equivalent. A group
-> that has already survived a flood starts each subsequent cycle from a genuinely
-> better position, so **advantage compounds across cycles through cooperation
-> rather than through accumulation** — which is the only form of compounding this
-> design permits anywhere.
+> What compounds instead is **institutional memory**: the surviving agents, their
+> knowledge, the carried constructions, the partnerships and the practised
+> sequence. A veteran coalition rebuilds faster because it *knows how*, not
+> because it kept the boat.
 
 **5.2 Decided — it creates them.** The Water capstone both reveals the graph and
 **forges new teleport links**.
