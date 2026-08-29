@@ -205,3 +205,47 @@ travels in the message.
 > to give it an address, and an address implies something listening. Millions of
 > listeners is not available. A worker holds one endpoint and routes by the agent
 > UUID in the envelope.
+
+## 9. Connection discovery
+
+**Rule 9.1** — Contacts are a **discovery seed, never a link**. Importing a
+contact list proposes connections; it does not create them.
+
+**Rule 9.2** — Supported sources are **Google People API**
+(`people/me/connections`, scope `contacts.readonly`) and **Microsoft Graph**
+(`/me/contacts`, scope `Contacts.Read`). Both are ordinary OAuth.
+
+**Rule 9.3** — Matching is by **hashed email**. A contact who is not a genome
+user is **discarded immediately** and never stored.
+
+**Rule 9.4** — A link exists only when **both users confirm**
+(`genome-spec.md` Rule 6.2c). One side importing a contact list is not consent
+from the other.
+
+> Rule 9.4 is the one that has to be there, and the reason is consent rather than
+> design tidiness.
+>
+> **A contact is unilateral; a connection is mutual.** I can hold your email
+> without you holding mine. Teleport links are **bidirectional and permanent**
+> (`genome-spec.md` Rule 6.3a), so treating a one-sided contact as a link would
+> open a door into someone's world, forever, that they never agreed to. No game
+> property is worth that, and there is no version of it that a user could later
+> undo.
+>
+> **Contact lists are also exhaust rather than curation.** Mail providers save
+> everyone you ever wrote to — newsletters, one-off transactions, support desks.
+> Rule 6.2's premise is that the graph has a shape that means something, and
+> unfiltered contact history has a shape that means considerably less. Requiring
+> confirmation filters it for free: only contacts who are users, and who accept,
+> become portals.
+>
+> **And it is why these sources beat the one originally named.** LinkedIn has not
+> exposed connections to general developers for years and second-degree
+> connections are unavailable by any legitimate route, so Rule 6.2's original
+> wording depended on data that could not be obtained. Contacts can be, and after
+> confirmation they yield exactly what the rule wanted: a graph of people who
+> genuinely know each other.
+
+**Rule 9.5** — Import is **re-runnable**. A user may import again as their
+contacts or the user base grow, and previously declined proposals are not
+re-raised automatically.
