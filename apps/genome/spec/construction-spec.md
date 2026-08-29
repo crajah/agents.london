@@ -173,6 +173,59 @@ number its tier requires.
 **Rule 3.4** — A contributor is counted once, however much it gives. Eight
 deliveries by one user's eight agents is **one** contributor.
 
+**Rule 3.9a** — The **Ark tree is immutable**. The eighteen constructions, their
+tiers, their contributor counts and their dependencies are fixed. User plans
+(`genome-spec.md` Rule 13.6) are **added alongside** it and never alter it.
+
+> The canonical tree is what every constraint-relaxation in the design hangs from
+> (Rule 13.7 of `genome-spec.md` reserves effects to it entirely), so a user able
+> to edit it could rewrite the economy by editing a prerequisite. Additive-only
+> keeps authorship real and the spine fixed: a user may build anything beside the
+> tree and nothing into it.
+
+**Rule 3.10** — A completed construction may be **carried through a teleport
+point** by as many agents as it required contributors, and those agents must
+represent **that many distinct users**.
+
+**Rule 3.11** — The carriers need not be the builders. Any agents of the right
+number and spread will do.
+
+**Rule 3.12** — Carriers move as **one body** and are occupied for the journey:
+they may not separate, mine or trade until the construction is set down.
+
+**Rule 3.13** — A construction may **never be dismantled** into resources.
+
+> Rule 3.13 is the one that has to be there, and it closes an exploit rather than
+> expressing a preference. `genome-spec.md` Rule 4.2 says a teleport carries agents
+> and not cargo, and Rule 4.16 caps an agent at fifteen units. Without Rule 3.13 a
+> user builds a structure out of a hundred units, walks it through a portal with a
+> handful of agents, and takes it apart on the other side — a resource teleport,
+> a bypassed cargo ceiling, and both of the rules that make distance cost
+> something, defeated by a crate.
+>
+> **Rule 3.10 mirrors Rule 3.4 deliberately.** Requiring *distinct users* rather
+> than merely bodies means moving a construction demands the same scarce input
+> that raising one did — other people. Under the alternative, a single wealthy
+> user with five agents could walk off with a Forge that took four users to fund,
+> and the berth claim in Rule 3.7 would be worth much less than it looks.
+>
+> **What this does to the flood is the interesting part**, and it is better than
+> the flat wipe it replaces. Portage is possible but scales with contributor
+> count, and the countdown is two days (Rule 4.8):
+>
+> | | Contributors | Evacuable in two days? |
+> | :--- | ---: | :--- |
+> | Branch roots — Cairn, Kiln, Grove, Apothecary, Library | 1 | yes, by one agent |
+> | Branch tier 2 | 2 | plausibly, for a prepared pair |
+> | Capstones — Foundation, Forge, Orchard, Sanatorium, Observatory | 3–5 | effectively no |
+>
+> **What can be saved is inversely proportional to what it is worth.** A coalition
+> that plans ahead rescues its roots and loses its capstones, and the Ark remains
+> the only continuity for anything that took a coalition to raise. The flood keeps
+> its teeth exactly where they mattered, and the two-day window becomes a
+> logistics problem with a real answer instead of a countdown to a foregone
+> conclusion.
+
 > Rule 3.4 is the load-bearing half. Without it, "eight contributors" is satisfied
 > by wealth — a user with enough agents supplies the count themselves and the
 > requirement measures nothing. Counting *users* rather than deliveries makes the
@@ -430,11 +483,13 @@ in the nascent world. One not carried is destroyed with everything else
 > Rule 4.3 is what makes the Ark interesting rather than merely expensive, and
 > Rule 4.3a is what makes it worth building at all.
 >
-> **It is the answer to evacuation** (§4.2.3). Sending agents abroad saves agents,
-> and nothing else — a user who evacuates keeps their line and loses seventeen
-> constructions that took a coalition to raise. An Ark can carry a Forge through
-> the water. Evacuation is now a *retreat*; the Ark is *continuity*, and no amount
-> of packing substitutes for it.
+> **It is the answer to evacuation** (§4.2.3). Sending agents abroad saves agents
+> and very little else. Rule 3.10 lets a prepared coalition carry out its branch
+> roots, and the capstones — three to five distinct users, assembled at one spot
+> inside a two-day countdown — are not going anywhere. A user who evacuates keeps
+> their line and the cheapest tier of what they built. An Ark can carry a Forge
+> through the water. Evacuation is a *retreat* that now salvages something; the
+> Ark is *continuity*, and no amount of packing substitutes for it.
 >
 > **And it converts the Ark into a collective allocation problem under a
 > deadline**, which is the sharpest thing in the design. Capacity is shared among
