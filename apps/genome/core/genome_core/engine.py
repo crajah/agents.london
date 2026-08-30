@@ -229,8 +229,14 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
                    terrain: list[dict], arrival_kind: str,
-                   arrival_payload: dict) -> Effects:
-    """Route computed once, at decision time (execution-spec Rule 2.1a)."""
+                   arrival_payload: dict, time_scale: float = 1.0) -> Effects:
+    """Route computed once, at decision time (execution-spec Rule 2.1a).
+
+    time_scale is a PER-WORLD DEMO AFFORDANCE: journeys in a scaled world
+    complete scale-times faster. It applies here, at route creation, so every
+    closed form downstream -- server and client -- needs no change: arrives_at
+    is simply nearer. Real worlds run at 1.0; analyses must exclude scaled
+    worlds (the same discipline as founding centres, Rule 3.2b)."""
     pts = pathmod.find_path(terrain, agent.x, agent.y, tx, ty)
     if pts is None:                      # worldgen guarantees this cannot happen
         raise RuntimeError("unroutable destination")
@@ -240,7 +246,8 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
     # few seconds -- observed live, one agent burning a call per tick shuttling
     # between piles at her feet. Arrival, unloading and looking around take
     # time; the floor is that time.
-    arrives = max(route.arrives_at, now + 120.0)
+    scale = max(1.0, time_scale)
+    arrives = now + max((route.arrives_at - now) / scale, 120.0 / scale)
     return Effects(
         movement={"waypoints": list(route.waypoints), "departed_at": now,
                   "arrives_at": arrives},
@@ -250,7 +257,8 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
 
 def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                  now: float, payload: dict,
-                 terrain: list[dict] | None = None) -> Effects:
+                 terrain: list[dict] | None = None,
+                 time_scale: float = 1.0) -> Effects:
     """Turn a decision into effects. The caller records the decision first."""
     terrain = terrain or []
     by_id = {p.pile_uuid: p for p in piles}
@@ -258,7 +266,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "mine_here":
         pile = by_id[payload["pile_uuid"]]
         want = min(pile.qty, CARGO_CEILING - agent.cargo_total())
-        duration = want / MINE_RATE_UNITS_PER_SEC
+        duration = want / MINE_RATE_UNITS_PER_SEC / max(1.0, time_scale)
         return Effects(mine_pile=(pile.pile_uuid, want),
                        schedule=("mining_done", now + duration, agent.agent_uuid,
                                  {"pile_uuid": pile.pile_uuid,
@@ -267,12 +275,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "travel_to_pile":
         pile = by_id[choice.target]
         return _route_effects(agent, pile.x, pile.y, now, terrain,
-                              "arrival", {"pile_uuid": pile.pile_uuid})
+                              "arrival", {"pile_uuid": pile.pile_uuid},
+                              time_scale)
 
     if choice.option == "go_home_deposit":
         hx, hy = HOME_XY
         return _route_effects(agent, hx, hy, now, terrain,
-                              "deposit_arrival", {})
+                              "deposit_arrival", {}, time_scale)
 
     if choice.option in ("explore_frontier", "survey_far"):
         if choice.option == "explore_frontier":
@@ -285,7 +294,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
             tx, ty = cell_centre(c)
             if pathmod.find_path(terrain, agent.x, agent.y, tx, ty) is not None:
                 return _route_effects(agent, tx, ty, now, terrain,
-                                      "explored", {"cell": list(c)})
+                                      "explored", {"cell": list(c)},
+                                      time_scale)
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 
     if choice.option == "take_portal":
