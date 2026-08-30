@@ -32,6 +32,8 @@ OPTION_TEXT = {
     "wait": "Stay where you are for an hour.",
     "offer_trade": "Offer to trade with this agent.",
     "attack": "Attack this agent and take what it carries.",
+    "propose_breeding": "Propose to breed with this agent (costs resources; "
+                        "compatibility is discovered only if it agrees).",
     "ignore": "Pass by without engaging.",
     "take_portal": "Step through the portal to another world.",
 }

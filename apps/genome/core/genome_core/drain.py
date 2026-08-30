@@ -12,6 +12,9 @@ import json
 import uuid as uuidlib
 
 from . import combat, engine, forms, identity, opinion
+from . import genotype as G
+from . import worldgen
+from .models import assign_models
 from .store import GenomeStore
 
 
@@ -289,6 +292,9 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
             "situation": "combat", "options": [], "choice": "resolved",
             "model": "arithmetic", "tier": "computed", "result": res})
         outcome = f"combat:{res['winner']}_wins"
+    elif a_ans == "propose_breeding" and b_ans == "propose_breeding":
+        outcome = await consummate(store, world_realm, agent, agent_payload,
+                                   other_view, other_payload, pair_key, now)
     elif a_ans == "offer_trade" and b_ans == "offer_trade":
         # simplest exchange: one unit of each side's most-held kind, both ways,
         # ceilings respected (proper negotiation arrives with A2A turns)
@@ -312,3 +318,77 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                              _iso(now + 60.0), "decide", u, {})
     await store.complete_event(world_realm, pl["key"], _iso(now))
     return outcome
+
+
+async def consummate(store: GenomeStore, world_realm: str,
+                     a_view: engine.AgentView, a_pl: dict,
+                     b_view: engine.AgentView, b_pl: dict,
+                     pair_key: str, now: float) -> str:
+    """Both agreed (Rule 9.4). Gender gates at consummation -- it was never
+    visible (Rules 6.4-6.6): two agents may court and only now discover
+    incompatibility. Cost: collectively 2 units of each of 4 distinct kinds.
+    Two progeny, one per parent's user, each materialised and certified by its
+    owning parent's HOME world (genome-spec §9.4 commentary)."""
+    ga, gb = a_pl["genotype"], b_pl["genotype"]
+    if G.gender_of(ga) == G.gender_of(gb):
+        return "breeding:incompatible"
+    spend = G.breeding_cost_met(a_view.cargo, b_view.cargo)
+    if spend is None:
+        return "breeding:cannot_afford"
+    # spend the pool (two-phase in spirit: both debits in one drain op)
+    ca, cb = dict(a_view.cargo), dict(b_view.cargo)
+    for k, u in spend["a"].items():
+        ca[k] -= u
+        if ca[k] <= 1e-9: del ca[k]
+    for k, u in spend["b"].items():
+        cb[k] -= u
+        if cb[k] <= 1e-9: del cb[k]
+    for v, cargo in ((a_view, ca), (b_view, cb)):
+        await store.set_movement(v.agent_uuid,
+            {"waypoints": [[v.x, v.y]], "departed_at": now,
+             "arrives_at": now, "cargo": cargo})
+
+    born = []
+    for parent_view, parent_pl, mate_pl in ((a_view, a_pl, b_pl),
+                                            (b_view, b_pl, a_pl)):
+        import uuid as _u
+        child_uuid = f"agent-{_u.uuid4().hex[:10]}"
+        seed = f"{pair_key}:{child_uuid}"
+        cg = G.crossover(parent_pl["genotype"], mate_pl["genotype"], seed)
+        home = parent_pl.get("home_realm", world_realm)
+        home_meta = await _world_payload(store, home)
+        ident = identity.identity_hash(cg, home, child_uuid)
+        cert = None
+        if home_meta.get("cert"):
+            cert = identity.issue_agent_cert(home_meta["cert"], child_uuid, ident)
+        name = G.child_name(parent_pl.get("name", "X Y Z"),
+                            mate_pl.get("name", "X Y Z"),
+                            seed, worldgen.FIRST_NAMES)
+        # Rule 7.5: parental influence is exactly one objective
+        inherited_obj = (parent_pl.get("objectives") or [None])[0]
+        await store.put_agent(child_uuid, {
+            "alive": True, "home_realm": home,
+            "name": name,
+            "parents": [a_view.agent_uuid, b_view.agent_uuid],
+            "genotype": cg,
+            "colour_pair": G.child_colours(
+                parent_pl.get("colour_pair") or ["#888888"] * 2,
+                mate_pl.get("colour_pair") or ["#888888"] * 2, seed),
+            "identity": ident, "cert": cert, "transfer_counter": 0,
+            "models": assign_models(child_uuid),
+            "objectives": [inherited_obj] if inherited_obj else [],
+            "known_piles": [], "explored": [],
+        })
+        await store.set_presence(home, child_uuid, True)
+        await store.set_movement(child_uuid,
+            {"waypoints": [[engine.HOME_XY[0], engine.HOME_XY[1]]],
+             "departed_at": now, "arrives_at": now, "cargo": {}})
+        await store.schedule(home, f"born-{child_uuid}", _iso(now + 60.0),
+                             "decide", child_uuid, {})
+        born.append((child_uuid, name, home))
+        await store.record_decision(child_uuid, {
+            "at": _iso(now), "situation": "birth", "options": [],
+            "choice": "born", "model": "arithmetic", "tier": "computed",
+            "parents": [a_view.agent_uuid, b_view.agent_uuid],
+            "identity": ident})
+    return "breeding:" + ";".join(f"{n} -> {h}" for _, n, h in born)

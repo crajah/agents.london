@@ -186,6 +186,19 @@ three.** The first two live meetings both resolved ignore-ignore, which the
 screen shows is what mid-range genotypes honestly do — and what a high-
 Aggression arrival will not.
 
+## Observed in the demo population (Phase 8)
+
+**Two structurally all-female worlds.** genome_demo's founding Gender centre
+drew 0.768 and genome_demo2's 0.965 — with founders uniform ±25% around the
+centre, neither world can EVER produce a male natively. Ten agents across both
+worlds, ten females, and only immigration can continue either line. Rule 3.2a's
+per-world character produced a real demographic constraint nobody designed:
+roughly a quarter of founding worlds will be single-gender at birth, making
+Rule 2.3's you-cannot-go-it-alone bite through demography as well as resources.
+Worth watching at scale: Gender inherits by crossover, so an all-high world's
+offspring stay high absent migration — gender ratio becomes a population-level
+dynamic with migration as its only lever.
+
 ## Limitations
 
 **One scenario per locus.** A weak result confounds "this disposition does not

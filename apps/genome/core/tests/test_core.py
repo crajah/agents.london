@@ -300,3 +300,44 @@ class TestBudget(unittest.TestCase):
         self.assertFalse(ok)                     # broke: cannot counter...
         b2, ok2 = B.charge(b, "accept", 0.0)
         self.assertTrue(ok2)                     # ...but can always accept
+
+
+class TestHeredity(unittest.TestCase):
+    def _pair(self):
+        ra, rb = random.Random("pa"), random.Random("pb")
+        a = {k: ra.uniform(*G.RANGES[k]) for k in G.RANGES}
+        b = {k: rb.uniform(*G.RANGES[k]) for k in G.RANGES}
+        return a, b
+
+    def test_crossover_every_locus_from_a_parent_or_nearby(self):
+        a, b = self._pair()
+        c = G.crossover(a, b, "s1")
+        for k, (lo, hi) in G.RANGES.items():
+            span = hi - lo
+            near = min(abs(c[k] - a[k]), abs(c[k] - b[k]))
+            self.assertLessEqual(near, 0.25 * span + 1e-9)  # step or excursion
+            self.assertGreaterEqual(c[k], lo); self.assertLessEqual(c[k], hi)
+
+    def test_crossover_deterministic_and_seed_sensitive(self):
+        a, b = self._pair()
+        self.assertEqual(G.crossover(a, b, "s"), G.crossover(a, b, "s"))
+        self.assertNotEqual(G.crossover(a, b, "s"), G.crossover(a, b, "t"))
+
+    def test_child_name_takes_second_surname_of_each(self):
+        n = G.child_name("Asha Brightwater Coldmere", "Falk Greyvale Kestrel",
+                         "s", ["Iris"])
+        parts = n.split()
+        self.assertEqual(parts[0], "Iris")
+        self.assertEqual(sorted(parts[1:]), ["Coldmere", "Kestrel"])  # 7.14
+
+    def test_child_colours_one_from_each(self):
+        c = G.child_colours(["#A", "#B"], ["#C", "#D"], "s")
+        self.assertIn(c[0], ["#A", "#B"]); self.assertIn(c[1], ["#C", "#D"])
+
+    def test_breeding_cost(self):
+        spend = G.breeding_cost_met({"1": 2, "2": 2}, {"3": 2, "4": 3})
+        self.assertIsNotNone(spend)
+        self.assertIsNone(G.breeding_cost_met({"1": 8}, {"2": 2, "3": 2}))
+        # collective: one side can carry most of it
+        self.assertIsNotNone(G.breeding_cost_met({"1": 2, "2": 2, "3": 2},
+                                                 {"4": 2}))

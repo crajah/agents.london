@@ -122,3 +122,71 @@ def lifespan_days(longevity_expressed: float, b: float) -> float:
     so expressed/b spans (0,1]-ish."""
     f = min(1.0, longevity_expressed / b)
     return 20.0 + f * 70.0
+
+
+# ---------------- heredity (genotype-spec §7, genome-spec §9.4) ----------------
+
+MUTATION_STEP = 0.05          # calibration Rule 3.0a: ~5% of a locus range
+EXCURSION_P = 0.02            # Rule 7.4a: rare large excursions
+EXCURSION_STEP = 0.25
+
+
+def crossover(a: dict, b: dict, seed: str) -> dict:
+    """Uniform crossover locus-by-locus, then mutation gated by the CHILD's own
+    inherited Mutability (Rule 7.4: an agent's own mutation probability)."""
+    import random
+    r = random.Random(f"cross:{seed}")
+    child = {k: (a if r.random() < 0.5 else b)[k] for k in RANGES}
+    p_mut = norm("Mutability", child["Mutability"])
+    for k, (lo, hi) in RANGES.items():
+        if r.random() < p_mut * 0.5:
+            step = EXCURSION_STEP if r.random() < EXCURSION_P else MUTATION_STEP
+            child[k] = min(hi, max(lo, child[k] + r.uniform(-1, 1) * step * (hi - lo)))
+    return child
+
+
+def child_colours(a_pair: list, b_pair: list, seed: str) -> list:
+    """One colour from each parent, randomly picked (user decision, 9.6-era)."""
+    import random
+    r = random.Random(f"col:{seed}")
+    return [r.choice(a_pair), r.choice(b_pair)]
+
+
+def child_name(a_name: str, b_name: str, seed: str, first_names: list) -> str:
+    """Rule 7.14: the SECOND last name of each parent, in random order; a fresh
+    first name."""
+    import random
+    r = random.Random(f"name:{seed}")
+    sa, sb = a_name.split()[-1], b_name.split()[-1]
+    pair = [sa, sb]
+    r.shuffle(pair)
+    return " ".join([r.choice(first_names)] + pair)
+
+
+def gender_of(genotype: dict) -> str:
+    """Gender is a gate, not a virtue (Rule 6.4/6.5): the 0-1 locus splits at
+    half. Never visible to other agents."""
+    return "female" if genotype["Gender"] >= 0.5 else "male"
+
+
+def breeding_cost_met(cargo_a: dict, cargo_b: dict) -> dict | None:
+    """Rule 9.4: collectively 2 units each of 4 DIFFERENT kinds. Returns the
+    per-kind spend split by contributor, or None."""
+    pool: dict[str, float] = {}
+    for c in (cargo_a, cargo_b):
+        for k, u in c.items():
+            pool[k] = pool.get(k, 0.0) + u
+    kinds = [k for k, u in sorted(pool.items()) if u >= 2.0]
+    if len(kinds) < 4:
+        return None
+    chosen = kinds[:4]
+    spend = {"a": {}, "b": {}}
+    for k in chosen:
+        need = 2.0
+        take_a = min(cargo_a.get(k, 0.0), need)
+        if take_a > 0:
+            spend["a"][k] = take_a
+            need -= take_a
+        if need > 0:
+            spend["b"][k] = need
+    return spend
