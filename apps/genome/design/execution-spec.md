@@ -301,42 +301,33 @@ tool-calling loops are reserved for the higher tier (§5.1).
 > contribution might. The tier is the boundary and it must be explicit, because
 > the expensive default is also the more impressive-looking one.
 
-**Rule 8.5** — Decision workers run as **KAgent-managed fleets**: the cluster's
-own `kagents.kagent.dev` CRD (marty `infra/kagent`), one custom resource per
-**caste of decider**, reconciled by the operator into a deployment of stateless
-ADK workers.
+**Rule 8.5** — Decision workers run on the **public kagent.dev runtime**,
+helm-installed: one `Agent` custom resource per **caste of decider**, with a
+`ModelConfig` pointing at the **litellm router's OpenAI-compatible endpoint**
+(Rule 8.2 holds — kagent never reaches a provider directly).
 
-**Rule 8.6** — **A KAgent is a caste, never a genome agent.** There is one CR
-per decision tier — an economy decider and a deliberative decider — and never
-one per simulated agent.
+**Rule 8.6** — **An Agent CR is a caste, never a genome agent.** Two CRs — an
+economy decider and a deliberative decider — and never one per simulated agent.
 
-> The CRD's fields map onto the design almost one-for-one, which suggests it was
-> sketched with something like genome in mind:
+> Chosen over the cluster's earlier hand-rolled `kagents.kagent.dev` CRD (user
+> decision). That CRD was a schema with a `pause` placeholder where the operator
+> should be: a perfect field fit — caste, telos, economicModel — but an API with
+> no behaviour, and the controller would have been ours to write and maintain
+> forever. The public project ships the expensive parts working: a real
+> controller, the ADK engine underneath (Rule 8.1), native A2A endpoints (§7)
+> and native MCP tool wiring (`skills-spec.md` §6.2). The custom CRD is retired
+> to avoid two vocabularies in one API group.
 >
-> | KAgent field | Genome meaning |
-> | :--- | :--- |
-> | `caste` | decision tier (§5.1) — economy or deliberative |
-> | `telos` | the fleet's standing mandate |
-> | `replicas` | worker fleet size, scaled to decision-queue depth |
-> | `modelRouter` | the litellm route (Rule 8.2) — never a direct provider |
-> | `mcpTools` | the registry pool the caste may reach (`skills-spec.md` §6.2) |
-> | `economicModel` | metering configuration (§5.2's meter-everything note) |
-> | `cryptographicBinding` | workload identity for signing transfer assertions (`genome-spec.md` §6) |
-> | `inviolableGuardrails` | the fences: single constrained call for economy (Rule 8.3), no direct model access, no user-facing reads |
+> The custom schema's fields survive as convention rather than API: `telos` and
+> the inviolable guardrails become the Agent's system prompt, `economicModel`
+> stays in genome's metering, `cryptographicBinding` becomes workload identity.
+> Statelessness is enforced by us regardless: post-graph remains the system of
+> record (Rule 8.4) and kagent's session memory is not leaned on.
 >
-> Rule 8.6 is the line that keeps this from disaster. One CR per *simulated*
-> agent would be millions of etcd objects and watch streams — process-per-agent
-> (Rule 1.1's forbidden shape) reborn as control-plane-object-per-agent, and it
-> would take the cluster down long before it took the budget. A genome agent
-> remains rows; a KAgent is the machinery that thinks for whichever agent's
-> decision comes off the queue next.
->
-> **What adopting this costs, stated plainly:** the installed operator is a
-> `pause:3.9` placeholder — the API exists, the behaviour does not. A minimal
-> reconciler (watch KAgent → materialise Deployment + config) must be written,
-> and it is deliberately small: no session state, no per-agent logic, just
-> caste-fleet lifecycle. The CRD itself is owned by marty's infra
-> ([[k8s-objects-owned-by-two-repos]] applies: genome writes CRs, never the CRD).
+> Rule 8.6's reasoning is unchanged and is about arithmetic, not vocabulary: one
+> CR per simulated agent would be millions of etcd objects and watch streams —
+> process-per-agent reborn as control-plane-object-per-agent, taking the cluster
+> down long before the budget.
 
 **Rule 8.4** — **Postgres remains the system of record.** A session holds the live
 exchange and nothing else; genotype, opinions, cargo and objectives are loaded as
