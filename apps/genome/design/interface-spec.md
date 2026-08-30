@@ -407,3 +407,24 @@ threshold.
 **Rule 6.13** — The client renders from the **same closed forms the server uses**
 (Rule 5.2), so a divergence is a bug in one of them and the arrival event is
 authoritative.
+
+## 7. Notifications
+
+**Rule 7.1** — Users have **visibility of state through notifications**: what
+their world did, what their agents did, and what the platform did that concerns
+them. An event's absence from the feed is a bug, not a mercy.
+
+**Rule 7.2** — Notifications carry a **source** (`world`, `agents`, `platform`)
+and a **level** (`all`, `important`, `none`), and each user configures the level
+**per source**.
+
+**Rule 7.3** — Always `important`, regardless of level: an incoming invitation,
+a new teleport link to your world, a flood countdown in your world, an agent of
+yours perishing, and a berth event touching your agents.
+
+**Rule 7.4** — Notification emission is **fire-and-forget from the simulation's
+point of view**: a failed notification never fails the event that caused it.
+
+> The digest of BUILD Phase 11 derives FROM this stream rather than beside it:
+> notifications are the atoms, the since-you-were-away digest is their summary,
+> and both read from the same record so they cannot disagree.
