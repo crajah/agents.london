@@ -113,9 +113,9 @@ The bet the whole design rests on. Prove it before building on it.
 
 ### 2.1 ADK runtime on KAgent
 - [ ] Per-invocation runner, not a resident process (`execution-spec.md` Rules 1.1, 8.1)
-- [ ] **KAgent operator**: minimal reconciler (kopf) for `kagents.kagent.dev` — watch CR, materialise Deployment + config; replaces the `pause:3.9` placeholder (marty `infra/kagent`; CRD stays marty-owned)
-- [ ] **Two KAgent CRs, one per caste** — economy and deliberative deciders; never one per simulated agent (Rule 8.6)
-- [ ] Field mapping honoured: `modelRouter`→litellm, `mcpTools`→registry pool, `economicModel`→metering, `cryptographicBinding`→assertion signing, `inviolableGuardrails`→Rule 8.3 fences
+- [ ] **Public kagent.dev** helm-installed (marty `infra/kagent`); custom `kagents.kagent.dev` CRD retired — done 2026-08-30
+- [ ] **Two `Agent` CRs, one per caste** — economy and deliberative deciders; never one per simulated agent (Rule 8.6)
+- [ ] `ModelConfig` → litellm OpenAI-compatible endpoint (Rule 8.2); telos + guardrails as system prompt; no reliance on kagent session memory (Rule 8.4)
 - [ ] Postgres remains system of record; session holds only the live exchange (Rule 8.4)
 - [ ] **Single constrained call** for ordinary decisions; multi-step reserved for the higher tier (Rule 8.3)
 
