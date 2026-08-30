@@ -18,8 +18,10 @@ function App() {
     (async () => {
       canvas = await createWorldCanvas(ref.current, {
         onAgentClick: async (uuid) => {
-          const r = await fetch(`${API}/agents/${uuid}`);
-          setInspect(await r.json());
+          const [r, rd] = await Promise.all([
+            fetch(`${API}/agents/${uuid}`),
+            fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
+          setInspect({ ...(await r.json()), decisions: await rd.json() });
         },
       });
       const load = async () => {
@@ -74,6 +76,16 @@ function App() {
               {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
                 <div key={k} className="flex justify-between">
                   <span>{k}</span><span className="opacity-60">{v.toFixed(3)}</span>
+                </div>))}
+            </>}
+            {inspect.decisions?.length > 0 && <>
+              <h4 className="opacity-70 mt-3 mb-1">Recent decisions</h4>
+              {inspect.decisions.map((d, i) => (
+                <div key={i} className="mb-1.5 pb-1.5 border-b border-neutral-800">
+                  <div className="font-medium">{d.choice}</div>
+                  <div className="opacity-50 text-xs">
+                    of {(d.options ?? []).join(", ")} · {d.model}
+                  </div>
                 </div>))}
             </>}
           </aside>)}
