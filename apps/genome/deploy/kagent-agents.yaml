@@ -1,0 +1,34 @@
+# Genome's decider casts on the public kagent.dev runtime.
+# execution-spec Rules 8.5/8.6: one Agent per caste, NEVER one per simulated
+# agent. The per-decision character sheet (genotype, faculties, pools, cargo,
+# objectives) arrives in each request; the Agent holds only the caste contract.
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: genome-economy-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gemini-3.5-flash-lite          # screened pool, models.py POOLS
+  apiKeySecret: kagent-openai
+  apiKeySecretKey: OPENAI_API_KEY
+  openAI:
+    baseUrl: http://litellm-service.default.svc.cluster.local/v1
+---
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: genome-economy-decider
+  namespace: kagent
+spec:
+  description: >-
+    Genome economy caste: one single constrained call per ordinary decision.
+  modelConfig: genome-economy-model
+  systemMessage: |
+    You decide for one agent of the genome simulation per request. The request
+    carries the agent's full self-knowledge: dispositions on a 0-10000 scale,
+    computed faculties, pools, cargo and objectives. Act the character sheet
+    exactly as given -- the dispositions are who this agent is, not advice.
+    You never know how the agent appears to others.
+    Reply with JSON only: {"choice": "<option key>"}. No explanation, no tools,
+    no follow-up questions. One reply per request.

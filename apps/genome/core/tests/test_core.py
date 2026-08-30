@@ -236,3 +236,37 @@ class TestStoreGuard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPromptAndModels(unittest.TestCase):
+    def _genotype(self):
+        r = random.Random("pg")
+        return {k: r.uniform(*G.RANGES[k]) for k in G.RANGES}
+
+    def test_prompt_contains_all_dispositions_and_no_appraisal(self):
+        from genome_core import prompt as P
+        g = self._genotype()
+        s = P.system_prompt(g, {"Stamina": 1.0}, {"3": 2.0}, [])
+        for d in G.DISPOSITIONS:
+            self.assertIn(d, s)                       # Rule 12.4 / 6.6a
+        self.assertIn("do not know how you appear", s)  # Rule 6.6c
+        self.assertIn("faculties", s.lower())
+
+    def test_parse_choice_json_and_fallback(self):
+        from genome_core.prompt import parse_choice
+        self.assertEqual(parse_choice('{"choice": "mine_here"}',
+                                      ["mine_here", "wait"]), "mine_here")
+        self.assertEqual(parse_choice("I would wait.", ["mine_here", "wait"]),
+                         "wait")
+        self.assertIsNone(parse_choice("mine_here or wait",
+                                       ["mine_here", "wait"]))
+
+    def test_model_assignment_stable_and_rerolls_only_when_withdrawn(self):
+        from genome_core import models as M
+        a = M.assign_models("agent-x")
+        self.assertEqual(a, M.assign_models("agent-x"))     # Rule 10.3
+        kept = M.reroll_if_withdrawn(a, "agent-x", generation=2)
+        self.assertEqual(kept, a)                           # still in pool
+        gone = M.reroll_if_withdrawn({"economy": "retired-model"},
+                                     "agent-x", generation=2)
+        self.assertIn(gone["economy"], M.POOLS["economy"])  # Rule 10.4
