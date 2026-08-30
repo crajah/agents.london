@@ -23,6 +23,9 @@ from genome_core import store  # ensure_agents_realm only; NOT GenomeStore
 import snapshot
 import auth as auth_mod
 import genesis
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1] / 'core'))
+from genome_core import notify
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="genome api", lifespan=lifespan)
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("GENOME_WEB_BASE", "http://localhost:5173")],
+    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
 
 @app.get("/health", tags=["System"])
 async def health():
@@ -88,6 +97,75 @@ async def auth_callback(provider: str, code: str):
     resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
                     httponly=True, samesite="lax")
     return resp
+
+
+@app.post("/auth/email/login", tags=["Auth"])
+async def email_login(payload: dict):
+    """Direct entry (Rule 6.2i): unverified until the magic-link loop ships,
+    recorded in spec. The id is the same hash OAuth produces for this email."""
+    from fastapi.responses import JSONResponse
+    email = (payload.get("email") or "").strip()
+    if "@" not in email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+    uid = auth_mod.user_id_from_email(email)
+    result = await genesis.ensure_user_world(app.state.pg, uid, email=email)
+    resp = JSONResponse({"ok": True, "world_realm": result["world_realm"]})
+    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
+                    httponly=True, samesite="lax")
+    return resp
+
+
+def _uid(request) -> str | None:
+    return auth_mod.verify_cookie(request.cookies.get("genome_session", ""))
+
+
+@app.post("/invites", tags=["Social"])
+async def invite(payload: dict, request: __import__("fastapi").Request):
+    """Rule 6.2j: world created eagerly, login link mailed, portals linked,
+    both sides notified."""
+    from fastapi.responses import JSONResponse
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    email = (payload.get("email") or "").strip()
+    if "@" not in email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+    result = await genesis.invite_user(app.state.pg, uid, email)
+    return result
+
+
+@app.get("/notifications", tags=["Social"])
+async def notifications(request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid:
+        return []
+    return await notify.feed(app.state.pg, uid)
+
+
+@app.post("/notifications/read", tags=["Social"])
+async def notifications_read(payload: dict,
+                             request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid:
+        return {"read": 0}
+    return {"read": await notify.mark_read(app.state.pg, uid,
+                                           payload.get("keys", []))}
+
+
+@app.put("/me/prefs", tags=["Social"])
+async def set_prefs(payload: dict, request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid:
+        return {"ok": False}
+    rows = await app.state.pg.find_vertices(
+        "agents", realm="genome_agents",
+        filters={"key": f"user:{uid}"}, limit=1)
+    if rows:
+        await app.state.pg.upsert_vertex(
+            "agents", realm="genome_agents", vertex_id=int(rows[0].id),
+            payload={**rows[0].payload,
+                     "notification_prefs": payload.get("prefs", {})})
+    return {"ok": True}
 
 
 @app.get("/me", tags=["Auth"])

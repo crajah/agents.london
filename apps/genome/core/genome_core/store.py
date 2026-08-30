@@ -62,7 +62,8 @@ async def ensure_world_realm(client: Any, world_realm: str) -> None:
 
 async def ensure_agents_realm(client: Any) -> None:
     """Create the single agents realm. Idempotent; called at deploy."""
-    for table in (AGENTS, DECISIONS, "decision_queue", "trust"):
+    for table in (AGENTS, DECISIONS, "decision_queue", "trust",
+                  "notifications", "outbox"):
         await client.create_vertex_table(table, realm=AGENTS_REALM)
     await client.create_edge_table(OPINION, from_vertex_table=AGENTS,
                                   to_vertex_table=AGENTS, realm=AGENTS_REALM)

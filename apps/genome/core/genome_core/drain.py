@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import combat, engine, forms, identity, opinion
+from . import combat, engine, forms, identity, notify, opinion
 from . import genotype as G
 from . import worldgen
 from .models import assign_models
@@ -294,6 +294,15 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     await store.put_agent(agent.agent_uuid,
                           {**agent_payload, "transfer_counter": counter,
                            "last_transfer": assertion["doc"]})
+    dest_owner = dest_meta.get("owner_user_id")
+    if dest_owner:
+        await notify.emit(store._c, dest_owner, "world", "arrival",
+                          f"{agent_payload.get('name', agent.agent_uuid)} "
+                          f"arrived in your world from {origin_realm}.")
+    if agent_payload.get("owner_user_id"):
+        await notify.emit(store._c, agent_payload["owner_user_id"], "agents",
+                          "teleport",
+                          f"{agent_payload.get('name')} crossed to {to_world}.")
     return True
 
 
@@ -386,6 +395,15 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         await store.record_decision(att_uuid, {"at": _iso(now),
             "situation": "combat", "options": [], "choice": "resolved",
             "model": "arithmetic", "tier": "computed", "result": res})
+        for pl_side, other_name in ((att_p, dfd_p.get("name")),
+                                    (dfd_p, att_p.get("name"))):
+            if pl_side.get("owner_user_id"):
+                won = pl_side.get("name") and res["winner"] in (
+                    att_v.agent_uuid, dfd_v.agent_uuid)
+                await notify.emit(store._c, pl_side["owner_user_id"], "agents",
+                                  "combat",
+                                  f"{pl_side.get('name')} fought "
+                                  f"{other_name}; winner: {res['winner']}.")
         outcome = f"combat:{res['winner']}_wins"
     elif a_ans == "propose_breeding" and b_ans == "propose_breeding":
         outcome = await consummate(store, world_realm, agent, agent_payload,
@@ -498,6 +516,13 @@ async def consummate(store: GenomeStore, world_realm: str,
                                             filters={"key": child_uuid}, limit=1)
         await schedule_perish(store, child_uuid, rows[0].payload, now)
         born.append((child_uuid, name, home))
+        for side in (parent_pl, mate_pl):
+            if side.get("owner_user_id"):
+                await notify.emit(store._c, side["owner_user_id"], "agents",
+                                  "birth",
+                                  f"{name} was born to "
+                                  f"{parent_pl.get('name')} and "
+                                  f"{mate_pl.get('name')}, home {home}.")
         await store.record_decision(child_uuid, {
             "at": _iso(now), "situation": "birth", "options": [],
             "choice": "born", "model": "arithmetic", "tier": "computed",
@@ -556,6 +581,11 @@ async def regenerate(store: GenomeStore, event_realm: str,
         "at": _iso(now), "situation": "death", "options": [],
         "choice": f"regenerated({cause})", "model": "arithmetic",
         "tier": "computed"})
+    if agent_payload.get("owner_user_id"):
+        await notify.emit(store._c, agent_payload["owner_user_id"], "agents",
+                          "agent_perished",
+                          f"{agent_payload.get('name', a)} perished "
+                          f"({cause}) and woke at home, its earned life lost.")
     due = await schedule_perish(store, a, reborn, now)
     await store.schedule(home, f"rebirth-{a}-{int(now)}", _iso(now + 60.0),
                          "decide", a, {})
