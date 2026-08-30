@@ -125,13 +125,19 @@ def make_transfer(world_cert: dict, agent_cert: dict, counter: int,
 
 def accept_transfer(root_public_pem: bytes, origin_world_cert: dict,
                     agent_cert: dict, assertion: dict,
-                    last_counter_seen: int) -> tuple[bool, str]:
-    """Destination-side check: chain valid, assertion signed by the origin
-    world, counter strictly greater than any seen (Rule 6.11). Two assertions
-    with one counter are the fraud itself (Rule 6.12) — the second is refused
-    regardless of order."""
-    if not verify_chain(root_public_pem, origin_world_cert, agent_cert):
+                    last_counter_seen: int,
+                    birth_world_cert: dict | None = None) -> tuple[bool, str]:
+    """Destination-side check (Rules 6.6/6.9/6.11/6.12). Two distinct trust
+    questions, learned the hard way when an agent tried to leave the commons:
+    the agent's certificate chains through its BIRTH world (6.6), while the
+    assertion is signed by the ORIGIN world of this crossing (6.9). They
+    coincide only when an agent departs home."""
+    chain_cert = birth_world_cert or origin_world_cert
+    if not verify_chain(root_public_pem, chain_cert, agent_cert):
         return False, "chain invalid"
+    if not verify(root_public_pem, origin_world_cert["doc"],
+                  origin_world_cert["signature"]):
+        return False, "origin world cert invalid"
     wpub = origin_world_cert["doc"]["public_pem"].encode()
     if not verify(wpub, assertion["doc"], assertion["signature"]):
         return False, "assertion signature invalid"
