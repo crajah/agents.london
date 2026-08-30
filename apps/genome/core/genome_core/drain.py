@@ -157,7 +157,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
         "options": req_options, "choice": choice.option,
         "model": model, "tier": "economy" if model != "stub" else "stub"})
     eff = engine.apply_choice(choice, agent, pile_views, now,
-                              event_payload, terrain)
+                              event_payload, terrain,
+                              world_payload.get("time_scale", 1.0))
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
@@ -248,7 +249,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 if res.context.get(k):
                     merged[k] = res.context[k]
             eff = engine.apply_choice(choice, agent, pile_views, now,
-                                      merged, terrain)
+                                      merged, terrain,
+                                      world_payload.get("time_scale", 1.0))
             outcome = choice.option
         else:
             eff = res
