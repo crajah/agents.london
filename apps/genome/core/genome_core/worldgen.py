@@ -90,10 +90,22 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
                 "rate": r.uniform(0.5, 2.0) / 3600.0,   # units/sec (Rule 4.6)
             })
     centre = {k: r.uniform(*RANGES[k]) for k in RANGES}
+    # Portal SLOTS: random positions fixed at creation (genome-spec Rule 6.2e),
+    # clear of terrain; linking them to destinations happens when connections
+    # form. Slot 0 is reserved for the commons (Rule 6.2f).
+    portal_slots = []
+    for _ in range(4):
+        for _try in range(40):
+            q = (r.uniform(0.08, 0.92), r.uniform(0.08, 0.92))
+            if not any((q[0]-o["x"])**2 + (q[1]-o["y"])**2 < (o["r"]+0.03)**2
+                       for o in terrain):
+                portal_slots.append({"x": q[0], "y": q[1]})
+                break
     return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
             "owner_user_id": owner_user_id, "kinds": kinds,
             "colours": [A100[kinds[0]], A100[kinds[1]]],
-            "founding_centre": centre, "piles": piles, "terrain": terrain}
+            "founding_centre": centre, "piles": piles, "terrain": terrain,
+            "portal_slots": portal_slots}
 
 
 def founder_genotype(world: dict, seed: int) -> dict:

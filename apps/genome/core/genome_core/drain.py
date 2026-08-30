@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import engine, forms
+from . import engine, forms, identity
 from .store import GenomeStore
 
 
@@ -114,7 +114,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         forms.pile_quantity(forms.PileState(m["qty_at"], m.get("measured_at", 0.0),
                                             m["rate"], m["cap"]), now))
         for k, m in piles_meta.items()]
-    terrain = (await _world_payload(store, world_realm)).get("terrain", [])
+    world_payload = await _world_payload(store, world_realm)
+    terrain = world_payload.get("terrain", [])
+    portals = world_payload.get("portals", [])
     stock = await get_stock(store, world_realm)
 
     if pl["kind"] == "deposit_arrival":
@@ -122,7 +124,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         outcome = "deposit"
     else:
         res = engine.on_event(pl["kind"], agent, pile_views, now,
-                              pl.get("payload", {}), stock)
+                              pl.get("payload", {}), stock, portals)
         if isinstance(res, engine.DecisionRequest):
             decided = decider(res, agent_payload, seed)
             # a decider may return (Choice, model_name) or a bare Choice
@@ -132,13 +134,20 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 "at": pl["due_at"], "situation": res.situation,
                 "options": list(res.options), "choice": choice.option,
                 "model": model, "tier": "economy" if model != "stub" else "stub"})
+            merged = dict(pl.get("payload", {}))
+            for k in ("portal_to", "portal_xy"):
+                if res.context.get(k):
+                    merged[k] = res.context[k]
             eff = engine.apply_choice(choice, agent, pile_views, now,
-                                      pl.get("payload", {}), terrain)
+                                      merged, terrain)
             outcome = choice.option
         else:
             eff = res
             outcome = pl["kind"]
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
+    if eff.transfer:
+        await do_transfer(store, world_realm, agent, agent_payload,
+                          eff.transfer, portals, now)
     if eff.reveal or eff.mark_explored:      # knowledge grows on the agent
         kp = sorted(set(agent_payload.get("known_piles", [])) | set(eff.reveal))
         ex = sorted({tuple(c) for c in agent_payload.get("explored", [])}
@@ -154,3 +163,44 @@ async def _world_payload(store: GenomeStore, world_realm: str) -> dict:
     rows = await store._c.find_vertices("world_meta", realm=world_realm,
                                         filters={"key": world_realm}, limit=1)
     return rows[0].payload if rows else {}
+
+
+async def do_transfer(store: GenomeStore, origin_realm: str,
+                      agent: engine.AgentView, agent_payload: dict,
+                      transfer: dict, portals: list[dict], now: float) -> bool:
+    """Teleportation — genome-spec §6. The ORIGIN world signs an assertion; the
+    destination verifies chain + signature + fresh counter before admitting
+    (Rules 6.9-6.12). Passage is instantaneous (Rule 6.1a): presence flips and
+    the agent stands at the destination portal.
+    """
+    to_world = transfer["to_world"]
+    origin_meta = await _world_payload(store, origin_realm)
+    dest_meta = await _world_payload(store, to_world)
+    root_pub = origin_meta.get("root_public_pem", "").encode()
+    origin_cert = origin_meta.get("cert")
+    agent_cert = agent_payload.get("cert")
+    if not (root_pub and origin_cert and agent_cert):
+        return False                       # unsigned worlds cannot emigrate
+    counter = int(agent_payload.get("transfer_counter", 0)) + 1
+    assertion = identity.make_transfer(origin_cert, agent_cert, counter, to_world)
+    ok, why = identity.accept_transfer(
+        root_pub, origin_cert, agent_cert, assertion,
+        int(agent_payload.get("transfer_counter", 0)))
+    if not ok:
+        return False
+    # find the destination-side coordinates from the origin portal record
+    dest_xy = None
+    for pt in portals:
+        if pt.get("to_world") == to_world:
+            dest_xy = pt.get("dest_xy")
+            break
+    dest_xy = dest_xy or [0.5, 0.5]
+    await store.set_presence(origin_realm, agent.agent_uuid, False)
+    await store.set_presence(to_world, agent.agent_uuid, True)
+    await store.set_movement(agent.agent_uuid,
+                             {"waypoints": [dest_xy], "departed_at": now,
+                              "arrives_at": now, "cargo": agent.cargo})
+    await store.put_agent(agent.agent_uuid,
+                          {**agent_payload, "transfer_counter": counter,
+                           "last_transfer": assertion["doc"]})
+    return True
