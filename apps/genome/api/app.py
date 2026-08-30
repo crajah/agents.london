@@ -21,6 +21,8 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "core"))
 from genome_core import store  # ensure_agents_realm only; NOT GenomeStore
 import snapshot
+import auth as auth_mod
+import genesis
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,35 @@ async def get_snapshot(realm: str):
     """Any world, read-only (genome-spec Rule 13.2). Observation confers
     nothing on agents (Rule 13.3) — this path serves humans only."""
     return await snapshot.world_snapshot(app.state.pg, realm)
+
+
+@app.get("/auth/{provider}/login", tags=["Auth"])
+async def auth_login(provider: str):
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(auth_mod.login_url(provider, state="genome"))
+
+
+@app.get("/auth/{provider}/callback", tags=["Auth"])
+async def auth_callback(provider: str, code: str):
+    from fastapi.responses import RedirectResponse
+    info = auth_mod.exchange_code(provider, code)
+    uid = auth_mod.user_id_from(provider, info)
+    result = await genesis.ensure_user_world(app.state.pg, uid)
+    web = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
+    resp = RedirectResponse(f"{web}/?world={result['world_realm']}")
+    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.get("/me", tags=["Auth"])
+async def me(request: __import__("fastapi").Request):
+    uid = auth_mod.verify_cookie(
+        request.cookies.get("genome_session", ""))
+    if not uid:
+        return {"authenticated": False}
+    realm = await genesis.user_world_realm(app.state.pg, uid)
+    return {"authenticated": True, "user": uid, "world_realm": realm}
 
 
 @app.get("/agents/{agent_uuid}", tags=["Agent"])
