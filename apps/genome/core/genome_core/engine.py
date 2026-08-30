@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import forms
+from . import path as pathmod
 
 # PROVISIONAL (calibration §4: base collection rate — Toolhouse improves it)
 MINE_RATE_UNITS_PER_SEC = 1.0 / 60.0          # one unit a minute
@@ -126,9 +127,26 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  "reachable": reachable})
 
 
+def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
+                   terrain: list[dict], arrival_kind: str,
+                   arrival_payload: dict) -> Effects:
+    """Route computed once, at decision time (execution-spec Rule 2.1a)."""
+    pts = pathmod.find_path(terrain, agent.x, agent.y, tx, ty)
+    if pts is None:                      # worldgen guarantees this cannot happen
+        raise RuntimeError("unroutable destination")
+    route = forms.Route(tuple(pts), now)
+    return Effects(
+        movement={"waypoints": list(route.waypoints), "departed_at": now,
+                  "arrives_at": route.arrives_at},
+        schedule=(arrival_kind, route.arrives_at, agent.agent_uuid,
+                  arrival_payload))
+
+
 def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
-                 now: float, payload: dict) -> Effects:
+                 now: float, payload: dict,
+                 terrain: list[dict] | None = None) -> Effects:
     """Turn a decision into effects. The caller records the decision first."""
+    terrain = terrain or []
     by_id = {p.pile_uuid: p for p in piles}
 
     if choice.option == "mine_here":
@@ -142,21 +160,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
     if choice.option == "travel_to_pile":
         pile = by_id[choice.target]
-        arrives = forms.arrival_time(agent.x, agent.y, pile.x, pile.y, now)
-        return Effects(
-            movement={"from_x": agent.x, "from_y": agent.y,
-                      "to_x": pile.x, "to_y": pile.y,
-                      "departed_at": now, "arrives_at": arrives},
-            schedule=("arrival", arrives, agent.agent_uuid,
-                      {"pile_uuid": pile.pile_uuid}))
+        return _route_effects(agent, pile.x, pile.y, now, terrain,
+                              "arrival", {"pile_uuid": pile.pile_uuid})
 
     if choice.option == "go_home_deposit":
         hx, hy = HOME_XY
-        arrives = forms.arrival_time(agent.x, agent.y, hx, hy, now)
-        return Effects(
-            movement={"from_x": agent.x, "from_y": agent.y, "to_x": hx,
-                      "to_y": hy, "departed_at": now, "arrives_at": arrives},
-            schedule=("deposit_arrival", arrives, agent.agent_uuid, {}))
+        return _route_effects(agent, hx, hy, now, terrain,
+                              "deposit_arrival", {})
 
     if choice.option == "wait":
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))

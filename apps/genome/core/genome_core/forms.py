@@ -83,3 +83,54 @@ def mine(p: PileState, now: float, want: float,
     q = pile_quantity(p, now, world_regen_halted)
     taken = max(0.0, min(want, q))
     return PileState(qty_at=q - taken, measured_at=now, rate=p.rate, cap=p.cap), taken
+
+
+@dataclass(frozen=True)
+class Route:
+    """A waypoint route (genome-spec.md Rule 5.4): computed once at decision
+    time, position derived piecewise ever after (execution-spec Rule 2.2)."""
+    waypoints: tuple[tuple[float, float], ...]
+    departed_at: float
+
+    def leg_times(self) -> list[float]:
+        """Cumulative arrival time at each waypoint."""
+        t = self.departed_at
+        out = [t]
+        for k in range(len(self.waypoints) - 1):
+            t += math.dist(self.waypoints[k], self.waypoints[k + 1]) / SPEED
+            out.append(t)
+        return out
+
+    @property
+    def arrives_at(self) -> float:
+        return self.leg_times()[-1]
+
+
+def route_position(r: Route, now: float) -> tuple[float, float]:
+    """Piecewise-linear position along the route — still a pure function of the
+    intent and the clock, still zero writes in transit."""
+    times = r.leg_times()
+    if now <= times[0]:
+        return r.waypoints[0]
+    if now >= times[-1]:
+        return r.waypoints[-1]
+    for k in range(len(times) - 1):
+        if now <= times[k + 1]:
+            f = (now - times[k]) / (times[k + 1] - times[k])
+            ax, ay = r.waypoints[k]
+            bx, by = r.waypoints[k + 1]
+            return (ax + (bx - ax) * f, ay + (by - ay) * f)
+    return r.waypoints[-1]
+
+
+def route_heading(r: Route, now: float) -> float:
+    """Bearing of the current leg (interface-spec Rule 6.9b)."""
+    times = r.leg_times()
+    for k in range(len(times) - 1):
+        if now <= times[k + 1]:
+            ax, ay = r.waypoints[k]
+            bx, by = r.waypoints[k + 1]
+            return math.atan2(by - ay, bx - ax)
+    ax, ay = r.waypoints[-2]
+    bx, by = r.waypoints[-1]
+    return math.atan2(by - ay, bx - ax)

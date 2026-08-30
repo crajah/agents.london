@@ -46,7 +46,7 @@ class Sim:
         s = self.agents[a]
         if eff.movement:
             self.writes.append((now, "movement", a))
-            s["x"], s["y"] = eff.movement["to_x"], eff.movement["to_y"]
+            s["x"], s["y"] = eff.movement["waypoints"][-1]
             s["moving_until"] = eff.movement["arrives_at"]
         if eff.mine_pile:
             u, want = eff.mine_pile
@@ -84,7 +84,8 @@ class Sim:
                      "options": res.options, "choice": choice.option,
                      "model": "stub", "tier": "stub"})
                 eff = engine.apply_choice(choice, self._view(a),
-                                          self._pile_views(now), now, payload)
+                                          self._pile_views(now), now, payload,
+                                          self.world["terrain"])
             else:
                 eff = res
             self._apply(eff, a, now)

@@ -9,6 +9,7 @@ import random
 import uuid as uuidlib
 
 from .genotype import RANGES
+from . import path as pathmod
 
 # Material A100 palette, genome-spec Rule 4.9 (20 kinds -> 20 hues; the pair a
 # world holds is its identity). Indexed by kind 0..19.
@@ -41,18 +42,46 @@ def _spaced_points(r: random.Random, n: int) -> list[tuple[float, float]]:
     return pts
 
 
+HOME_XY = (0.5, 0.5)
+
+
+def _terrain(r: random.Random) -> list[dict]:
+    """Impassable terrain (genome-spec Rule 5.3): circular obstacles, fixed at
+    creation. Kept clear of the home point so a world can never trap its own
+    deposit spot."""
+    rocks = []
+    for _ in range(r.randint(5, 9)):
+        for _try in range(30):
+            o = {"x": r.uniform(0.08, 0.92), "y": r.uniform(0.08, 0.92),
+                 "r": r.uniform(0.03, 0.09)}
+            if (o["x"] - HOME_XY[0]) ** 2 + (o["y"] - HOME_XY[1]) ** 2                     > (o["r"] + 0.06) ** 2:
+                rocks.append(o)
+                break
+    return rocks
+
+
 def generate_world(seed: int, owner_user_id: str) -> dict:
     """kinds: uniformly random pair of the 190 (Rule 3.0c). Piles: 6-10 per
     kind, min-spaced, capacities 15-50 summing near the 250 ceiling (3.0d).
-    Founding centre drawn and RECORDED (genotype-spec Rule 3.2b)."""
+    Terrain first (Rule 5.3); piles placed outside it and guaranteed reachable
+    from home. Founding centre drawn and RECORDED (genotype-spec Rule 3.2b)."""
     r = random.Random(f"world:{seed}")
     kinds = r.sample(range(20), 2)
+    terrain = _terrain(r)
     piles = []
     for kind in kinds:
         n = r.randint(6, 10)
         caps = [r.uniform(15, 50) for _ in range(n)]
         scale = min(1.0, 250.0 / sum(caps))   # near, never over, the ceiling
-        for (x, y), cap in zip(_spaced_points(r, n), caps):
+        pts = [q for q in _spaced_points(r, n * 2)
+               if not any((q[0] - o["x"]) ** 2 + (q[1] - o["y"]) ** 2
+                          < (o["r"] + pathmod.INFLATE) ** 2 for o in terrain)
+               and pathmod.find_path(terrain, *HOME_XY, *q) is not None][:n]
+        while len(pts) < n:                    # degenerate seeds still fill
+            q = (r.uniform(0.08, 0.92), r.uniform(0.08, 0.92))
+            if pathmod.find_path(terrain, *HOME_XY, *q) is not None:
+                pts.append(q)
+        for (x, y), cap in zip(pts, caps):
             piles.append({
                 "pile_uuid": str(uuidlib.UUID(int=r.getrandbits(128))),
                 "kind": kind, "x": x, "y": y, "cap": cap * scale,
@@ -63,7 +92,7 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
     return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
             "owner_user_id": owner_user_id, "kinds": kinds,
             "colours": [A100[kinds[0]], A100[kinds[1]]],
-            "founding_centre": centre, "piles": piles}
+            "founding_centre": centre, "piles": piles, "terrain": terrain}
 
 
 def founder_genotype(world: dict, seed: int) -> dict:
