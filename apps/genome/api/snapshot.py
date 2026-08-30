@@ -53,6 +53,31 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "agents": agents}
 
 
+async def agent_inspect(client: Any, agent_uuid: str) -> dict:
+    """Rule 13.1: a user may see ANY agent's genotype and its expression.
+    Faculties and expressed values are computed server-side so the client never
+    reimplements genotype arithmetic."""
+    import sys, pathlib as _pl
+    sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1] / "core"))
+    from genome_core.genotype import faculties, expressed, DISPOSITIONS
+    rows = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                      filters={"key": agent_uuid}, limit=1)
+    if not rows:
+        return {"error": "not found"}
+    payload = rows[0].payload
+    g = payload.get("genotype") or {}
+    out = {"agent_uuid": agent_uuid, "name": payload.get("name"),
+           "colour_pair": payload.get("colour_pair"),
+           "home_realm": payload.get("home_realm"),
+           "parents": payload.get("parents"),
+           "infected": bool(payload.get("infected"))}
+    if g:
+        out["dispositions"] = {d: g[d] for d in DISPOSITIONS if d in g}
+        out["faculties"] = faculties(g)
+        out["expressed"] = expressed(g)
+    return out
+
+
 async def world_events(client: Any, world_realm: str, since: str) -> list[dict]:
     """Completed events after `since` — the client's incremental feed."""
     rows = await client.get_vertices("events", realm=world_realm)

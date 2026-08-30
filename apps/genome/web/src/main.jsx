@@ -10,12 +10,18 @@ function App() {
   const [realm, setRealm] = useState(
     new URLSearchParams(location.search).get("world") ?? "");
   const [status, setStatus] = useState("no world selected");
+  const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
 
   useEffect(() => {
     if (!realm || !ref.current) return;
     let canvas, timer, dead = false;
     (async () => {
-      canvas = await createWorldCanvas(ref.current, {});
+      canvas = await createWorldCanvas(ref.current, {
+        onAgentClick: async (uuid) => {
+          const r = await fetch(`${API}/agents/${uuid}`);
+          setInspect(await r.json());
+        },
+      });
       const load = async () => {
         try {
           const r = await fetch(`${API}/worlds/${realm}/snapshot`);
@@ -39,7 +45,39 @@ function App() {
                onKeyDown={e => e.key === "Enter" && setRealm(e.target.value)} />
         <span className="text-sm opacity-70">{status}</span>
       </header>
-      <div ref={ref} className="flex-1" />
+      <div className="flex-1 flex min-h-0">
+        <div ref={ref} className="flex-1" />
+        {inspect && (
+          <aside className="w-80 overflow-y-auto border-l border-neutral-700 p-3 text-sm">
+            <div className="flex justify-between items-center mb-2">
+              <strong>{inspect.name ?? inspect.agent_uuid}</strong>
+              <button onClick={() => setInspect(null)} className="opacity-60">✕</button>
+            </div>
+            <div className="flex gap-1 mb-3">
+              {(inspect.colour_pair ?? []).map(c =>
+                <span key={c} className="w-5 h-5 rounded-full inline-block"
+                      style={{ background: c }} />)}
+              {inspect.infected && <span className="text-red-400 ml-2">infected</span>}
+            </div>
+            {inspect.dispositions && <>
+              <h4 className="opacity-70 mt-2 mb-1">Dispositions</h4>
+              {Object.entries(inspect.dispositions).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <span className="w-28 truncate">{k}</span>
+                  <div className="flex-1 h-1.5 bg-neutral-700 rounded">
+                    <div className="h-1.5 rounded bg-neutral-300"
+                         style={{ width: `${(v / 10000) * 100}%` }} />
+                  </div>
+                  <span className="w-10 text-right opacity-60">{Math.round(v)}</span>
+                </div>))}
+              <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
+              {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
+                <div key={k} className="flex justify-between">
+                  <span>{k}</span><span className="opacity-60">{v.toFixed(3)}</span>
+                </div>))}
+            </>}
+          </aside>)}
+      </div>
     </div>
   );
 }

@@ -9,7 +9,7 @@
 // its DESTINATION's pair (6.9h). Terrain blocks everyone identically (5.5).
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { routePosition, routeHeading, pileQuantity, isoProject } from "./forms.js";
+import { routePosition, routeHeading, pileQuantity, isoProject, isoUnproject } from "./forms.js";
 
 const WORLD_PX = 1000;               // unit square -> pixels before projection
 
@@ -127,6 +127,23 @@ export async function createWorldCanvas(el, opts = {}) {
       g.poly([tip[0], tip[1], l[0], l[1], r[0], r[1]]).fill({ color: c2 });
     }
   }
+
+  // Hit-testing is the projection's inverse (Rule 6.5): pointer -> world
+  // coords -> nearest agent within a small radius.
+  viewport.on("clicked", (e) => {
+    if (!snapshot || !opts.onAgentClick) return;
+    const [wx, wy] = isoUnproject([e.world.x, e.world.y]);
+    const now = opts.clock ? opts.clock() : Date.now() / 1000;
+    let best = null, bestD = 0.03 * WORLD_PX;
+    for (const { a } of agentSprites.values()) {
+      let pos = [0.5, 0.5];
+      if (a.movement)
+        pos = routePosition(a.movement.waypoints, a.movement.departed_at, now);
+      const d = Math.hypot(pos[0] * WORLD_PX - wx, pos[1] * WORLD_PX - wy);
+      if (d < bestD) { bestD = d; best = a; }
+    }
+    if (best) opts.onAgentClick(best.agent_uuid);
+  });
 
   app.ticker.add(() => draw(opts.clock ? opts.clock() : Date.now() / 1000));
   return { setSnapshot, destroy: () => app.destroy(true, { children: true }) };
