@@ -42,8 +42,20 @@ made.
 agent_movement( agent_id, from_xy, to_xy, departed_at, arrives_at )
 ```
 
+**Rule 2.1a** — An intent's path is a **waypoint polyline**, computed around
+terrain (`genome-spec.md` Rules 5.3/5.4) **once, when the journey is chosen**.
+Pathfinding is a decision-time computation, never a per-tick one.
+
 **Rule 2.2** — Position is a **pure function of wall-clock time** over that
-intent. Nothing is written while an agent travels.
+intent — piecewise-linear along the waypoints. Nothing is written while an
+agent travels.
+
+**Rule 2.2a** — Physics is **geometry at decision and contact, not simulation
+between them**. Terrain blocks routes (solved by the pathfinder), contact is
+detected by the proximity sweep (Rule 3.3), and nothing integrates forces over
+time. A stepped physics world per realm would put the cost back on
+agent-seconds — the exact bill Rule 2.2 exists to avoid — and buy nothing the
+design needs, since outcomes here turn on decisions, not on momentum.
 
 > This is the decision that makes population scale affordable, and it is worth
 > being explicit about what it replaces.
@@ -88,7 +100,8 @@ index.
 > Encounters are analytically solvable — two agents on known trajectories, solve
 > for whether they come within `pathogen-spec.md`'s infection distance — and that
 > is a later optimisation, not a starting position. A coarse sweep is simpler and
-> sufficient, and it degrades gracefully: a missed encounter is a meeting that did
+> sufficient — and with Rule 5.5 it is also the *contact* detector: physical
+> encounter is proximity crossing the contact radius, and it degrades gracefully: a missed encounter is a meeting that did
 > not happen, which is indistinguishable from the two agents having passed a
 > minute apart.
 

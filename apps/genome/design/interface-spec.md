@@ -177,12 +177,17 @@ thin store, never through props.
 > an official guide, and pan and zoom are not optional here. Driving Pixi directly
 > is both less code and less risk.
 
-**Rule 6.3** — **PixiJS**, not a game framework.
+**Rule 6.3** — The client may use a **game engine** (renderer plus 2D physics —
+PixiJS with a physics library, or a framework such as Phaser where it earns its
+bundle). The server never runs it: server-side physics is geometry at decision
+and contact (`execution-spec.md` Rule 2.2a), and the arrival event stays
+authoritative (Rule 5.2).
 
-> Genome has no physics, no collision, no tilemaps, no player-controlled character
-> and no animation state machines. A framework's entire value is the things we
-> would not use, at roughly three times the bundle. A renderer is the whole
-> requirement.
+> Revised (user decision): the earlier "renderer, not framework" rationale
+> claimed genome has no physics, no collision and no pathfinding — Rules 5.3–5.5
+> of `genome-spec.md` now say otherwise. The engine earns its place for local
+> motion, contact visuals and route-following; what it must never become is a
+> second source of truth about where anything is.
 
 ### 6.2 Isometric is a projection, not a grid
 
@@ -368,14 +373,21 @@ about itself.
 > correctly as a token lying flat on the ground, and the triangle rotates in world
 > space before projection. Both are the cheap case.
 
-**Rule 6.10** — Not drawn, deliberately: no physics, no pathfinding visualisation,
-no particle systems, no audio, no 3D, no tilemap editor, no lighting.
+**Rule 6.10** — Drawn and simulated, as core product: **agents visibly moving**
+along their routes (Rules 2.1/2.2), **terrain** and the **paths around it**
+(`genome-spec.md` Rules 5.3–5.5), and **contact** where encounters happen. A
+client-side game engine may drive this — prediction, smoothing, local collision
+— with the server's closed forms remaining authoritative (Rule 5.2).
 
-> Recorded as a fence rather than an omission. Each of these is easy to add, hard
-> to remove, and buys atmosphere at the cost of the thing that actually matters
-> here — being able to watch a population and understand what it is doing. A
-> legible map with a thousand agents on it is a better product than a beautiful
-> one with fifty.
+**Rule 6.10a** — Excluded, deliberately: **audio, 3D, lighting, and decorative
+particles**. Atmosphere, not information.
+
+> The fence is redrawn around what it always meant to exclude. An earlier
+> wording lumped physics and pathfinding in with decoration, which was wrong
+> twice over — visible movement was already Rules 2.1/2.2's whole point, and
+> terrain-aware movement is simulation content, not garnish (corrected by the
+> user). What stays excluded is what carries no information about the world:
+> a map with a thousand agents must stay legible before it gets beautiful.
 
 ### 6.4 Camera and scale
 

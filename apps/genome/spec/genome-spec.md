@@ -466,6 +466,33 @@ they sit somewhere, and finding them is work.
 > This is what makes `Sight` and `Range` genotype attributes rather than
 > decoration, and what makes a returning agent's map (§8) worth something.
 
+**Rule 5.3** — A world contains **impassable terrain**: procedurally generated
+obstacles, fixed at creation, surviving floods exactly as pile and portal
+positions do (Rule 6.2e's note).
+
+**Rule 5.4** — Movement follows **routes around terrain** — a route is a
+sequence of waypoints computed when the journey is chosen, and an agent follows
+it to the end unless a new decision interrupts.
+
+**Rule 5.5** — The world is **physical in two dimensions**: agents occupy space,
+contact is what makes an encounter (`execution-spec.md` Rule 3.3), and terrain
+blocks movement for everyone identically.
+
+> Terrain is what makes the map a *place* rather than a distance metric. Without
+> it every journey is a straight line, all piles at equal range are equivalent,
+> and a "map worth learning" (Rule 4.6's note) is just a list of coordinates.
+> With it, worlds have shape: choke points where encounters concentrate, bays
+> that hide a pile from the direct route, and detours that make two equally
+> distant piles unequally expensive. `Cartography` gains content — knowing the
+> *way*, not only the location — and Rule 6.2e's random portal placement now
+> interacts with geography rather than only with distance.
+>
+> Rule 5.4 keeps physics compatible with the cost model. A route is computed
+> **once, at decision time**, and the agent's position remains a pure function
+> of the route and the clock (`execution-spec.md` Rule 2.2) — piecewise rather
+> than linear, but still derived, still two writes per journey, still nothing
+> stepped while nobody decides anything.
+
 ---
 
 ## 6. Teleportation
