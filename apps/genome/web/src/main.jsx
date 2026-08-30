@@ -43,6 +43,34 @@ function Bell() {
     </span>);
 }
 
+function Ticker({ realm }) {
+  const [lines, setLines] = useState([]);
+  useEffect(() => {
+    if (!realm) return;
+    let since = "";
+    const load = async () => {
+      try {
+        const r = await fetch(`${API}/worlds/${realm}/events?since=${since}`);
+        const evs = await r.json();
+        if (evs.length) {
+          since = evs[evs.length - 1].done_at;
+          setLines(l => [...evs.map(e =>
+            `${(e.subject ?? "").slice(0, 18)} · ${e.kind}`), ...l].slice(0, 8));
+        }
+      } catch {}
+    };
+    load(); const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [realm]);
+  if (!lines.length) return null;
+  return (
+    <div className="absolute bottom-2 left-2 bg-neutral-900/80 rounded p-2
+                    text-xs font-mono space-y-0.5 pointer-events-none">
+      {lines.map((l, i) =>
+        <div key={i} style={{ opacity: 1 - i * 0.11 }}>{l}</div>)}
+    </div>);
+}
+
 function App() {
   const ref = useRef(null);
   const [realm, setRealm] = useState(
@@ -119,8 +147,9 @@ function App() {
         {me?.authenticated &&
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
         <div ref={ref} className="flex-1" />
+        <Ticker realm={realm} />
         {inspect && (
           <aside className="w-80 overflow-y-auto border-l border-neutral-700 p-3 text-sm">
             <div className="flex justify-between items-center mb-2">

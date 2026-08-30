@@ -40,6 +40,7 @@ export async function createWorldCanvas(el, opts = {}) {
   viewport.moveCenter(0, WORLD_PX / 2);
 
   const layers = { terrain: new Container(), piles: new Container(),
+                   routes: new Container(),
                    portals: new Container(), agents: new Container() };
   for (const l of Object.values(layers)) viewport.addChild(l);
 
@@ -104,6 +105,28 @@ export async function createWorldCanvas(el, opts = {}) {
           .fill({ color: lerpColour(kindColour[p.kind] ?? "#888888", fill),
                   alpha: 0.85 });
       }
+    }
+    layers.routes.removeChildren();
+    for (const { a } of agentSprites.values()) {
+      // Rule 6.10: activity must be LEGIBLE. At six hours a crossing an agent
+      // moves ~0.05px/s -- honest, and invisible. The remaining route and a
+      // breathing pulse make slow motion readable without faking speed.
+      const m = a.movement;
+      if (!m || now >= m.arrives_at) continue;
+      const pts = m.waypoints.map(P);
+      const cur = P(routePosition(m.waypoints, m.departed_at, now));
+      const g2 = new Graphics();
+      const gp = new Graphics();
+      gp.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) gp.lineTo(pts[k][0], pts[k][1]);
+      gp.stroke({ width: 2, color: a.colour_pair?.[1] ?? "#888888",
+                  alpha: 0.35 });
+      layers.routes.addChild(gp);
+      const pulse = 6 + 3 * Math.sin(now * 2 + cur[0]);
+      g2.ellipse(cur[0], cur[1], pulse + 8, (pulse + 8) * 0.5)
+        .stroke({ width: 1.5, color: a.colour_pair?.[0] ?? "#cccccc",
+                  alpha: 0.6 });
+      layers.routes.addChild(g2);
     }
     for (const { g, a } of agentSprites.values()) {
       let pos = [0.5, 0.5], head = 0;
