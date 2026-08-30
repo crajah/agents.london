@@ -235,10 +235,16 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
     if pts is None:                      # worldgen guarantees this cannot happen
         raise RuntimeError("unroutable destination")
     route = forms.Route(tuple(pts), now)
+    # Dwell floor: no journey resolves in under two minutes. Without it, two
+    # adjacent piles produce an arrival->decide->travel loop at LLM cost every
+    # few seconds -- observed live, one agent burning a call per tick shuttling
+    # between piles at her feet. Arrival, unloading and looking around take
+    # time; the floor is that time.
+    arrives = max(route.arrives_at, now + 120.0)
     return Effects(
         movement={"waypoints": list(route.waypoints), "departed_at": now,
-                  "arrives_at": route.arrives_at},
-        schedule=(arrival_kind, route.arrives_at, agent.agent_uuid,
+                  "arrives_at": arrives},
+        schedule=(arrival_kind, arrives, agent.agent_uuid,
                   arrival_payload))
 
 
