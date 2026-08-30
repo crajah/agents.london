@@ -18,8 +18,9 @@ visible on screen before the long tail of subsystems begins.
 
 ## Non-goals
 
-Recorded so they are not drifted into: no physics, pathfinding visualisation,
-particles, audio, 3D or lighting (`interface-spec.md` Rule 6.10); no tile grid
+Recorded so they are not drifted into: no audio, 3D, lighting or decorative
+particles (`interface-spec.md` Rule 6.10a) — **2D physics, pathfinding and
+visible agent movement are core product**, corrected by the user; no tile grid
 (Rule 6.6); no agent-level revocation (`genome-spec.md` Rule 6.14); no market,
 route or cargo transfer outside agents (Rule 4.2); no decision budget as a spend
 control (`execution-spec.md` Rule 5.2).
@@ -83,6 +84,9 @@ The bet the whole design rests on. Prove it before building on it.
 - [ ] Position as a pure function of `movement` and wall-clock (`execution-spec.md` Rule 2.2)
 - [ ] Pile quantity closed form, clamped by the world ceiling (Rule 2.3, `genome-spec.md` Rules 4.13/4.14)
 - [ ] Property test: **nothing is written while an agent travels**
+- [ ] **Terrain generation**: impassable obstacles, fixed at creation, flood-surviving (`genome-spec.md` Rule 5.3)
+- [ ] **Pathfinding at decision time**: waypoint polylines around terrain (`execution-spec.md` Rule 2.1a); position piecewise along them (2.2)
+- [ ] **Contact = proximity sweep crossing the contact radius** (Rule 2.2a); no stepped physics server-side
 - [ ] Aggregate stock maintained incrementally on mine events, never recomputed
 
 ### 1.2 Event queue
@@ -149,7 +153,8 @@ The bet the whole design rests on. Prove it before building on it.
 
 Early payoff, and it tests interface assumptions against a real tick.
 
-- [ ] React + Tailwind chrome; **one Pixi canvas driven imperatively** (`interface-spec.md` Rules 6.1, 6.2)
+- [ ] React + Tailwind chrome; **canvas may be a game engine** — renderer + 2D physics for local motion and contact, server authoritative (`interface-spec.md` Rules 6.1–6.3)
+- [ ] Terrain drawn; routes visible as agents follow them; contact legible at encounters (Rule 6.10)
 - [ ] Cartesian world coords; **isometric applied only in the renderer**; hit-test by inverse (6.4, 6.5)
 - [ ] pixi-viewport pan/zoom/pinch (6.11); single texture atlas, batching preserved (6.12)
 - [ ] Agent = filled disc + triangle, two tints, heading derived (6.9a–6.9c)

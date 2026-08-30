@@ -171,7 +171,7 @@ place.
 >
 > A strain that replicates hard produces a severe infection: expression is
 > suppressed further and sooner, so the host negotiates worse, travels less, and —
-> since infection is visible (§2.6) — is refused contact by agents that would
+> since infection is visible (Rule 2.21) — is refused contact by agents that would
 > rather not catch it. **High replication shortens the window in which the strain
 > can spread.** A strain that replicates gently keeps its host mobile, sociable and
 > acceptable as a counterparty, and spreads for longer.
@@ -475,7 +475,7 @@ immunity retains value and families of related strains form.
 out at roughly a quarter of the Sight range.
 
 > So most agents can usually see an infected one in time to move away, which keeps
-> visible infection (Rule 2.18) a real defence rather than a warning that arrives
+> visible infection (Rule 2.21) a real defence rather than a warning that arrives
 > too late. It also gives Sight a second reason to be worth allocating budget to,
 > unrelated to combat — and leaves a genuinely dangerous minority of long-reach
 > strains against which only a high-Sight agent has any warning at all.
@@ -485,3 +485,14 @@ and distance, so no strain is dangerous on every axis at once.
 
 **4.10 Decided** — a small bounded bank, and granting consumes (Rule 2.20a). An
 Inoculist performs triage rather than dispensing.
+**Rule 2.21** — **Infection is visible.** Alongside colour
+(`genotype-spec.md` §3.5), it is the second thing an agent broadcasts whether it
+wishes to or not.
+
+> Attributes are hidden and this deliberately is not. Visible infection gives
+> agents something honest to act on: they can refuse contact with the obviously
+> sick, which makes avoidance a behaviour rather than a rule, prices contagion
+> into every meeting, and gives the epidemiology a counterforce that nobody has
+> to administer. (Restored: this rule was inadvertently dropped when §2.5 was
+> rebuilt around synthesised antigens; `interface-spec.md` Rule 6.9i renders it.)
+
