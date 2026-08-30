@@ -17,6 +17,10 @@ function App() {
     let canvas, timer, dead = false;
     (async () => {
       canvas = await createWorldCanvas(ref.current, {
+        onPortalClick: (toWorld) => {           // traverse (Rule 5.3/5.4):
+          history.pushState({}, "", `?world=${toWorld}`);  // free, unbounded
+          setInspect(null); setRealm(toWorld);
+        },
         onAgentClick: async (uuid) => {
           const [r, rd] = await Promise.all([
             fetch(`${API}/agents/${uuid}`),

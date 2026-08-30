@@ -79,16 +79,19 @@ class Effects:
     deposit: dict[str, float] | None = None      # kind -> units accepted
     reveal: tuple[str, ...] = ()                 # pile uuids newly known
     mark_explored: tuple[tuple[int, int], ...] = ()   # grid cells now visited
+    transfer: dict | None = None                 # {"to_world","portal_xy"} — the
+    # caller signs the assertion and flips presence (genome-spec §6)
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
 
 def on_event(kind: str, agent: AgentView, piles: list[PileView],
              now: float, payload: dict,
-             stock: dict[str, float] | None = None) -> DecisionRequest | Effects:
+             stock: dict[str, float] | None = None,
+             portals: list[dict] | None = None) -> DecisionRequest | Effects:
     """Entry point for every drained event."""
     if kind == "arrival":
-        return _decide_here(agent, piles, payload, stock)
+        return _decide_here(agent, piles, payload, stock, portals)
     if kind == "mining_done":
         # mechanical: the decision was taken when mining began; the next
         # decision is a fresh event a minute on, never at the same instant
@@ -104,7 +107,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                        mark_explored=(cell_of(agent.x, agent.y),),
                        schedule=("decide", now + 60.0, agent.agent_uuid, {}))
     if kind == "decide":
-        return _decide_here(agent, piles, payload, stock)
+        return _decide_here(agent, piles, payload, stock, portals)
     raise ValueError(f"unknown event kind {kind!r}")
 
 
@@ -144,7 +147,8 @@ def far_cells(explored: frozenset, x: float, y: float) -> list[tuple[int, int]]:
 
 
 def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
-                 stock: dict[str, float] | None = None) -> DecisionRequest:
+                 stock: dict[str, float] | None = None,
+                 portals: list[dict] | None = None) -> DecisionRequest:
     stock = stock or {}
     at_pile = payload.get("pile_uuid")
     by_id = {p.pile_uuid: p for p in piles}
@@ -168,12 +172,24 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                for kind, units in agent.cargo.items())
     if room and agent.realm == agent.home_realm:
         options.append("go_home_deposit")
+    # a linked portal within reach offers passage (genome-spec Rule 6.1a:
+    # passage itself is instantaneous; getting to the portal is the journey)
+    near_portal = None
+    for pt in (portals or []):
+        if pt.get("to_world") and \
+                (pt["x"] - agent.x) ** 2 + (pt["y"] - agent.y) ** 2 < 0.03 ** 2:
+            near_portal = pt
+            break
+    if near_portal:
+        options.append("take_portal")
     if not options:
         options = ["wait"]
     return DecisionRequest(
         agent_uuid=agent.agent_uuid, situation="at_" + (at_pile or "large"),
         options=tuple(options),
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
+                 "portal_to": near_portal.get("to_world") if near_portal else None,
+                 "portal_xy": [near_portal["x"], near_portal["y"]] if near_portal else None,
                  "reachable": reachable,
                  "frontier_count": len(frontier_cells(agent.explored))
                  if agent.explored else 0,
@@ -234,6 +250,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                 return _route_effects(agent, tx, ty, now, terrain,
                                       "explored", {"cell": list(c)})
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
+
+    if choice.option == "take_portal":
+        return Effects(
+            transfer={"to_world": payload.get("portal_to") or
+                      choice.target,
+                      "portal_xy": payload.get("portal_xy")},
+            schedule=("decide", now + 60.0, agent.agent_uuid, {}))
 
     if choice.option == "wait":
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))

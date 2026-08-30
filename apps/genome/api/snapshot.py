@@ -46,6 +46,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
     return {"realm": world_realm,
             "kinds": meta.get("kinds"), "colours": meta.get("colours"),
             "terrain": meta.get("terrain", []),
+            "portals": meta.get("portals", []),
             "stock": meta.get("stock", {}),
             "piles": [{k: p.get(k) for k in
                        ("pile_uuid", "kind", "x", "y", "qty_at",

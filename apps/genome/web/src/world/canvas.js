@@ -65,13 +65,18 @@ export async function createWorldCanvas(el, opts = {}) {
     }
     layers.portals.removeChildren();
     for (const pt of s.portals ?? []) {
+      // hollow split ring wearing the DESTINATION's pair (Rule 6.9h): the
+      // portal names where it goes without a label
       const g = new Graphics();
       const [cx, cy] = P([pt.x, pt.y]);
       const R = 26;
       g.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2)
-        .stroke({ width: 6, color: pt.colours?.[0] ?? "#ffffff" });
+        .stroke({ width: 6, color: pt.dest_colours?.[0] ?? "#ffffff" });
       g.arc(cx, cy, R, Math.PI / 2, 3 * Math.PI / 2)
-        .stroke({ width: 6, color: pt.colours?.[1] ?? "#ffffff" });
+        .stroke({ width: 6, color: pt.dest_colours?.[1] ?? "#ffffff" });
+      g.eventMode = "static";
+      g.cursor = "pointer";
+      g.on("pointertap", () => opts.onPortalClick?.(pt.to_world));
       layers.portals.addChild(g);
     }
     layers.agents.removeChildren(); agentSprites.clear();
