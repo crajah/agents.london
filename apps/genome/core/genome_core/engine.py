@@ -114,6 +114,21 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                      "at_pile": None, "reachable": [],
                      "portal_to": None, "portal_xy": None})
 
+    if kind == "mating_proposal":
+        # Rule 6.3: acceptance is the Selectivity decision. The proposer is
+        # known only by colours and any prior opinion -- and by the fact of
+        # the proposal itself, which is information too.
+        p = payload
+        return DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="mating_proposal",
+            options=("accept_mate", "decline_mate"),
+            context={"cargo_total": agent.cargo_total(),
+                     "proposer_uuid": p["proposer"]["agent_uuid"],
+                     "proposer_colours": p["proposer"].get("colour_pair"),
+                     "opinion": p.get("opinion"),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
+
     if kind == "explored":
         found = tuple(p.pile_uuid for p in piles
                       if (p.x - agent.x) ** 2 + (p.y - agent.y) ** 2
@@ -273,6 +288,11 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                       choice.target,
                       "portal_xy": payload.get("portal_xy")},
             schedule=("decide", now + 60.0, agent.agent_uuid, {}))
+
+    if choice.option in ("accept_mate", "decline_mate"):
+        return Effects(schedule=("mating_answer", now, agent.agent_uuid,
+                                 {"answer": choice.option,
+                                  "proposer": payload.get("proposer", {})}))
 
     if choice.option in ("offer_trade", "propose_breeding", "attack", "ignore"):
         # resolution is pairwise and happens in the drain once BOTH have

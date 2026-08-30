@@ -122,6 +122,17 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     portals = world_payload.get("portals", [])
     stock = await get_stock(store, world_realm)
 
+    if pl["kind"] == "mating_answer":
+        ans = pl["payload"]["answer"]
+        proposer_uuid = pl["payload"]["proposer"]["agent_uuid"]
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        if ans != "accept_mate":
+            return "mating:declined"
+        p_view, p_pl = await load_agent(store, world_realm, proposer_uuid,
+                                        world_realm, now)
+        return await consummate(store, world_realm, agent, agent_payload,
+                                p_view, p_pl, f"mate-{pl['key']}", now)
+
     if pl["kind"] == "encounter_answer":
         return await resolve_encounter(store, world_realm, agent,
                                        agent_payload, pl, now)
@@ -295,6 +306,20 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
     elif a_ans == "propose_breeding" and b_ans == "propose_breeding":
         outcome = await consummate(store, world_realm, agent, agent_payload,
                                    other_view, other_payload, pair_key, now)
+    elif "propose_breeding" in (a_ans, b_ans):
+        # one-sided proposal: agreement is proposal + ACCEPTANCE (Rule 9.4),
+        # and acceptance is the recipient's own Selectivity decision (6.3)
+        proposer = me if a_ans == "propose_breeding" else other_uuid
+        recipient = other_uuid if proposer == me else me
+        prop_pl = agent_payload if proposer == me else other_payload
+        recip_pl = other_payload if proposer == me else agent_payload
+        await store.schedule(world_realm, f"prop-{pair_key}", _iso(now + 30.0),
+                             "mating_proposal", recipient,
+                             {"proposer": {"agent_uuid": proposer,
+                                           "colour_pair": prop_pl.get("colour_pair")},
+                              "opinion": (recip_pl.get("opinions", {})
+                                          .get(proposer))})
+        outcome = "mating:proposed"
     elif a_ans == "offer_trade" and b_ans == "offer_trade":
         # simplest exchange: one unit of each side's most-held kind, both ways,
         # ceilings respected (proper negotiation arrives with A2A turns)
