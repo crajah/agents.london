@@ -78,6 +78,18 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     return out
 
 
+async def agent_decisions(client: Any, agent_uuid: str, limit: int = 20) -> list[dict]:
+    """The experimental record, per agent, newest first (execution-spec §6) —
+    a user may always read why their world looks the way it does."""
+    rows = await client.find_vertices("decisions", realm=AGENTS_REALM,
+                                      filters={"key": agent_uuid}, limit=1)
+    if not rows:
+        return []
+    recs = await client.get_vertex_data("decisions", realm=AGENTS_REALM,
+                                        vertex_id=int(rows[0].id), limit=limit)
+    return [r.payload for r in recs]
+
+
 async def world_events(client: Any, world_realm: str, since: str) -> list[dict]:
     """Completed events after `since` — the client's incremental feed."""
     rows = await client.get_vertices("events", realm=world_realm)

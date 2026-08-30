@@ -73,7 +73,12 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
     return engine.Choice(option=opt, target=target), model
 
 
-def stub_or_llm(req, genotype, use_llm: bool, seed: int):
-    if use_llm:
-        return llm_decider(req, genotype, seed=seed)
-    return engine.stub_decider(req, seed), "stub"
+def make_decider(use_llm: bool):
+    """The drain's decider contract: (req, agent_payload, seed) ->
+    (Choice, model) or a bare Choice."""
+    def decide(req, agent_payload, seed):
+        g = agent_payload.get("genotype")
+        if use_llm and g:
+            return llm_decider(req, g, seed=seed)
+        return engine.stub_decider(req, seed)
+    return decide

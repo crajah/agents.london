@@ -25,11 +25,14 @@ def from_iso(s: str) -> float:
     return float(s)
 
 
-async def load_agent_view(store: GenomeStore, world_realm: str,
-                          agent_uuid: str, home_realm: str,
-                          now: float) -> engine.AgentView:
-    """Position derived from the latest movement intent and the clock —
-    never stored (execution-spec Rule 2.2)."""
+async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
+                     home_realm: str, now: float) -> tuple[engine.AgentView, dict]:
+    """View + the agent's stored payload (genotype, knowledge). Position is
+    derived from the latest movement intent and the clock — never stored
+    (execution-spec Rule 2.2)."""
+    rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                        filters={"key": agent_uuid}, limit=1)
+    payload = rows[0].payload if rows else {}
     latest = await store.latest_movement(agent_uuid)
     cargo: dict[str, float] = {}
     x, y = engine.HOME_XY
@@ -40,7 +43,11 @@ async def load_agent_view(store: GenomeStore, world_realm: str,
             r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
                             pl["departed_at"])
             x, y = forms.route_position(r, now)
-    return engine.AgentView(agent_uuid, home_realm, world_realm, x, y, cargo)
+    view = engine.AgentView(
+        agent_uuid, home_realm, world_realm, x, y, cargo,
+        frozenset(payload.get("known_piles", [])),
+        frozenset(tuple(c) for c in payload.get("explored", [])))
+    return view, payload
 
 
 async def persist_effects(store: GenomeStore, world_realm: str,
@@ -98,8 +105,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     pl = ev.payload
     now = from_iso(pl["due_at"])
     agent_uuid = pl["subject"]
-    agent = await load_agent_view(store, world_realm, agent_uuid,
-                                  home_realm, now)
+    agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
+                                            home_realm, now)
     pile_rows = await store.piles_in(world_realm)
     piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
     pile_views = [engine.PileView(
@@ -117,7 +124,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock)
         if isinstance(res, engine.DecisionRequest):
-            decided = decider(res, seed)
+            decided = decider(res, agent_payload, seed)
             # a decider may return (Choice, model_name) or a bare Choice
             choice, model = decided if isinstance(decided, tuple) \
                 else (decided, "stub")
@@ -132,6 +139,13 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
             eff = res
             outcome = pl["kind"]
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
+    if eff.reveal or eff.mark_explored:      # knowledge grows on the agent
+        kp = sorted(set(agent_payload.get("known_piles", [])) | set(eff.reveal))
+        ex = sorted({tuple(c) for c in agent_payload.get("explored", [])}
+                    | set(eff.mark_explored))
+        await store.put_agent(agent.agent_uuid,
+                              {**agent_payload, "known_piles": kp,
+                               "explored": [list(c) for c in ex]})
     await store.complete_event(world_realm, ev.payload["key"], _iso(now))
     return outcome
 
