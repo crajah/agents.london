@@ -41,7 +41,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
         agents.append({"agent_uuid": uuid,
                        "colour_pair": payload.get("colour_pair"),
                        "name": payload.get("name"),
-                       "infected": bool(payload.get("infected")),
+                       "infected": bool(payload.get("infections")),
                        "movement": intent})
     return {"realm": world_realm,
             "kinds": meta.get("kinds"), "colours": meta.get("colours"),

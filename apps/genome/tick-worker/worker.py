@@ -101,6 +101,21 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
             if now - _recent_pairs.get(pair, 0) < 1800:
                 continue
             _recent_pairs[pair] = now
+            # contagion at contact (Rules 2.4/2.5): each may infect the other
+            from genome_core import pathogen as _pg
+            for src, dst in ((a, b), (b, a)):
+                strain = _pg.try_transmit(f"{pair}:{int(now)}",
+                                          metas[src], metas[dst], now)
+                if strain:
+                    infected = _pg.infect(metas[dst], strain, now)
+                    await store.put_agent(dst, infected)
+                    metas[dst] = infected
+                    if infected.get("owner_user_id"):
+                        from genome_core import notify as _nf
+                        await _nf.emit(store._c, infected["owner_user_id"],
+                                       "agents", "infection",
+                                       f"{infected.get('name', dst)} caught "
+                                       f"{strain['strain_uuid']} in a meeting.")
             for me, other in ((a, b), (b, a)):
                 om = metas[other]
                 await store.schedule(
