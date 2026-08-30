@@ -5,6 +5,44 @@ import { createWorldCanvas } from "./world/canvas.js";
 
 const API = import.meta.env.VITE_GENOME_API ?? "";
 
+function Bell() {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const load = () => fetch(`${API}/notifications`,
+      { credentials: "include" }).then(r => r.json()).then(setItems);
+    load(); const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, []);
+  const unread = items.filter(i => !i.read).length;
+  return (
+    <span className="relative">
+      <button onClick={() => setOpen(!open)} className="text-lg">
+        🔔{unread > 0 && <span className="text-xs text-amber-400">{unread}</span>}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 w-96 max-h-80 overflow-y-auto
+                        bg-neutral-800 border border-neutral-600 rounded p-2
+                        text-sm z-10">
+          {items.length === 0 && <div className="opacity-50">quiet so far</div>}
+          {items.map(i => (
+            <div key={i.key}
+                 className={`py-1 border-b border-neutral-700 ${
+                   i.read ? "opacity-50" : ""}`}>
+              <span className="opacity-60">[{i.source}]</span> {i.message}
+            </div>))}
+          {unread > 0 &&
+            <button className="mt-1 underline opacity-70" onClick={async () => {
+              await fetch(`${API}/notifications/read`, { method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keys: items.map(i => i.key) })});
+              setItems(items.map(i => ({ ...i, read: true })));
+            }}>mark all read</button>}
+        </div>)}
+    </span>);
+}
+
 function App() {
   const ref = useRef(null);
   const [realm, setRealm] = useState(
@@ -60,11 +98,24 @@ function App() {
         <span className="text-sm opacity-70">{status}</span>
         <span className="flex-1" />
         {me && !me.authenticated && <>
+          <input className="bg-neutral-800 px-2 py-1 rounded text-sm w-56"
+                 placeholder="your@email — enter to begin"
+                 onKeyDown={async e => {
+                   if (e.key !== "Enter") return;
+                   const r = await fetch(`${API}/auth/email/login`, {
+                     method: "POST", credentials: "include",
+                     headers: { "Content-Type": "application/json" },
+                     body: JSON.stringify({ email: e.target.value })});
+                   const d = await r.json();
+                   if (d.world_realm) { setMe({ authenticated: true,
+                     world_realm: d.world_realm }); setRealm(d.world_realm); }
+                 }} />
           <a className="text-sm underline opacity-80"
-             href={`${API}/auth/google/login`}>Sign in with Google</a>
+             href={`${API}/auth/google/login`}>Google</a>
           <a className="text-sm underline opacity-80"
              href={`${API}/auth/microsoft/login`}>Microsoft</a>
         </>}
+        {me?.authenticated && <Bell />}
         {me?.authenticated &&
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>

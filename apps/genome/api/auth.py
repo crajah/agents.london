@@ -85,6 +85,21 @@ def verify_cookie(value: str) -> str | None:
     return None
 
 
+def normalise_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def user_id_from_email(email: str) -> str:
+    """Rule 6.2i: ONE identity per person -- the hash of the normalised email,
+    whatever door they came through."""
+    return f"u:{hashlib.sha256(normalise_email(email).encode()).hexdigest()[:20]}"
+
+
 def user_id_from(provider: str, userinfo: dict) -> str:
-    sub = userinfo.get("sub") or userinfo.get("email")
+    email = userinfo.get("email")
+    if email:
+        return user_id_from_email(email)
+    # a provider that withholds email falls back to its subject -- the same
+    # person via another door will NOT converge; surfaced in /me as unlinked
+    sub = userinfo.get("sub")
     return f"{provider}:{hashlib.sha256(str(sub).encode()).hexdigest()[:16]}"
