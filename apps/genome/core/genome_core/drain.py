@@ -117,11 +117,14 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock)
         if isinstance(res, engine.DecisionRequest):
-            choice = decider(res, seed)
+            decided = decider(res, seed)
+            # a decider may return (Choice, model_name) or a bare Choice
+            choice, model = decided if isinstance(decided, tuple) \
+                else (decided, "stub")
             await store.record_decision(agent_uuid, {
                 "at": pl["due_at"], "situation": res.situation,
                 "options": list(res.options), "choice": choice.option,
-                "model": "stub", "tier": "stub"})
+                "model": model, "tier": "economy" if model != "stub" else "stub"})
             eff = engine.apply_choice(choice, agent, pile_views, now,
                                       pl.get("payload", {}), terrain)
             outcome = choice.option
