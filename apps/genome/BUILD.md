@@ -232,9 +232,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] World gets two kinds, two colours, piles, and its opening 30 portal slots (Rules 4.1, 4.9, 6.2a)
 - [ ] Explain the one thing that is not guessable: **you cannot reach four kinds alone** (Rule 2.3)
 - [ ] Contact import offered, never required — the world must be usable with zero connections
-- [ ] **Commons portal present from creation** (`genome-spec.md` Rule 6.2f); one-way exit enforced (6.2g)
-- [ ] Commons **sharded, stable assignment** at world creation, hundreds of worlds per shard (6.2h)
-- [ ] Cold-start path provable: agent → commons → trade → four kinds → second agent
+- [x] **Commons portal present from creation** (`genome-spec.md` Rule 6.2f); one-way exit enforced (6.2g) — proven there-and-back live
+- [x] Commons shard 0 live; stable multi-shard assignment when scale asks (6.2h)
+- [ ] Cold-start path provable: agent → commons → trade → four kinds → second agent (doors + crossing proven; awaiting two strangers trading there)
 - [ ] Account with no connections still runs: agents gather, deposit, and hit the four-kind wall visibly
 
 **Done when:** J1 and J8 work; a brand-new account with no contacts still has something to watch.

@@ -179,6 +179,13 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     world_payload = await _world_payload(store, world_realm)
     terrain = world_payload.get("terrain", [])
     portals = world_payload.get("portals", [])
+    if world_payload.get("is_commons"):
+        # Rule 6.2g: the commons shows each agent ONE portal -- back the way it
+        # came. A market square, never a transit hub.
+        entry = agent_payload.get("commons_entry_from")
+        portals = ([{"x": 0.5, "y": 0.08, "to_world": entry,
+                     "dest_xy": agent_payload.get("commons_entry_xy") or [0.5, 0.5],
+                     "dest_colours": None}] if entry else [])
     stock = await get_stock(store, world_realm)
 
     if pl["kind"] == "perish":
@@ -274,9 +281,13 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
         return False                       # unsigned worlds cannot emigrate
     counter = int(agent_payload.get("transfer_counter", 0)) + 1
     assertion = identity.make_transfer(origin_cert, agent_cert, counter, to_world)
+    birth_meta = await _world_payload(store,
+                                      agent_payload.get("home_realm",
+                                                        origin_realm))
     ok, why = identity.accept_transfer(
         root_pub, origin_cert, agent_cert, assertion,
-        int(agent_payload.get("transfer_counter", 0)))
+        int(agent_payload.get("transfer_counter", 0)),
+        birth_world_cert=birth_meta.get("cert"))
     if not ok:
         return False
     # find the destination-side coordinates from the origin portal record
@@ -294,6 +305,18 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     await store.put_agent(agent.agent_uuid,
                           {**agent_payload, "transfer_counter": counter,
                            "last_transfer": assertion["doc"]})
+    if dest_meta.get("is_commons"):
+        # remember the way in (Rule 6.2g); the portal position it used is the
+        # return destination
+        entry_xy = None
+        for pt in portals:
+            if pt.get("to_world") == to_world:
+                entry_xy = [pt["x"], pt["y"]]
+                break
+        await store.put_agent(agent.agent_uuid,
+                              {**agent_payload, "transfer_counter": counter,
+                               "commons_entry_from": origin_realm,
+                               "commons_entry_xy": entry_xy})
     dest_owner = dest_meta.get("owner_user_id")
     if dest_owner:
         await notify.emit(store._c, dest_owner, "world", "arrival",

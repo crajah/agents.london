@@ -77,6 +77,7 @@ async def ensure_user_world(client: Any, user_id: str,
                             payload={"key": f"user:{user_id}",
                                      "world_realm": realm, "email": email,
                                      "first_agent": a, "created_at": now})
+    await link_to_commons(client, realm)
     await notify.emit(client, user_id, "platform", "world_created",
                       f"Your world {realm} exists. Your first agent, "
                       f"{payload['name']}, is awake in it.")
@@ -145,3 +146,50 @@ async def invite_user(client: Any, inviter_id: str, email: str) -> dict:
     return {"ok": True, "invitee_world": invitee_realm,
             "world_created": result["created"], "linked": linked,
             "already_linked": not linked and not result["created"]}
+
+
+COMMONS = "genome_commons_0"          # shard 0; assignment stable by creation
+COMMONS_COLOURS = ["#F5F5F5", "#CFD8DC"]
+
+
+async def ensure_commons(client: Any) -> str:
+    """Rules 6.2f/6.2h: the ownerless world -- no piles, never floods."""
+    store = GenomeStore(client)
+    meta = await drain._world_payload(store, COMMONS)
+    if meta:
+        return COMMONS
+    await ensure_world_realm(client, COMMONS)
+    root_rows = await client.find_vertices("trust", realm="genome_agents",
+                                           filters={"key": "root"}, limit=1)
+    cert = root_public = None
+    if root_rows:
+        root = {"doc": root_rows[0].payload["doc"],
+                "private_pem": root_rows[0].payload["private_pem"]}
+        cert = I.issue_world_cert(root, COMMONS)
+        root_public = root["doc"]["public_pem"]
+    await store.put_world(COMMONS, {
+        "is_commons": True, "owner_user_id": None,
+        "kinds": [], "colours": COMMONS_COLOURS,
+        "terrain": [], "portals": [], "portal_slots": [], "stock": {},
+        "cert": cert, "root_public_pem": root_public})
+    await client.add_vertex("agents", realm="genome_agents",
+                            payload={"key": f"commons:{COMMONS}",
+                                     "world_realm": COMMONS})
+    return COMMONS
+
+
+async def link_to_commons(client: Any, realm: str) -> bool:
+    """Slot 0 is the commons door (Rule 6.2f). One-sided by design: the
+    commons never lists outbound portals (6.2g handles the return)."""
+    store = GenomeStore(client)
+    await ensure_commons(client)
+    meta = await drain._world_payload(store, realm)
+    if any(p.get("to_world") == COMMONS for p in meta.get("portals", [])):
+        return False
+    slots = meta.get("portal_slots") or [{"x": 0.15, "y": 0.15}]
+    s0 = slots[0]
+    portal = {"x": s0["x"], "y": s0["y"], "to_world": COMMONS,
+              "dest_xy": [0.5, 0.5], "dest_colours": COMMONS_COLOURS}
+    await store.put_world(realm, {**meta,
+                                  "portals": meta.get("portals", []) + [portal]})
+    return True
