@@ -1,0 +1,91 @@
+{
+ "model": "gemini-3.5-flash-lite",
+ "prompt": "production-6.6a",
+ "reps": 8,
+ "results": {
+  "Cooperativeness": {
+   "n": 72,
+   "rho": 0.5,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Reciprocity": {
+   "n": 72,
+   "rho": 0.479,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Vindictiveness": {
+   "n": 72,
+   "rho": 0.72,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Aggression": {
+   "n": 72,
+   "rho": 0.84,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Honesty": {
+   "n": 72,
+   "rho": 0.538,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Credulity": {
+   "n": 72,
+   "rho": 0.591,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Amenability": {
+   "n": 72,
+   "rho": 0.262,
+   "p": 0.021,
+   "unparsed": 0
+  },
+  "Loyalty": {
+   "n": 72,
+   "rho": 0.537,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Patience": {
+   "n": 72,
+   "rho": 0.675,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Curiosity": {
+   "n": 72,
+   "rho": 0.352,
+   "p": 0.0016,
+   "unparsed": 0
+  },
+  "Prudence": {
+   "n": 72,
+   "rho": 0.0,
+   "p": 1.0,
+   "unparsed": 0
+  },
+  "Wanderlust": {
+   "n": 72,
+   "rho": 0.699,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Fecundity": {
+   "n": 72,
+   "rho": 0.683,
+   "p": 0.0002,
+   "unparsed": 0
+  },
+  "Selectivity": {
+   "n": 72,
+   "rho": 0.245,
+   "p": 0.0404,
+   "unparsed": 0
+  }
+ }
+}

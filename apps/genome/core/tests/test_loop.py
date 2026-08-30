@@ -30,14 +30,15 @@ class Sim:
             a = f"agent-{i}"
             known = frozenset(list(self.pile_meta)[:3])   # sparse start
             self.agents[a] = {"x": 0.5, "y": 0.5, "cargo": {},
-                              "moving_until": 0.0, "known": known}
+                              "moving_until": 0.0, "known": known,
+                              "explored": frozenset({(2, 2), (3, 3)})}
             self.queue.append((0.0, "decide", a, {}))
 
     def _view(self, a: str) -> engine.AgentView:
         s = self.agents[a]
         return engine.AgentView(a, self.world["realm"], self.world["realm"],
                                 s["x"], s["y"], dict(s["cargo"]),
-                                s["known"])
+                                s["known"], s["explored"])
 
     def _pile_views(self, now: float) -> list:
         return [engine.PileView(u, m["kind"], m["x"], m["y"],
@@ -65,6 +66,8 @@ class Sim:
                 self.stock[kind] = self.stock.get(kind, 0.0) + units
         if eff.reveal:
             s["known"] = frozenset(s["known"] | set(eff.reveal))
+        if eff.mark_explored:
+            s["explored"] = frozenset(s["explored"] | set(eff.mark_explored))
         if eff.schedule:
             kind, due, subject, payload = eff.schedule
             self.queue.append((due, kind, subject, payload))

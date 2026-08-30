@@ -148,6 +148,35 @@ conditionals: P(split | it split last) − P(split | it grabbed last). Its split
 rate stayed flat at ~0.40 across the whole locus range while the index rose 0.17
 → 0.39.
 
+## The production-prompt screen (Phase 2)
+
+The ρ values above were measured on a 14-line prompt; the runtime prompt is
+Rule 6.6a's full self-knowledge — dispositions plus faculties, pools, cargo and
+objectives. Re-screened under the production assembly (1,008 + 432 decisions,
+flash-lite, `results/production_screen.json`):
+
+**Expression survives the fuller context, and mostly strengthens.** 11 of 14
+loci pass the pre-registered bar outright, with several rising sharply —
+Cooperativeness 0.25 → 0.50 (now passing), Credulity 0.36 → 0.59, Aggression
+0.71 → 0.84. Richer self-knowledge helps rather than dilutes.
+
+**Two harness lessons, both now encoded in the screen.** A cargo line that
+contradicts the scenario nulls the signal; and an injected objective that
+answers the scenario decides it for every agent regardless of locus — Prudence
+read ρ = 0.000 with zero variance until the screen's objective went neutral,
+then recovered to 0.287. That zero is Rule 10.1a working (objectives outrank
+dispositions); a screen isolates the locus, in-world the rank is the point.
+
+The three sub-bar loci (Prudence 0.29, Amenability 0.29, Selectivity 0.23, all
+p ≤ 0.007) are the known-weak trio: Selectivity is a threshold mis-served by a
+two-arm scenario, Amenability is fidelity-not-rank by Rule 10.1d, and Prudence
+sits just under after de-biasing.
+
+**In-world confirmation:** through the complete stack (drain → prompt → router),
+prudent agents (9200) went home to bank at 0.9 versus 0.4 for the contrast arm;
+and one live A2A round trip through the kagent caste returned the
+disposition-correct choice.
+
 ## Limitations
 
 **One scenario per locus.** A weak result confounds "this disposition does not

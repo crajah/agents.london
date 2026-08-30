@@ -38,6 +38,7 @@ class AgentView:
     cargo: dict[str, float]          # kind -> units
     known_piles: frozenset[str] = frozenset()   # fog of knowledge (§8: the map
     # is private knowledge that took journeys to acquire)
+    explored: frozenset[tuple[int, int]] = frozenset()   # visited GRID_K cells
 
     def cargo_total(self) -> float:
         return sum(self.cargo.values())
@@ -77,6 +78,7 @@ class Effects:
     mine_pile: tuple[str, float] | None = None   # pile_uuid, want
     deposit: dict[str, float] | None = None      # kind -> units accepted
     reveal: tuple[str, ...] = ()                 # pile uuids newly known
+    mark_explored: tuple[tuple[int, int], ...] = ()   # grid cells now visited
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -99,13 +101,46 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                       if (p.x - agent.x) ** 2 + (p.y - agent.y) ** 2
                       <= SIGHT_RADIUS ** 2)
         return Effects(reveal=found,
+                       mark_explored=(cell_of(agent.x, agent.y),),
                        schedule=("decide", now + 60.0, agent.agent_uuid, {}))
     if kind == "decide":
         return _decide_here(agent, piles, payload, stock)
     raise ValueError(f"unknown event kind {kind!r}")
 
 
-SIGHT_RADIUS = 0.18       # PROVISIONAL: reveal radius on arrival (Sight scales later)
+SIGHT_RADIUS = 0.18
+GRID_K = 6                # exploration grid: 36 regions per world
+
+
+def cell_of(x: float, y: float) -> tuple[int, int]:
+    return (min(GRID_K - 1, int(x * GRID_K)), min(GRID_K - 1, int(y * GRID_K)))
+
+
+def cell_centre(c: tuple[int, int]) -> tuple[float, float]:
+    return ((c[0] + 0.5) / GRID_K, (c[1] + 0.5) / GRID_K)
+
+
+def frontier_cells(explored: frozenset) -> list[tuple[int, int]]:
+    """Unexplored cells ADJACENT to explored ones — the edge of the known.
+    Game-like expansion: the map grows outward from where you have been."""
+    out = []
+    for i in range(GRID_K):
+        for j in range(GRID_K):
+            if (i, j) in explored:
+                continue
+            if any((i + di, j + dj) in explored
+                   for di in (-1, 0, 1) for dj in (-1, 0, 1)):
+                out.append((i, j))
+    return out
+
+
+def far_cells(explored: frozenset, x: float, y: float) -> list[tuple[int, int]]:
+    """Unexplored cells sorted farthest-first from the agent — expeditions,
+    not errands. Wanderlust's surface within a world."""
+    unknown = [(i, j) for i in range(GRID_K) for j in range(GRID_K)
+               if (i, j) not in explored]
+    return sorted(unknown, key=lambda c: -((cell_centre(c)[0] - x) ** 2
+                                           + (cell_centre(c)[1] - y) ** 2))       # PROVISIONAL: reveal radius on arrival (Sight scales later)
 
 
 def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
@@ -124,9 +159,11 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  if u != at_pile and u in by_id and by_id[u].qty > 0.05]
     if reachable:
         options.append("travel_to_pile")
-    unknown_exists = len(known) < len(by_id)
-    if unknown_exists:
-        options.append("explore_unknown")           # Curiosity's surface
+    frontier = frontier_cells(agent.explored) if agent.explored else []
+    if frontier:
+        options.append("explore_frontier")          # Curiosity: the near unknown
+    if far_cells(agent.explored, agent.x, agent.y) and agent.explored:
+        options.append("survey_far")                # Wanderlust: the far unknown
     room = any(units > 0 and stock.get(kind, 0.0) < USER_CEILING_PER_KIND
                for kind, units in agent.cargo.items())
     if room and agent.realm == agent.home_realm:
@@ -138,8 +175,9 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         options=tuple(options),
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
                  "reachable": reachable,
-                 "unknown_count": len(by_id) - len(known & set(by_id))
-                 if agent.known_piles else 0})
+                 "frontier_count": len(frontier_cells(agent.explored))
+                 if agent.explored else 0,
+                 "unexplored_count": GRID_K * GRID_K - len(agent.explored)})
 
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
@@ -183,14 +221,18 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         return _route_effects(agent, hx, hy, now, terrain,
                               "deposit_arrival", {})
 
-    if choice.option == "explore_unknown":
-        import random as _r
-        rng = _r.Random(f"explore:{agent.agent_uuid}:{now}")
-        for _try in range(12):     # reject points inside terrain, stay routable
-            tx, ty = rng.uniform(0.05, 0.95), rng.uniform(0.05, 0.95)
+    if choice.option in ("explore_frontier", "survey_far"):
+        if choice.option == "explore_frontier":
+            cand = sorted(frontier_cells(agent.explored),
+                          key=lambda c: (cell_centre(c)[0] - agent.x) ** 2
+                          + (cell_centre(c)[1] - agent.y) ** 2)
+        else:
+            cand = far_cells(agent.explored, agent.x, agent.y)
+        for c in cand[:8]:          # nearest frontier / farthest unknown first
+            tx, ty = cell_centre(c)
             if pathmod.find_path(terrain, agent.x, agent.y, tx, ty) is not None:
                 return _route_effects(agent, tx, ty, now, terrain,
-                                      "explored", {"x": tx, "y": ty})
+                                      "explored", {"cell": list(c)})
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 
     if choice.option == "wait":
