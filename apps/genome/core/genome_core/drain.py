@@ -297,6 +297,25 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
             dest_xy = pt.get("dest_xy")
             break
     dest_xy = dest_xy or [0.5, 0.5]
+    # A crossing interrupts the life left behind: pending events in the
+    # origin realm and undecided queue items for this agent are void -- they
+    # reference a world the agent is no longer in. Observed live: stale
+    # home-world decisions marching a commons visitor off to phantom piles.
+    for ev in await store._c.get_vertices("events", realm=origin_realm):
+        p = ev.payload
+        if p.get("subject") == agent.agent_uuid and p.get("done_at") is None \
+                and p.get("kind") != "perish":
+            await store._c.upsert_vertex("events", realm=origin_realm,
+                vertex_id=int(ev.id),
+                payload={**p, "done_at": _iso(now), "voided": "transfer"})
+    for it in await store._c.get_vertices("decision_queue",
+                                          realm="genome_agents"):
+        p = it.payload
+        if p.get("agent_uuid") == agent.agent_uuid \
+                and p.get("done_at") is None:
+            await store._c.upsert_vertex("decision_queue",
+                realm="genome_agents", vertex_id=int(it.id),
+                payload={**p, "done_at": _iso(now), "outcome": "voided:transfer"})
     await store.set_presence(origin_realm, agent.agent_uuid, False)
     await store.set_presence(to_world, agent.agent_uuid, True)
     await store.set_movement(agent.agent_uuid,
