@@ -32,6 +32,8 @@ logger = logging.getLogger("genome.tick")
 REALMS = [r for r in os.getenv("GENOME_REALMS", "").split(",") if r]
 TICK_SECONDS = float(os.getenv("GENOME_TICK_SECONDS", "5"))
 USE_LLM = os.getenv("GENOME_USE_LLM", "1") == "1"
+INLINE = os.getenv("GENOME_INLINE_DECIDER", "0") == "1"   # tests only:
+# system-spec Rule 8.4 -- production never decides on the world queue
 
 
 def dsn() -> str:
@@ -125,7 +127,7 @@ async def main() -> None:
     client = AsyncPostGraph(dsn=dsn())   # SCHEMA_PER_REALM deliberately unset
     await client.connect()
     store = GenomeStore(client)
-    decider = make_decider(USE_LLM)
+    decider = make_decider(USE_LLM) if INLINE else None
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)

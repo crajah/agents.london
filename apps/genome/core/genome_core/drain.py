@@ -102,6 +102,64 @@ async def get_stock(store: GenomeStore, world_realm: str) -> dict:
     return (rows[0].payload.get("stock", {}) if rows else {})
 
 
+DECISION_QUEUE = "decision_queue"
+
+
+async def enqueue_decision(store: GenomeStore, world_realm: str,
+                           req: engine.DecisionRequest,
+                           event_payload: dict, now: float) -> None:
+    """system-spec Rule 8.4: the world queue never blocks on inference. The
+    request carries everything the decision worker needs to decide AND apply."""
+    import uuid as _u
+    await store._c.add_vertex(DECISION_QUEUE, realm="genome_agents",
+        payload={"key": f"dq-{_u.uuid4().hex[:12]}",
+                 "world_realm": world_realm,
+                 "agent_uuid": req.agent_uuid,
+                 "situation": req.situation,
+                 "options": list(req.options),
+                 "context": req.context,
+                 "event_payload": event_payload,
+                 "queued_at": _iso(now), "done_at": None})
+
+
+async def apply_decided(store: GenomeStore, world_realm: str,
+                        agent_uuid: str, choice: engine.Choice,
+                        model: str, req_situation: str, req_options: list,
+                        event_payload: dict, now: float) -> str:
+    """The decision worker's half: record, apply, persist — the same
+    persistence path the inline drain used, so behaviour is identical."""
+    agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
+                                            world_realm, now)
+    pile_rows = await store.piles_in(world_realm)
+    piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
+    pile_views = [engine.PileView(
+        k, m["kind"], m["x"], m["y"],
+        forms.pile_quantity(forms.PileState(m["qty_at"],
+                                            m.get("measured_at", 0.0),
+                                            m["rate"], m["cap"]), now))
+        for k, m in piles_meta.items()]
+    world_payload = await _world_payload(store, world_realm)
+    terrain = world_payload.get("terrain", [])
+    await store.record_decision(agent_uuid, {
+        "at": _iso(now), "situation": req_situation,
+        "options": req_options, "choice": choice.option,
+        "model": model, "tier": "economy" if model != "stub" else "stub"})
+    eff = engine.apply_choice(choice, agent, pile_views, now,
+                              event_payload, terrain)
+    await persist_effects(store, world_realm, agent, eff, piles_meta, now)
+    if eff.transfer:
+        await do_transfer(store, world_realm, agent, agent_payload,
+                          eff.transfer, world_payload.get("portals", []), now)
+    if eff.reveal or eff.mark_explored:
+        kp = sorted(set(agent_payload.get("known_piles", [])) | set(eff.reveal))
+        ex = sorted({tuple(c) for c in agent_payload.get("explored", [])}
+                    | set(eff.mark_explored))
+        await store.put_agent(agent_uuid,
+                              {**agent_payload, "known_piles": kp,
+                               "explored": [list(c) for c in ex]})
+    return choice.option
+
+
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     ev, decider, seed: int) -> str:
     """Process one due event vertex. Returns the choice or event kind."""
@@ -144,6 +202,15 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock, portals)
         if isinstance(res, engine.DecisionRequest):
+            if decider is None:                     # queue mode (Rule 8.4)
+                merged_q = dict(pl.get("payload", {}))
+                for k in ("portal_to", "portal_xy", "proposer", "other"):
+                    if res.context.get(k):
+                        merged_q[k] = res.context[k]
+                await enqueue_decision(store, world_realm, res,
+                                       merged_q, now)
+                await store.complete_event(world_realm, pl["key"], _iso(now))
+                return f"queued:{res.situation}"
             decided = decider(res, agent_payload, seed)
             # a decider may return (Choice, model_name) or a bare Choice
             choice, model = decided if isinstance(decided, tuple) \
