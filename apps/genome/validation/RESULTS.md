@@ -177,6 +177,15 @@ prudent agents (9200) went home to bank at 0.9 versus 0.4 for the contrast arm;
 and one live A2A round trip through the kagent caste returned the
 disposition-correct choice.
 
+## The encounter screen (Phase 6)
+
+The live encounter prompt — colours-only knowledge of a stranger, three options
+— screened on flash-lite (`results/encounter_screen.json`): **Aggression 9200
+attacks 8/8; Cooperativeness 9200 never attacks; midline spreads across all
+three.** The first two live meetings both resolved ignore-ignore, which the
+screen shows is what mid-range genotypes honestly do — and what a high-
+Aggression arrival will not.
+
 ## Limitations
 
 **One scenario per locus.** A weak result confounds "this disposition does not

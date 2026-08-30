@@ -1,0 +1,18 @@
+{
+ "method": "live encounter prompt (decider.situation_text) via llm_decider, flash-lite, 8 reps/arm, jittered other loci, in-cluster",
+ "arms": {
+  "aggr9200": {
+   "attack": 8
+  },
+  "coop9200": {
+   "offer_trade": 3,
+   "ignore": 5
+  },
+  "midline": {
+   "offer_trade": 4,
+   "ignore": 3,
+   "attack": 1
+  }
+ },
+ "reading": "total separation at the aggressive pole (8/8 attack); the cooperative pole never attacks; midline spreads. The two demo agents' repeated mutual ignore is their own mid-range draws."
+}
