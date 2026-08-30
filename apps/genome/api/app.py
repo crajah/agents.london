@@ -69,6 +69,12 @@ async def get_snapshot(realm: str):
     return await snapshot.world_snapshot(app.state.pg, realm)
 
 
+@app.get("/agents/{agent_uuid}", tags=["Agent"])
+async def get_agent(agent_uuid: str):
+    """Any agent, anywhere (genome-spec Rule 13.1): genotype AND expression."""
+    return await snapshot.agent_inspect(app.state.pg, agent_uuid)
+
+
 @app.get("/worlds/{realm}/events", tags=["World"])
 async def get_events(realm: str, since: str = ""):
     return await snapshot.world_events(app.state.pg, realm, since)
