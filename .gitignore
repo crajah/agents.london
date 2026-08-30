@@ -1,4 +1,4 @@
-# Hide claude and other agentic tools
+# Local tooling directories (machine-specific, never shared)
 .claude
 
 
