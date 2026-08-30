@@ -35,11 +35,22 @@ OPTION_TEXT = {
     "propose_breeding": "Propose to breed with this agent (costs resources; "
                         "compatibility is discovered only if it agrees).",
     "ignore": "Pass by without engaging.",
+    "accept_mate": "Accept: breed with this agent (spends pooled resources; "
+                   "two offspring, one raised as yours).",
+    "decline_mate": "Decline the proposal.",
     "take_portal": "Step through the portal to another world.",
 }
 
 
 def situation_text(req: engine.DecisionRequest) -> str:
+    if req.situation == "mating_proposal":
+        c = req.context
+        op = c.get("opinion")
+        opinion_line = (f" Your opinion of it: {op}." if op else
+                        " You have never met it before.")
+        return (f"An agent wearing colours {c.get('proposer_colours')} "
+                f"proposes to breed with you.{opinion_line} Whether it is a "
+                f"worthy mate is yours alone to judge.")
     if req.situation == "encounter":
         c = req.context
         op = c.get("opinion")
