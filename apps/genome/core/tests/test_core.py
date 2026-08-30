@@ -270,3 +270,33 @@ class TestPromptAndModels(unittest.TestCase):
         gone = M.reroll_if_withdrawn({"economy": "retired-model"},
                                      "agent-x", generation=2)
         self.assertIn(gone["economy"], M.POOLS["economy"])  # Rule 10.4
+
+
+class TestBudget(unittest.TestCase):
+    def test_accrual_and_cap(self):
+        from genome_core import budget as B
+        b = B.Bucket(0.0, 0.0)
+        b = B.accrue(b, 86400.0)                 # one day
+        self.assertAlmostEqual(b.level, 10.0)
+        b = B.accrue(b, 86400.0 * 10)
+        self.assertAlmostEqual(b.level, B.CAPACITY)   # cap 12, >= turn cap 6
+
+    def test_free_kinds_never_charged_never_refused(self):
+        from genome_core import budget as B
+        b = B.Bucket(0.0, 0.0)
+        for kind in ("arrival", "decide", "mining_done", "accept", "decline"):
+            b2, ok = B.charge(b, kind, 100.0)
+            self.assertTrue(ok)                  # Rule 5.2a/5.2b
+            self.assertAlmostEqual(b2.level, B.accrue(b, 100.0).level)
+
+    def test_discretionary_charges_and_refuses_gracefully(self):
+        from genome_core import budget as B
+        b = B.Bucket(2.0, 0.0)
+        b, ok = B.charge(b, "counter_offer", 0.0)
+        self.assertTrue(ok); self.assertAlmostEqual(b.level, 1.0)
+        b, ok = B.charge(b, "counter_offer", 0.0)
+        self.assertTrue(ok); self.assertAlmostEqual(b.level, 0.0)
+        b, ok = B.charge(b, "counter_offer", 0.0)
+        self.assertFalse(ok)                     # broke: cannot counter...
+        b2, ok2 = B.charge(b, "accept", 0.0)
+        self.assertTrue(ok2)                     # ...but can always accept

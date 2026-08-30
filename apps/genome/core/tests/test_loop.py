@@ -28,14 +28,16 @@ class Sim:
         self.seed = seed
         for i in range(n_agents):
             a = f"agent-{i}"
+            known = frozenset(list(self.pile_meta)[:3])   # sparse start
             self.agents[a] = {"x": 0.5, "y": 0.5, "cargo": {},
-                              "moving_until": 0.0}
+                              "moving_until": 0.0, "known": known}
             self.queue.append((0.0, "decide", a, {}))
 
     def _view(self, a: str) -> engine.AgentView:
         s = self.agents[a]
         return engine.AgentView(a, self.world["realm"], self.world["realm"],
-                                s["x"], s["y"], dict(s["cargo"]))
+                                s["x"], s["y"], dict(s["cargo"]),
+                                s["known"])
 
     def _pile_views(self, now: float) -> list:
         return [engine.PileView(u, m["kind"], m["x"], m["y"],
@@ -61,6 +63,8 @@ class Sim:
             self.writes.append((now, "stock", a))
             for kind, units in eff.deposit.items():
                 self.stock[kind] = self.stock.get(kind, 0.0) + units
+        if eff.reveal:
+            s["known"] = frozenset(s["known"] | set(eff.reveal))
         if eff.schedule:
             kind, due, subject, payload = eff.schedule
             self.queue.append((due, kind, subject, payload))
@@ -97,7 +101,7 @@ DAY = 86400.0
 class TestLoopCloses(unittest.TestCase):
     def setUp(self):
         self.sim = Sim(seed=42, n_agents=3)
-        self.sim.run(until=DAY)
+        self.sim.run(until=2 * DAY)
 
     def test_agents_acted_unattended(self):
         self.assertGreater(len(self.sim.decisions), 20)
@@ -137,7 +141,7 @@ class TestLoopCloses(unittest.TestCase):
 
     def test_deterministic_replay(self):
         again = Sim(seed=42, n_agents=3)
-        again.run(until=DAY)
+        again.run(until=2 * DAY)
         self.assertEqual(len(again.decisions), len(self.sim.decisions))
         self.assertEqual([d["choice"] for d in again.decisions],
                          [d["choice"] for d in self.sim.decisions])
@@ -145,7 +149,7 @@ class TestLoopCloses(unittest.TestCase):
 
     def test_different_seed_diverges(self):
         other = Sim(seed=7, n_agents=3)
-        other.run(until=DAY)
+        other.run(until=2 * DAY)
         self.assertNotEqual([d["choice"] for d in other.decisions[:30]],
                             [d["choice"] for d in self.sim.decisions[:30]])
 

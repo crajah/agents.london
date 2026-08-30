@@ -36,6 +36,8 @@ class AgentView:
     x: float
     y: float
     cargo: dict[str, float]          # kind -> units
+    known_piles: frozenset[str] = frozenset()   # fog of knowledge (§8: the map
+    # is private knowledge that took journeys to acquire)
 
     def cargo_total(self) -> float:
         return sum(self.cargo.values())
@@ -74,6 +76,7 @@ class Effects:
     schedule: tuple[str, float, str, dict] | None = None   # kind, due, subject, payload
     mine_pile: tuple[str, float] | None = None   # pile_uuid, want
     deposit: dict[str, float] | None = None      # kind -> units accepted
+    reveal: tuple[str, ...] = ()                 # pile uuids newly known
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -91,9 +94,18 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         return Effects(cargo_delta={str(payload["pile_kind"]): take},
                        schedule=("decide", now + 60.0, agent.agent_uuid,
                                  {"pile_uuid": payload["pile_uuid"]}))
+    if kind == "explored":
+        found = tuple(p.pile_uuid for p in piles
+                      if (p.x - agent.x) ** 2 + (p.y - agent.y) ** 2
+                      <= SIGHT_RADIUS ** 2)
+        return Effects(reveal=found,
+                       schedule=("decide", now + 60.0, agent.agent_uuid, {}))
     if kind == "decide":
         return _decide_here(agent, piles, payload, stock)
     raise ValueError(f"unknown event kind {kind!r}")
+
+
+SIGHT_RADIUS = 0.18       # PROVISIONAL: reveal radius on arrival (Sight scales later)
 
 
 def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
@@ -103,17 +115,18 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     by_id = {p.pile_uuid: p for p in piles}
     options: list[str] = []
     here = by_id.get(at_pile)
-    # Guard: an empty pile offers no mining — otherwise a want=0 mine completes
-    # instantly and the loop spins at a single timestamp.
     if here and here.qty > 0.05 and agent.cargo_total() < CARGO_CEILING:
         options.append("mine_here")
-    reachable = [p.pile_uuid for p in piles
-                 if p.pile_uuid != at_pile and p.qty > 0.05]
+    # Rule 5.2 of genome-spec: finding piles is work. Travel targets only piles
+    # this agent KNOWS; the rest of the map must be explored.
+    known = agent.known_piles or frozenset(by_id)   # empty = legacy: all known
+    reachable = [u for u in known
+                 if u != at_pile and u in by_id and by_id[u].qty > 0.05]
     if reachable:
         options.append("travel_to_pile")
-    # Guard: depositing needs room under the user ceiling (Rule 4.15) for at
-    # least one carried kind — a full store accepts nothing (Rule 4.19), and a
-    # zero-acceptance round trip is a same-timestamp spin.
+    unknown_exists = len(known) < len(by_id)
+    if unknown_exists:
+        options.append("explore_unknown")           # Curiosity's surface
     room = any(units > 0 and stock.get(kind, 0.0) < USER_CEILING_PER_KIND
                for kind, units in agent.cargo.items())
     if room and agent.realm == agent.home_realm:
@@ -124,7 +137,9 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         agent_uuid=agent.agent_uuid, situation="at_" + (at_pile or "large"),
         options=tuple(options),
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
-                 "reachable": reachable})
+                 "reachable": reachable,
+                 "unknown_count": len(by_id) - len(known & set(by_id))
+                 if agent.known_piles else 0})
 
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
@@ -167,6 +182,16 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         hx, hy = HOME_XY
         return _route_effects(agent, hx, hy, now, terrain,
                               "deposit_arrival", {})
+
+    if choice.option == "explore_unknown":
+        import random as _r
+        rng = _r.Random(f"explore:{agent.agent_uuid}:{now}")
+        for _try in range(12):     # reject points inside terrain, stay routable
+            tx, ty = rng.uniform(0.05, 0.95), rng.uniform(0.05, 0.95)
+            if pathmod.find_path(terrain, agent.x, agent.y, tx, ty) is not None:
+                return _route_effects(agent, tx, ty, now, terrain,
+                                      "explored", {"x": tx, "y": ty})
+        return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 
     if choice.option == "wait":
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
