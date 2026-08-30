@@ -1,4 +1,4 @@
-post-graph>=0.6.2
-post-graph-rag>=1.5.2
+post-graph>=1.0.1
+post-graph-rag>=1.8.0
 fastapi>=0.115
 uvicorn>=0.30
