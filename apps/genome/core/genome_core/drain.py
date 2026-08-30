@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import combat, engine, forms, identity, notify, opinion
+from . import combat, engine, forms, identity, notify, opinion, pathogen
 from . import genotype as G
 from . import worldgen
 from .models import assign_models
@@ -47,6 +47,17 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
             r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
                             pl["departed_at"])
             x, y = forms.route_position(r, now)
+    if payload.get("infections"):
+        settled, events = pathogen.settle(payload, now)
+        if events:
+            await store.put_agent(agent_uuid, settled)
+            payload = settled
+            if payload.get("owner_user_id"):
+                for e in events:
+                    await notify.emit(store._c, payload["owner_user_id"],
+                                      "agents", "recovery",
+                                      f"{payload.get('name', agent_uuid)} "
+                                      f"{e}; an antigen is retained.")
     view = engine.AgentView(
         agent_uuid, home_realm, world_realm, x, y, cargo,
         frozenset(payload.get("known_piles", [])),
@@ -321,6 +332,23 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     await store.set_movement(agent.agent_uuid,
                              {"waypoints": [dest_xy], "departed_at": now,
                               "arrives_at": now, "cargo": agent.cargo})
+    # pathogen genesis BEFORE the persist (an earlier draft rolled after the
+    # write, computing infections that were never saved): rolled independently
+    # at BOTH ends; the traveller is patient zero
+    for end, realm_name in (("origin", origin_realm), ("dest", to_world)):
+        r_meta = await _world_payload(store, realm_name)
+        existing = r_meta.get("strains", [])
+        strain = pathogen.roll_teleport_strain(
+            f"{agent.agent_uuid}:{counter}:{end}", existing)
+        if strain:
+            await store.put_world(realm_name,
+                {**r_meta, "strains": existing + [strain]})
+            agent_payload = pathogen.infect(agent_payload, strain, now)
+            if agent_payload.get("owner_user_id"):
+                await notify.emit(store._c, agent_payload["owner_user_id"],
+                                  "agents", "infection",
+                                  f"{agent_payload.get('name')} caught "
+                                  f"{strain['strain_uuid']} at the {end} portal.")
     await store.put_agent(agent.agent_uuid,
                           {**agent_payload, "transfer_counter": counter,
                            "last_transfer": assertion["doc"]})

@@ -49,7 +49,10 @@ async def work_one(store: GenomeStore, client, item) -> str:
     agent_payload = rows[0].payload if rows else {}
     g = agent_payload.get("genotype")
     if USE_LLM and g:
-        choice, model = llm_decider(req, g, seed=int(now),
+        from genome_core import pathogen
+        eff = pathogen.phenotype(agent_payload, now) \
+            if agent_payload.get("infections") else g
+        choice, model = llm_decider(req, eff, seed=int(now),
                                     objectives=agent_payload.get("objectives"))
     else:
         choice, model = engine.stub_decider(req, int(now)), "stub"

@@ -341,3 +341,65 @@ class TestHeredity(unittest.TestCase):
         # collective: one side can carry most of it
         self.assertIsNotNone(G.breeding_cost_met({"1": 2, "2": 2, "3": 2},
                                                  {"4": 2}))
+
+
+class TestPathogen(unittest.TestCase):
+    def _payload(self, vig=5000.0, spd=5000.0):
+        r = random.Random("pg2")
+        g = {k: r.uniform(*G.RANGES[k]) for k in G.RANGES}
+        g["Immune Vigilance"] = vig; g["Synthesis Speed"] = spd
+        return {"genotype": g, "identity": "idX"}
+
+    def test_infection_carries_its_future(self):
+        from genome_core import pathogen as P
+        s = P.new_strain("s1")
+        pl = P.infect(self._payload(), s, now=1000.0)
+        rec = pl["infections"][0]
+        self.assertGreater(rec["detected_at"], 1000.0)
+        self.assertGreater(rec["synth_done_at"], rec["detected_at"])
+
+    def test_vigilance_detects_sooner_speed_synthesises_faster(self):
+        from genome_core import pathogen as P
+        s = P.new_strain("s2")
+        quick = P.infect(self._payload(vig=9500, spd=9500), s, 0.0)["infections"][0]
+        slow = P.infect(self._payload(vig=500, spd=500), s, 0.0)["infections"][0]
+        self.assertLess(quick["detected_at"], slow["detected_at"])
+        self.assertLess(quick["synth_done_at"], slow["synth_done_at"])
+
+    def test_phenotype_modifies_and_restores(self):
+        from genome_core import pathogen as P
+        s = P.new_strain("s3")
+        pl = self._payload()
+        base = dict(pl["genotype"])
+        infected = P.infect(pl, s, 0.0)
+        ph = P.phenotype(infected, 10.0)
+        self.assertNotEqual(ph, base)                       # expression moved
+        self.assertEqual(infected["genotype"], base)        # genotype untouched
+        settled, events = P.settle(infected, now=infected["infections"][0]
+                                   ["synth_done_at"] + 1)
+        self.assertEqual(settled["infections"], [])
+        self.assertEqual(P.phenotype(settled, 10.0), base)  # Rule 2.16: exact
+        self.assertEqual(len(settled["antigens"]), 1)       # earned in illness
+        self.assertTrue(events)
+
+    def test_coverage_resists_descendants_gracefully(self):
+        from genome_core import pathogen as P
+        parent = P.new_strain("s4")
+        child = P.new_strain("s5", parent=parent)
+        pl = self._payload()
+        settled, _ = P.settle(P.infect(pl, parent, 0.0),
+                              now=10 ** 9)
+        cov_child = P.coverage(settled["antigens"], child["signature"], 10 ** 9)
+        stranger = P.new_strain("s6")
+        cov_stranger = P.coverage(settled["antigens"],
+                                  stranger["signature"], 10 ** 9)
+        self.assertGreater(cov_child, cov_stranger)         # descent helps
+
+    def test_antigens_decay(self):
+        from genome_core import pathogen as P
+        s = P.new_strain("s7")
+        settled, _ = P.settle(P.infect(self._payload(), s, 0.0), now=10 ** 6)
+        soon = P.coverage(settled["antigens"], s["signature"], 10 ** 6 + 60)
+        later = P.coverage(settled["antigens"], s["signature"],
+                           10 ** 6 + 90 * 86400)
+        self.assertGreater(soon, later)                     # Rule 2.18d

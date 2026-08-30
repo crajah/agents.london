@@ -119,7 +119,10 @@ def make_decider(use_llm: bool):
     def decide(req, agent_payload, seed):
         g = agent_payload.get("genotype")
         if use_llm and g:
-            return llm_decider(req, g, seed=seed,
+            from . import pathogen
+            eff = pathogen.phenotype(agent_payload, __import__("time").time()) \
+                if agent_payload.get("infections") else g
+            return llm_decider(req, eff, seed=seed,
                                objectives=agent_payload.get("objectives"))
         return engine.stub_decider(req, seed)
     return decide
