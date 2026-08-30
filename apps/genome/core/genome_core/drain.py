@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import engine, forms, identity
+from . import combat, engine, forms, identity, opinion
 from .store import GenomeStore
 
 
@@ -119,6 +119,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     portals = world_payload.get("portals", [])
     stock = await get_stock(store, world_realm)
 
+    if pl["kind"] == "encounter_answer":
+        return await resolve_encounter(store, world_realm, agent,
+                                       agent_payload, pl, now)
+
     if pl["kind"] == "deposit_arrival":
         eff = engine.on_deposit_arrival(agent, stock, now)
         outcome = "deposit"
@@ -204,3 +208,107 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
                           {**agent_payload, "transfer_counter": counter,
                            "last_transfer": assertion["doc"]})
     return True
+
+
+# ---------------- encounters (Phase 6 core) ----------------
+
+async def resolve_encounter(store: GenomeStore, world_realm: str,
+                            agent: engine.AgentView, agent_payload: dict,
+                            pl: dict, now: float) -> str:
+    """Both parties answered independently; the pair resolves once, keyed by
+    the sorted uuids. Trade needs BOTH; one attack suffices (Rule 9.3);
+    outcomes become opinion evidence via the surprise update (Rule 6.10a)."""
+    me = agent.agent_uuid
+    other_uuid = pl["payload"]["other"]["agent_uuid"]
+    my_answer = pl["payload"]["answer"]
+    pair = "|".join(sorted((me, other_uuid)))
+    # store my answer on a pair vertex; second writer resolves
+    pair_key = f"enc-{pair}-{pl['payload'].get('round', 0)}"
+    rows = await store._c.find_vertices("events", realm=world_realm,
+                                        filters={"key": pair_key}, limit=1)
+    if not rows:
+        await store._c.add_vertex("events", realm=world_realm,
+                                  payload={"key": pair_key, "kind": "enc_state",
+                                           "answers": {me: my_answer},
+                                           "due_at": _iso(now), "done_at": _iso(now)})
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        return f"encounter_wait({my_answer})"
+    state = rows[0].payload
+    answers = {**state.get("answers", {}), me: my_answer}
+    await store._c.upsert_vertex("events", realm=world_realm,
+                                 vertex_id=int(rows[0].id),
+                                 payload={**state, "answers": answers})
+    if len(answers) < 2:
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        return f"encounter_wait({my_answer})"
+
+    a_ans, b_ans = answers.get(me), answers.get(other_uuid)
+    _, other_payload = await load_agent(store, world_realm, other_uuid,
+                                        world_realm, now)
+    other_view, _ = await load_agent(store, world_realm, other_uuid,
+                                     world_realm, now)
+    outcome = "pass"
+    if "attack" in (a_ans, b_ans):
+        att_uuid = me if a_ans == "attack" else other_uuid
+        att_v, att_p = (agent, agent_payload) if att_uuid == me \
+            else (other_view, other_payload)
+        dfd_v, dfd_p = (other_view, other_payload) if att_uuid == me \
+            else (agent, agent_payload)
+        f_att = combat.Fighter(att_v.agent_uuid, att_p["genotype"],
+                               att_p.get("stamina", 1.0),
+                               att_p.get("stamina_max", 1.0), att_v.cargo)
+        f_dfd = combat.Fighter(dfd_v.agent_uuid, dfd_p["genotype"],
+                               dfd_p.get("stamina", 1.0),
+                               dfd_p.get("stamina_max", 1.0), dfd_v.cargo)
+        res = combat.resolve(f_att, f_dfd, seed=pair_key)
+        # spoils move winner-ward; movement records carry cargo
+        win_v = att_v if res["winner"] == att_v.agent_uuid else dfd_v
+        lose_v = dfd_v if win_v is att_v else att_v
+        if res["spoils"]:
+            wc = dict(win_v.cargo); lc = dict(lose_v.cargo)
+            for k, u in res["spoils"].items():
+                wc[k] = wc.get(k, 0.0) + u
+                lc[k] = lc.get(k, 0.0) - u
+                if lc[k] <= 1e-9: del lc[k]
+            for v, cargo in ((win_v, wc), (lose_v, lc)):
+                await store.set_movement(v.agent_uuid,
+                    {"waypoints": [[v.x, v.y]], "departed_at": now,
+                     "arrives_at": now, "cargo": cargo})
+        # the defender LEARNED something (Rule 6.10a): the attacker's
+        # Aggression, updated by surprise against its prior estimate
+        victim_p = dfd_p if att_uuid != dfd_v.agent_uuid else att_p
+        est = (dfd_p.get("opinions", {}).get(att_uuid, {})
+               .get("Aggression", {"estimate": 5000.0, "weight": 0.0}))
+        op = opinion.Opinion(est["estimate"], est["weight"])
+        op2 = opinion.update_event(op, acted_high=True, theta=5000.0, k=0.15)
+        ops = dict(dfd_p.get("opinions", {}))
+        ops.setdefault(att_uuid, {})["Aggression"] = \
+            {"estimate": op2.estimate, "weight": op2.weight}
+        await store.put_agent(dfd_v.agent_uuid, {**dfd_p, "opinions": ops})
+        await store.record_decision(att_uuid, {"at": _iso(now),
+            "situation": "combat", "options": [], "choice": "resolved",
+            "model": "arithmetic", "tier": "computed", "result": res})
+        outcome = f"combat:{res['winner']}_wins"
+    elif a_ans == "offer_trade" and b_ans == "offer_trade":
+        # simplest exchange: one unit of each side's most-held kind, both ways,
+        # ceilings respected (proper negotiation arrives with A2A turns)
+        mine = max(agent.cargo, key=agent.cargo.get, default=None)
+        theirs = max(other_view.cargo, key=other_view.cargo.get, default=None)
+        if mine and theirs and mine != theirs:
+            ac, oc = dict(agent.cargo), dict(other_view.cargo)
+            ac[mine] -= 1.0; oc[mine] = oc.get(mine, 0.0) + 1.0
+            oc[theirs] -= 1.0; ac[theirs] = ac.get(theirs, 0.0) + 1.0
+            for v, cargo in ((agent, ac), (other_view, oc)):
+                cargo = {k: u for k, u in cargo.items() if u > 1e-9}
+                await store.set_movement(v.agent_uuid,
+                    {"waypoints": [[v.x, v.y]], "departed_at": now,
+                     "arrives_at": now, "cargo": cargo})
+            outcome = "trade:1for1"
+        else:
+            outcome = "trade:nothing_to_exchange"
+    # both resume their lives
+    for u in (me, other_uuid):
+        await store.schedule(world_realm, f"post-enc-{u}-{int(now)}",
+                             _iso(now + 60.0), "decide", u, {})
+    await store.complete_event(world_realm, pl["key"], _iso(now))
+    return outcome

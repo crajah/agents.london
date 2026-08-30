@@ -60,8 +60,55 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
     return healed
 
 
+CONTACT_RADIUS = 0.02          # Rule 5.5: contact is what makes an encounter
+_recent_pairs: dict[str, float] = {}
+
+
+async def sweep(store: GenomeStore, realm: str, now: float) -> int:
+    """Proximity sweep (execution-spec Rule 3.3): interpolate every present
+    agent, schedule an encounter for pairs in contact. A pair cools down so a
+    lingering pair does not re-collide every tick."""
+    from genome_core import drain as _d, forms as _f
+    positions = {}
+    metas = {}
+    for v in await store.agents_in(realm):
+        a = v.payload["key"]
+        latest = await store.latest_movement(a)
+        if latest is None or "waypoints" not in latest.payload:
+            continue
+        pl = latest.payload
+        r = _f.Route(tuple(tuple(q) for q in pl["waypoints"]), pl["departed_at"])
+        positions[a] = _f.route_position(r, now)
+        rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": a}, limit=1)
+        metas[a] = rows[0].payload if rows else {}
+    agents = sorted(positions)
+    hits = 0
+    for i, a in enumerate(agents):
+        for b in agents[i + 1:]:
+            ax, ay = positions[a]; bx, by = positions[b]
+            if (ax - bx) ** 2 + (ay - by) ** 2 > CONTACT_RADIUS ** 2:
+                continue
+            pair = f"{realm}|{a}|{b}"
+            if now - _recent_pairs.get(pair, 0) < 1800:
+                continue
+            _recent_pairs[pair] = now
+            for me, other in ((a, b), (b, a)):
+                om = metas[other]
+                await store.schedule(
+                    realm, f"meet-{me}-{int(now)}", _d._iso(now), "encounter",
+                    me, {"other": {"agent_uuid": other,
+                                   "colour_pair": om.get("colour_pair"),
+                                   "infected": bool(om.get("infected"))},
+                         "opinion": (metas[me].get("opinions", {})
+                                     .get(other))})
+            hits += 1
+    return hits
+
+
 async def tick_once(store: GenomeStore, realm: str, decider) -> int:
     now = time.time()
+    await sweep(store, realm, now)
     await heal(store, realm, now)
     done = 0
     for ev in await store.due_events(realm, drain._iso(now)):
