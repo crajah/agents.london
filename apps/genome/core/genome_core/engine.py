@@ -105,7 +105,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         # agent's own OPINION of that uuid (if any) rides in the payload.
         return DecisionRequest(
             agent_uuid=agent.agent_uuid, situation="encounter",
-            options=("offer_trade", "attack", "ignore"),
+            options=("offer_trade", "propose_breeding", "attack", "ignore"),
             context={"cargo_total": agent.cargo_total(),
                      "other_uuid": other["agent_uuid"],
                      "other_colours": other.get("colour_pair"),
