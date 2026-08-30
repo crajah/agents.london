@@ -1,13 +1,14 @@
-"""genome tick worker — drains due events for the realms it leases.
+"""genome tick worker — the live loop.
 
-system-spec.md §4, §8: a worker owns many worlds (never a process per world),
-ownership is a revocable lease, and the world queue never blocks on inference —
-events needing a decision are handed to the decision queue and the drain moves
-on. Redis schedules; post-graph is the source of truth, so a flushed queue is
-rebuilt with one query (Rule 8.3).
+system-spec §4/§8: drains due events for its realms; never calls a model from
+the world queue path (the decider runs inline here for now, moving onto the
+decision queue when multi-worker arrives — Rule 8.4's separation is about a
+busy world stalling its own queue, tolerable at demo scale, noted).
 
-Phase 0 skeleton: lifecycle, lease loop shape, clean shutdown. Redis leasing
-and the drain arrive in Phase 1.
+Self-healing (system-spec Rule 8.3 in spirit): an agent that is present, has
+arrived, and has no pending event gets a decide scheduled — so a seeded or
+recovered world always resumes, and a flushed queue rebuilds from post-graph
+by construction.
 """
 from __future__ import annotations
 
@@ -15,48 +16,91 @@ import asyncio
 import logging
 import os
 import signal
+import sys
+import time
+import uuid as uuidlib
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from post_graph import AsyncPostGraph
-
-import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "core"))
+from genome_core import drain
+from genome_core.decider import make_decider
 from genome_core.store import GenomeStore
 
 logger = logging.getLogger("genome.tick")
 
-DB_URI = os.getenv("POSTGRES_URI", "")
+REALMS = [r for r in os.getenv("GENOME_REALMS", "").split(",") if r]
 TICK_SECONDS = float(os.getenv("GENOME_TICK_SECONDS", "5"))
+USE_LLM = os.getenv("GENOME_USE_LLM", "1") == "1"
 
 
-async def drain_realm(store: GenomeStore, world_realm: str, now_iso: str) -> int:
-    """Drain one leased world's due events. Grows in Phase 1; the contract is
-    fixed now: never call a model from here (system-spec Rule 8.4)."""
-    events = await store.due_events(world_realm, now_iso)
-    for _ev in events:
-        pass  # Phase 1: arrival -> decision request -> intent -> next event
-    return len(events)
+def dsn() -> str:
+    return os.getenv("POSTGRES_URI") or (
+        f"postgresql://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
+        f"@{os.getenv('POSTGRES_HOST', 'postgres-service')}:"
+        f"{os.getenv('POSTGRES_PORT', '5432')}/{os.environ['POSTGRES_DB']}")
+
+
+async def heal(store: GenomeStore, realm: str, now: float) -> int:
+    """Schedule a decide for any present agent with nothing pending."""
+    pending_subjects = {v.payload.get("subject")
+                        for v in await store._c.get_vertices("events", realm=realm)
+                        if v.payload.get("done_at") is None}
+    healed = 0
+    for v in await store.agents_in(realm):
+        a = v.payload["key"]
+        if a in pending_subjects:
+            continue
+        latest = await store.latest_movement(a)
+        if latest and latest.payload.get("arrives_at", 0) > now:
+            continue                      # still travelling; arrival comes
+        await store.schedule(realm, f"heal-{uuidlib.uuid4().hex[:8]}",
+                             drain._iso(now), "decide", a, {})
+        healed += 1
+    return healed
+
+
+async def tick_once(store: GenomeStore, realm: str, decider) -> int:
+    now = time.time()
+    await heal(store, realm, now)
+    done = 0
+    for ev in await store.due_events(realm, drain._iso(now)):
+        outcome = await drain.drain_one(store, realm, realm, ev, decider,
+                                        seed=int(now))
+        logger.info("%s %s -> %s", realm, ev.payload.get("subject"), outcome)
+        done += 1
+    return done
 
 
 async def main() -> None:
-    # SCHEMA_PER_REALM deliberately not passed (see genome_core/store.py).
-    client = AsyncPostGraph(dsn=DB_URI)
+    if not REALMS:
+        raise SystemExit("set GENOME_REALMS")
+    client = AsyncPostGraph(dsn=dsn())   # SCHEMA_PER_REALM deliberately unset
     await client.connect()
     store = GenomeStore(client)
+    decider = make_decider(USE_LLM)
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
-    logger.info("tick worker up; leasing arrives in Phase 1")
+    logger.info("tick worker up: realms=%s llm=%s", REALMS, USE_LLM)
     try:
         while not stop.is_set():
-            # Phase 1: acquire/renew leases, drain each leased realm.
+            for realm in REALMS:
+                try:
+                    n = await tick_once(store, realm, decider)
+                    if n:
+                        logger.info("%s: drained %d", realm, n)
+                except Exception:
+                    logger.exception("tick failed for %s", realm)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
             except TimeoutError:
-                pass  # tick elapsed; loop
+                pass
     finally:
         await client.close()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(name)s %(message)s")
     asyncio.run(main())
