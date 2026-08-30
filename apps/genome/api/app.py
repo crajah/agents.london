@@ -20,6 +20,7 @@ from post_graph import AsyncPostGraph
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "core"))
 from genome_core import store  # ensure_agents_realm only; NOT GenomeStore
+import snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +60,15 @@ app = FastAPI(title="genome api", lifespan=lifespan)
 @app.get("/health", tags=["System"])
 async def health():
     return {"status": "ok", "service": "genome-api"}
+
+
+@app.get("/worlds/{realm}/snapshot", tags=["World"])
+async def get_snapshot(realm: str):
+    """Any world, read-only (genome-spec Rule 13.2). Observation confers
+    nothing on agents (Rule 13.3) — this path serves humans only."""
+    return await snapshot.world_snapshot(app.state.pg, realm)
+
+
+@app.get("/worlds/{realm}/events", tags=["World"])
+async def get_events(realm: str, since: str = ""):
+    return await snapshot.world_events(app.state.pg, realm, since)
