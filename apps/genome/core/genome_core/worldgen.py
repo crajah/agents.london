@@ -1,0 +1,86 @@
+"""World generation — calibration-spec.md Rules 3.0c-3.0e, genome-spec.md §2/§4.
+
+Deterministic per seed, so the determinism harness (BUILD testing strategy) can
+replay a world exactly.
+"""
+from __future__ import annotations
+
+import random
+import uuid as uuidlib
+
+from .genotype import RANGES
+
+# Material A100 palette, genome-spec Rule 4.9 (20 kinds -> 20 hues; the pair a
+# world holds is its identity). Indexed by kind 0..19.
+A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF", "#82B1FF",
+        "#80D8FF", "#84FFFF", "#A7FFEB", "#B9F6CA", "#CCFF90", "#F4FF81",
+        "#FFFF8D", "#FFE57F", "#FFD180", "#FF9E80", "#D7CCC8", "#CFD8DC",
+        "#F5F5F5", "#B2FFFF"]  # 20th: Light Cyan (user decision)
+
+MIN_SPACING = 0.08
+FIRST_NAMES = ["Asha", "Bren", "Cato", "Dara", "Eryn", "Falk", "Gale", "Hesper",
+               "Iris", "Joss", "Kiva", "Lorn", "Mira", "Noor", "Orin", "Pia",
+               "Quill", "Rune", "Sable", "Tarn"]
+SURNAMES = ["Ashfall", "Brightwater", "Coldmere", "Dunhollow", "Emberlee",
+            "Fenwick", "Greyvale", "Hollowell", "Ironwood", "Kestrel",
+            "Larkspur", "Mosswood", "Nightvale", "Oakhurst", "Pryor",
+            "Quickstep", "Ravenshaw", "Stonebrook", "Thornbury", "Wrenfield"]
+
+
+def _spaced_points(r: random.Random, n: int) -> list[tuple[float, float]]:
+    pts: list[tuple[float, float]] = []
+    for _ in range(n * 50):
+        if len(pts) == n:
+            break
+        x, y = r.uniform(0.05, 0.95), r.uniform(0.05, 0.95)
+        if all((x - px) ** 2 + (y - py) ** 2 >= MIN_SPACING ** 2
+               for px, py in pts):
+            pts.append((x, y))
+    while len(pts) < n:                       # degenerate seeds still terminate
+        pts.append((r.uniform(0.05, 0.95), r.uniform(0.05, 0.95)))
+    return pts
+
+
+def generate_world(seed: int, owner_user_id: str) -> dict:
+    """kinds: uniformly random pair of the 190 (Rule 3.0c). Piles: 6-10 per
+    kind, min-spaced, capacities 15-50 summing near the 250 ceiling (3.0d).
+    Founding centre drawn and RECORDED (genotype-spec Rule 3.2b)."""
+    r = random.Random(f"world:{seed}")
+    kinds = r.sample(range(20), 2)
+    piles = []
+    for kind in kinds:
+        n = r.randint(6, 10)
+        caps = [r.uniform(15, 50) for _ in range(n)]
+        scale = min(1.0, 250.0 / sum(caps))   # near, never over, the ceiling
+        for (x, y), cap in zip(_spaced_points(r, n), caps):
+            piles.append({
+                "pile_uuid": str(uuidlib.UUID(int=r.getrandbits(128))),
+                "kind": kind, "x": x, "y": y, "cap": cap * scale,
+                "qty_at": cap * scale * r.uniform(0.4, 1.0),
+                "rate": r.uniform(0.5, 2.0) / 3600.0,   # units/sec (Rule 4.6)
+            })
+    centre = {k: r.uniform(*RANGES[k]) for k in RANGES}
+    return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
+            "owner_user_id": owner_user_id, "kinds": kinds,
+            "colours": [A100[kinds[0]], A100[kinds[1]]],
+            "founding_centre": centre, "piles": piles}
+
+
+def founder_genotype(world: dict, seed: int) -> dict:
+    """Uniform within the world about its recorded centre (Rule 3.2a): each
+    locus drawn within ±25% of range around the centre, clamped."""
+    r = random.Random(f"founder:{world['realm']}:{seed}")
+    g = {}
+    for k, (lo, hi) in RANGES.items():
+        c = world["founding_centre"][k]
+        w = (hi - lo) * 0.25
+        g[k] = min(hi, max(lo, r.uniform(c - w, c + w)))
+    return g
+
+
+def founder_name(seed: int) -> str:
+    """Three words; founders draw two fresh surnames and root lineages
+    (calibration Rule 3.0e)."""
+    r = random.Random(f"name:{seed}")
+    return " ".join([r.choice(FIRST_NAMES), r.choice(SURNAMES),
+                     r.choice(SURNAMES)])
