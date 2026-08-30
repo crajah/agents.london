@@ -269,3 +269,12 @@ from the other.
 **Rule 9.5** — Import is **re-runnable**. A user may import again as their
 contacts or the user base grow, and previously declined proposals are not
 re-raised automatically.
+
+## 10. Outbox
+
+**Rule 10.1** — Email leaves through an **outbox record**, never inline: the
+invite (or any mail) is written durably, and a sender process delivers it.
+Undeliverable mail is visible, retryable and never lost with a request.
+
+**Rule 10.2** — Until SMTP is configured, the outbox accumulates and delivery
+is a no-op logged plainly — the flow is testable end-to-end minus the last hop.

@@ -220,6 +220,13 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Proposal → **mutual confirmation** creates the link (9.4, `genome-spec.md` Rule 6.2c)
 - [ ] Re-runnable import; declined proposals not re-raised (9.5)
 
+### 5.3a Email identity, invites, notifications (user directive 2026-08-30)
+- [ ] Platform id = **hash of normalised email** from every route (`genome-spec.md` Rule 6.2i); OAuth extracts the email claim; direct entry accepted unverified (magic-link verification a hardening task)
+- [ ] **Invite by email** (Rule 6.2j): creates invitee world eagerly, writes outbox login link, links the two worlds' portals both ways, notifies both sides
+- [ ] **Notifications**: per-user feed with source × level config (`interface-spec.md` §7); always-important set per Rule 7.3; emit from genesis, invites, links, births, deaths, combat, transfers
+- [ ] **Outbox** (`system-spec.md` §10): durable rows, no-op sender until SMTP configured
+- [ ] Web: email-entry login, notification bell, per-source level settings
+
 ### 5.4 Onboarding — J1
 - [ ] First run: OIDC sign-in → world generated → **first agent free** (`genome-spec.md` Rule 7.1)
 - [ ] World gets two kinds, two colours, piles, and its opening 30 portal slots (Rules 4.1, 4.9, 6.2a)

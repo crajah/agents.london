@@ -517,6 +517,31 @@ in one world or another and never between them.
 **Rule 6.2** — Teleport points are derived from **verified connections between
 users**. Two worlds are linkable when their owners are connected.
 
+**Rule 6.2i** — A user's **platform identity is the hash of their email
+address** (normalised: trimmed, lowercased), however they arrive — Google,
+Microsoft, or direct entry. One person, one id, every route.
+
+**Rule 6.2j** — A user may **invite another by email**. The invitation creates
+the invitee's world at once if none exists, sends a login link, and
+establishes the **teleport link between the two worlds** — with a notification
+to both sides.
+
+> Rule 6.2j is a third connection route beside contact-import (mutual
+> confirmation) and in-genome confirmation, and it is deliberately
+> sender-initiated: typing someone's address IS the gesture of connection, and
+> the world's creation is the invitation made concrete — you arrive to a place
+> that already knows you.
+>
+> *Recorded for the owner's judgement rather than silently accepted:* links are
+> permanent (Rule 6.3a), so an unwanted invitation leaves a permanent portal.
+> The notification gives the invitee sight of it; if abuse appears in practice,
+> the remedies are invite rate-limits or an accept step, and choosing between
+> them is a product decision to take on evidence.
+>
+> Direct email entry is **unverified identity** until a verification loop
+> (magic-link) ships — recorded as a hardening task, acceptable while the
+> platform is closed.
+
 **Rule 6.2c** — A connection counts when it is **verifiable**, by either route:
 an imported real-world graph, or **mutual confirmation between two users of
 genome itself**. Contact import seeds discovery and never creates a link on its
