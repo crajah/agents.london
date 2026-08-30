@@ -99,6 +99,21 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         return Effects(cargo_delta={str(payload["pile_kind"]): take},
                        schedule=("decide", now + 60.0, agent.agent_uuid,
                                  {"pile_uuid": payload["pile_uuid"]}))
+    if kind == "encounter":
+        other = payload["other"]
+        # Rule 6.6/3.4: the other agent's COLOUR is visible, nothing else; the
+        # agent's own OPINION of that uuid (if any) rides in the payload.
+        return DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="encounter",
+            options=("offer_trade", "attack", "ignore"),
+            context={"cargo_total": agent.cargo_total(),
+                     "other_uuid": other["agent_uuid"],
+                     "other_colours": other.get("colour_pair"),
+                     "other_infected": other.get("infected", False),
+                     "opinion": payload.get("opinion"),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
+
     if kind == "explored":
         found = tuple(p.pile_uuid for p in piles
                       if (p.x - agent.x) ** 2 + (p.y - agent.y) ** 2
@@ -190,6 +205,7 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
                  "portal_to": near_portal.get("to_world") if near_portal else None,
                  "portal_xy": [near_portal["x"], near_portal["y"]] if near_portal else None,
+                 "portal_colours": near_portal.get("dest_colours") if near_portal else None,
                  "reachable": reachable,
                  "frontier_count": len(frontier_cells(agent.explored))
                  if agent.explored else 0,
@@ -257,6 +273,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                       choice.target,
                       "portal_xy": payload.get("portal_xy")},
             schedule=("decide", now + 60.0, agent.agent_uuid, {}))
+
+    if choice.option in ("offer_trade", "attack", "ignore"):
+        # resolution is pairwise and happens in the drain once BOTH have
+        # answered; the engine only records intent
+        return Effects(schedule=("encounter_answer", now, agent.agent_uuid,
+                                 {"answer": choice.option,
+                                  "other": payload.get("other", {})}))
 
     if choice.option == "wait":
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
