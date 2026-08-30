@@ -274,7 +274,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                       "portal_xy": payload.get("portal_xy")},
             schedule=("decide", now + 60.0, agent.agent_uuid, {}))
 
-    if choice.option in ("offer_trade", "attack", "ignore"):
+    if choice.option in ("offer_trade", "propose_breeding", "attack", "ignore"):
         # resolution is pairwise and happens in the drain once BOTH have
         # answered; the engine only records intent
         return Effects(schedule=("encounter_answer", now, agent.agent_uuid,
