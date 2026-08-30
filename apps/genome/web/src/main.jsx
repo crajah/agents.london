@@ -9,6 +9,14 @@ function App() {
   const ref = useRef(null);
   const [realm, setRealm] = useState(
     new URLSearchParams(location.search).get("world") ?? "");
+  const [me, setMe] = useState(null);
+  useEffect(() => {
+    fetch(`${API}/me`, { credentials: "include" })
+      .then(r => r.json()).then(d => {
+        setMe(d);
+        if (!realm && d.world_realm) setRealm(d.world_realm);
+      }).catch(() => setMe({ authenticated: false }));
+  }, []);
   const [status, setStatus] = useState("no world selected");
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
 
@@ -50,6 +58,15 @@ function App() {
                placeholder="world realm…" defaultValue={realm}
                onKeyDown={e => e.key === "Enter" && setRealm(e.target.value)} />
         <span className="text-sm opacity-70">{status}</span>
+        <span className="flex-1" />
+        {me && !me.authenticated && <>
+          <a className="text-sm underline opacity-80"
+             href={`${API}/auth/google/login`}>Sign in with Google</a>
+          <a className="text-sm underline opacity-80"
+             href={`${API}/auth/microsoft/login`}>Microsoft</a>
+        </>}
+        {me?.authenticated &&
+          <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
       <div className="flex-1 flex min-h-0">
         <div ref={ref} className="flex-1" />

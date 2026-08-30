@@ -15,6 +15,7 @@ from . import combat, engine, forms, identity, opinion
 from . import genotype as G
 from . import worldgen
 from .models import assign_models
+from .genotype import BUDGETED, expressed, lifespan_days
 from .store import GenomeStore
 
 
@@ -179,6 +180,11 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     terrain = world_payload.get("terrain", [])
     portals = world_payload.get("portals", [])
     stock = await get_stock(store, world_realm)
+
+    if pl["kind"] == "perish":
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        return await regenerate(store, world_realm, agent, agent_payload, now,
+                                cause=pl["payload"].get("cause", "longevity"))
 
     if pl["kind"] == "mating_answer":
         ans = pl["payload"]["answer"]
@@ -366,6 +372,17 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         ops.setdefault(att_uuid, {})["Aggression"] = \
             {"estimate": op2.estimate, "weight": op2.weight}
         await store.put_agent(dfd_v.agent_uuid, {**dfd_p, "opinions": ops})
+        # stamina bookkeeping (Rules 9.3b/3.8c); zero MAXIMUM perishes (3.8d)
+        win_p = att_p if res["winner"] == att_v.agent_uuid else dfd_p
+        new_max = win_p.get("stamina_max", 1.0) - res["winner_max_burn"]
+        await store.put_agent(res["winner"],
+                              {**win_p, "stamina_max": max(0.0, new_max),
+                               "victories": win_p.get("victories", 0) + 1})
+        if new_max <= 0.0:
+            home = win_p.get("home_realm", world_realm)
+            await store.schedule(home, f"burnout-{res['winner']}-{int(now)}",
+                                 _iso(now), "perish", res["winner"],
+                                 {"cause": "attrition"})
         await store.record_decision(att_uuid, {"at": _iso(now),
             "situation": "combat", "options": [], "choice": "resolved",
             "model": "arithmetic", "tier": "computed", "result": res})
@@ -477,6 +494,9 @@ async def consummate(store: GenomeStore, world_realm: str,
              "departed_at": now, "arrives_at": now, "cargo": {}})
         await store.schedule(home, f"born-{child_uuid}", _iso(now + 60.0),
                              "decide", child_uuid, {})
+        rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": child_uuid}, limit=1)
+        await schedule_perish(store, child_uuid, rows[0].payload, now)
         born.append((child_uuid, name, home))
         await store.record_decision(child_uuid, {
             "at": _iso(now), "situation": "birth", "options": [],
@@ -484,3 +504,59 @@ async def consummate(store: GenomeStore, world_realm: str,
             "parents": [a_view.agent_uuid, b_view.agent_uuid],
             "identity": ident})
     return "breeding:" + ";".join(f"{n} -> {h}" for _, n, h in born)
+
+
+def lifespan_seconds(genotype: dict) -> float:
+    """Longevity's expressed value maps to 20-90 real days (calibration 3.0)."""
+    b = len(BUDGETED) / 2.0
+    return lifespan_days(expressed(genotype)["Longevity"], b) * 86400.0
+
+
+async def schedule_perish(store: GenomeStore, agent_uuid: str,
+                          agent_payload: dict, now: float) -> float:
+    """Rule 7.2's clock starts at (re)birth. Perish is scheduled in the HOME
+    realm -- death finds an agent wherever it stands, but the home world keeps
+    the appointment."""
+    due = now + lifespan_seconds(agent_payload["genotype"])
+    home = agent_payload.get("home_realm")
+    await store.schedule(home, f"perish-{agent_uuid}-{int(due)}", _iso(due),
+                         "perish", agent_uuid, {"cause": "longevity"})
+    await store.put_agent(agent_uuid, {**agent_payload, "perishes_at": due})
+    return due
+
+
+async def regenerate(store: GenomeStore, event_realm: str,
+                     agent: engine.AgentView, agent_payload: dict,
+                     now: float, cause: str) -> str:
+    """Rules 7.2/7.3/6.15: death is never terminal and never gentle. The
+    genotype, identity, certificate, name and model assignment survive
+    (6.15/10.3); everything EARNED is lost -- cargo, the map, opinions,
+    victories and their Attrition scars, age itself. The agent wakes at home,
+    newborn in an old skin."""
+    a = agent.agent_uuid
+    home = agent_payload.get("home_realm", event_realm)
+    # vanish from wherever it stood; wake at home (7.2)
+    for realm in {event_realm, agent_payload.get("realm", event_realm), home}:
+        try:
+            await store.set_presence(realm, a, realm == home)
+        except Exception:
+            pass
+    await store.set_presence(home, a, True)
+    reborn = {**agent_payload,
+              "known_piles": [], "explored": [], "opinions": {},
+              "victories": 0, "stamina": 1.0, "stamina_max": 1.0,
+              "born_at": now, "infections": [], "antigens": []}
+    reborn.pop("perishes_at", None)
+    await store.put_agent(a, reborn)
+    await store.set_movement(a, {"waypoints": [[engine.HOME_XY[0],
+                                                engine.HOME_XY[1]]],
+                                 "departed_at": now, "arrives_at": now,
+                                 "cargo": {}})
+    await store.record_decision(a, {
+        "at": _iso(now), "situation": "death", "options": [],
+        "choice": f"regenerated({cause})", "model": "arithmetic",
+        "tier": "computed"})
+    due = await schedule_perish(store, a, reborn, now)
+    await store.schedule(home, f"rebirth-{a}-{int(now)}", _iso(now + 60.0),
+                         "decide", a, {})
+    return f"regenerated:{cause}"

@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from post_graph import AsyncPostGraph
 from genome_core import drain
+from genome_core import drain as _d
 from genome_core.decider import make_decider
 from genome_core.store import GenomeStore
 
@@ -51,6 +52,11 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
     healed = 0
     for v in await store.agents_in(realm):
         a = v.payload["key"]
+        rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": a}, limit=1)
+        apl = rows[0].payload if rows else {}
+        if apl.get("genotype") and "perishes_at" not in apl:
+            await _d.schedule_perish(store, a, apl, now)   # the reaper learns
         if a in pending_subjects:
             continue
         latest = await store.latest_movement(a)
@@ -134,7 +140,18 @@ async def main() -> None:
     logger.info("tick worker up: realms=%s llm=%s", REALMS, USE_LLM)
     try:
         while not stop.is_set():
-            for realm in REALMS:
+            # user worlds are born at login (genesis) -- discover them each
+            # cycle so a new user's world starts ticking without a deploy
+            realms = list(REALMS)
+            try:
+                for v in await client.get_vertices("agents",
+                                                   realm="genome_agents"):
+                    wr = v.payload.get("world_realm")
+                    if wr and v.payload.get("key", "").startswith("user:")                             and wr not in realms:
+                        realms.append(wr)
+            except Exception:
+                logger.exception("realm discovery failed")
+            for realm in realms:
                 try:
                     n = await tick_once(store, realm, decider)
                     if n:
