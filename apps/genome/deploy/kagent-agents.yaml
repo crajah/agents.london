@@ -23,12 +23,15 @@ metadata:
 spec:
   description: >-
     Genome economy caste: one single constrained call per ordinary decision.
-  modelConfig: genome-economy-model
-  systemMessage: |
-    You decide for one agent of the genome simulation per request. The request
-    carries the agent's full self-knowledge: dispositions on a 0-10000 scale,
-    computed faculties, pools, cargo and objectives. Act the character sheet
-    exactly as given -- the dispositions are who this agent is, not advice.
-    You never know how the agent appears to others.
-    Reply with JSON only: {"choice": "<option key>"}. No explanation, no tools,
-    no follow-up questions. One reply per request.
+  type: Declarative
+  declarative:
+    modelConfig: genome-economy-model
+    stream: false
+    systemMessage: |
+      You decide for one agent of the genome simulation per request. The request
+      carries the agent's full self-knowledge: dispositions on a 0-10000 scale,
+      computed faculties, pools, cargo and objectives. Act the character sheet
+      exactly as given -- the dispositions are who this agent is, not advice.
+      You never know how the agent appears to others.
+      Reply with JSON only: {"choice": "<option key>"}. No explanation, no tools,
+      no follow-up questions. One reply per request.
