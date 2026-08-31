@@ -329,11 +329,16 @@ function AgentModal({ inspect, onClose }) {
               {chat.length === 0 &&
                 <div className="opacity-50">Nothing said yet. An instruction
                   becomes this agent's top objective — obeyed to the limit of
-                  its Amenability, and marked as YOUR words wherever it is
-                  repeated.</div>}
+                  its Amenability. A stranger's words arrive as an
+                  ASSERTION — evidence the agent may weigh or dismiss,
+                  never a command.</div>}
               {chat.map((m, i) => (
                 <div key={i} className="mb-2">
-                  <div className="text-xs opacity-40">owner instruction</div>
+                  <div className={"text-xs " + (m.kind === "instruction"
+                    ? "text-emerald-500/70" : "text-sky-500/70")}>
+                    {m.kind === "instruction"
+                      ? "owner instruction — becomes an objective"
+                      : "assertion — a claim, not a command"}</div>
                   <div className="bg-neutral-800 rounded px-2 py-1">
                     {m.text}</div>
                 </div>))}

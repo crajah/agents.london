@@ -226,8 +226,10 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
             payload={**s, "destroyed": True, "complete": False,
                      "delivered": {}, "contributors": {}})
     scale = meta.get("time_scale", 1.0)
+    carried = dict((ark or {}).get("stock_manifest", {})) \
+        if ark and saved else {}
     await store.put_world(realm, {
-        **meta, "stock": {},
+        **meta, "stock": carried,
         "flood_at": draw_flood_at(now, scale, f"{realm}:{int(now)}"),
         "flood_count": meta.get("flood_count", 0) + 1,
         "countdown_notified": False,
