@@ -96,12 +96,17 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
     # form. Slot 0 is reserved for the commons (Rule 6.2f).
     portal_slots = []
     for _ in range(4):
-        for _try in range(40):
+        for _try in range(60):
             q = (r.uniform(0.08, 0.92), r.uniform(0.08, 0.92))
-            if not any((q[0]-o["x"])**2 + (q[1]-o["y"])**2 < (o["r"]+0.03)**2
-                       for o in terrain):
-                portal_slots.append({"x": q[0], "y": q[1]})
-                break
+            if any((q[0]-o["x"])**2 + (q[1]-o["y"])**2 < (o["r"]+0.03)**2
+                   for o in terrain):
+                continue
+            # portals never overlap: clean mutual separation (user directive)
+            if any((q[0]-s["x"])**2 + (q[1]-s["y"])**2 < 0.10**2
+                   for s in portal_slots):
+                continue
+            portal_slots.append({"x": q[0], "y": q[1]})
+            break
     muster = muster_points(r, terrain)
     return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
             "owner_user_id": owner_user_id, "kinds": kinds,
