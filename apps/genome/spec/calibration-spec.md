@@ -149,3 +149,37 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 > decides whether selection has anything to climb — the same question
 > `genome-spec.md` §12.3.2 answered for disposition expression, asked of the
 > genotype's own variation.
+
+
+## 5. Construction costs — the missing table (BUILD consequent task)
+
+Kind families follow the A100 palette order (`worldgen.A100`): **Life** 0–3
+(reds, pinks, purples), **Water** 4–7 and 19 (blues, cyans), **Growth** 8–11
+(teal through lime), **Fire** 12–15 (yellows, oranges), **Earth** 16–18
+(neutrals). Contributor counts are construction-spec Rule 3.3 and are not
+repeated here.
+
+Costs are stated as *K distinct kinds of the family, N units each*; the
+concrete kinds are FIXED AT FOUNDING — the site chooses the world's own kinds
+where they qualify, lowest palette index otherwise, and records the resolved
+bill in its payload so a site's needs never drift.
+
+| Tier | Constructions | Cost |
+| :-- | :--- | :--- |
+| Branch root (1) | Cairn, Kiln, Grove, Apothecary, Library | 1 kind × 10 units |
+| Branch tier 2 | Store, Toolhouse, Granary, Infirmary, Beacon | 2 kinds × 15 units |
+| Capstone | Foundation, Forge, Orchard, Sanatorium, Observatory | every family kind × 20 units |
+| Shipyard | — | 1 kind from EACH family × 10 units, all five capstones standing here |
+| Ark | — | every one of the twenty kinds × 10 units, Shipyard standing here |
+
+PROVISIONAL, all of it — first values chosen so a branch root is one laden
+agent's trip, a tier 2 a pair's afternoon, a capstone a coalition's project,
+and the Ark transitively touches all twenty kinds (construction-spec Rule
+3.2). The economy dry-run revisits these.
+
+First effect wirings (the rest land with their subsystems):
+
+| Completed | Effect now live |
+| :--- | :--- |
+| Store | User stock ceiling +25 per kind in this world (Rule 4.15 relaxed) |
+| Toolhouse | Collection rate ×1.5 in this world (Rule 4.5) |

@@ -43,13 +43,29 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                        "name": payload.get("name"),
                        "infected": bool(payload.get("infections")),
                        "movement": intent})
+    from genome_core import construction as _con
+    from genome_core.worldgen import A100
+    def _branch_colour(s):
+        fam = _con.FAMILIES.get(s.get("branch"), [])
+        return A100[fam[0]] if fam else None
+    site_views = [{"key": s.payload["key"], "name": s.payload["name"],
+                   "colour": _branch_colour(s.payload),
+                   "kind": "ark" if s.payload["name"] == "ark" else "stage",
+                   "tier": s.payload["tier"], "x": s.payload["x"],
+                   "y": s.payload["y"], "progress": _con.progress(s.payload),
+                   "complete": s.payload.get("complete", False),
+                   "needs": s.payload.get("needs", {}),
+                   "delivered": s.payload.get("delivered", {}),
+                   "contributors": len(s.payload.get("contributors", {})),
+                   "required_users": s.payload.get("required_users", 1)}
+                  for s in await _con.sites_in(client, world_realm)]
     return {"realm": world_realm,
             "kinds": meta.get("kinds"), "colours": meta.get("colours"),
             "terrain": meta.get("terrain", []),
             "portals": meta.get("portals", []),
             "stock": meta.get("stock", {}),
             "muster_points": meta.get("muster_points", []),
-            "constructions": meta.get("constructions", []),
+            "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "piles": [{k: p.get(k) for k in
                        ("pile_uuid", "kind", "x", "y", "qty_at",

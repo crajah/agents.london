@@ -248,6 +248,27 @@ async def proposals_respond(payload: dict,
                                   bool(payload.get("accept")))
 
 
+@app.post("/worlds/{realm}/sites", tags=["World"])
+async def found_site(realm: str, payload: dict,
+                     request: __import__("fastapi").Request):
+    """Break ground (construction-spec §3): the world's OWNER founds a site;
+    everyone may contribute to it."""
+    from fastapi.responses import JSONResponse
+    from genome_core import construction, drain
+    from genome_core.store import GenomeStore
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    meta = await drain._world_payload(GenomeStore(app.state.pg), realm)
+    if meta.get("owner_user_id") != uid:
+        return JSONResponse({"error": "only the owner breaks ground"},
+                            status_code=403)
+    name = (payload.get("name") or "").lower()
+    x = float(payload.get("x", 0.5)); y = float(payload.get("y", 0.5))
+    return await construction.found_site(app.state.pg, realm, uid, name,
+                                         x, y, meta.get("kinds", []))
+
+
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
     uid = auth_mod.verify_cookie(

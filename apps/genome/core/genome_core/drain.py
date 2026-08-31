@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import combat, engine, forms, identity, notify, opinion, pathogen
+from . import combat, construction, engine, forms, identity, notify, \
+    opinion, pathogen
 from . import genotype as G
 from . import worldgen
 from .models import assign_models
@@ -92,10 +93,36 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
     need of the world, loaded once per decision."""
     neighbours = await _positions_of_others(store, world_realm,
                                             agent.agent_uuid, now)
+    sites = [v.payload for v in await construction.sites_in(store._c,
+                                                            world_realm)]
+    effects = await construction.world_effects(store._c, world_realm)
     return {"genotype": agent_payload.get("genotype") or {},
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
-            "muster": world_payload.get("muster_points", [])}
+            "muster": world_payload.get("muster_points", []),
+            "sites": sites, **effects}
+
+
+async def apply_contribution(store: GenomeStore, world_realm: str,
+                             agent: engine.AgentView, agent_payload: dict,
+                             eff: engine.Effects, now: float) -> None:
+    """Pour the hold into the site; only what the site ACCEPTS leaves the
+    agent (construction.contribute is authoritative under races)."""
+    site_key, offered = eff.contribute
+    res = await construction.contribute(
+        store._c, world_realm, site_key,
+        agent_payload.get("owner_user_id", ""), agent.agent_uuid, offered)
+    taken = res.get("taken", {})
+    if taken:
+        cargo = dict(agent.cargo)
+        for kind, units in taken.items():
+            cargo[kind] = cargo.get(kind, 0.0) - units
+            if cargo[kind] <= 1e-9:
+                del cargo[kind]
+        await store.set_movement(agent.agent_uuid,
+                                 {"waypoints": [[agent.x, agent.y]],
+                                  "departed_at": now, "arrives_at": now,
+                                  "cargo": cargo})
 
 
 async def persist_effects(store: GenomeStore, world_realm: str,
@@ -206,6 +233,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
                               event_payload, terrain,
                               world_payload.get("time_scale", 1.0), ctx)
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
+    if eff.contribute:
+        await apply_contribution(store, world_realm, agent, agent_payload,
+                                 eff, now)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, world_payload.get("portals", []), now)
@@ -283,7 +313,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                       ctx)
             outcome = "deposit:rerouted"
         else:
-            eff = engine.on_deposit_arrival(agent, stock, now)
+            fx = await construction.world_effects(store._c, world_realm)
+            eff = engine.on_deposit_arrival(
+                agent, stock, now,
+                engine.USER_CEILING_PER_KIND + fx["stock_ceiling_bonus"])
             outcome = "deposit"
     else:
         ctx = (await engine_ctx(store, world_realm, world_payload,
@@ -295,7 +328,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         if isinstance(res, engine.DecisionRequest):
             if decider is None:                     # queue mode (Rule 8.4)
                 merged_q = dict(pl.get("payload", {}))
-                for k in ("portal_to", "portal_xy", "proposer", "other"):
+                for k in ("portal_to", "portal_xy", "proposer", "other",
+                          "site_here"):
                     if res.context.get(k):
                         merged_q[k] = res.context[k]
                 await enqueue_decision(store, world_realm, res,
@@ -311,7 +345,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 "options": list(res.options), "choice": choice.option,
                 "model": model, "tier": "economy" if model != "stub" else "stub"})
             merged = dict(pl.get("payload", {}))
-            for k in ("portal_to", "portal_xy"):
+            for k in ("portal_to", "portal_xy", "site_here"):
                 if res.context.get(k):
                     merged[k] = res.context[k]
             eff = engine.apply_choice(choice, agent, pile_views, now,
@@ -323,6 +357,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
             eff = res
             outcome = pl["kind"]
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
+    if eff.contribute:
+        await apply_contribution(store, world_realm, agent, agent_payload,
+                                 eff, now)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, portals, now)
