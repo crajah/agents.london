@@ -20,7 +20,9 @@ RUN VITE_GOOGLE_CLIENT_ID="$VITE_GOOGLE_CLIENT_ID" \
 FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html/civilization
-RUN printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location = / { return 302 /civilization/; }\n  location /civilization/ { try_files $uri $uri/ /civilization/index.html; }\n}\n' > /etc/nginx/conf.d/default.conf
+# "/" must answer 200: GCE health-checks it and marks the backend
+# unhealthy on a 302 (the grafana-proxy lesson, re-learned)
+RUN printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location = / { add_header Content-Type text/html; return 200 "<meta http-equiv=\\"refresh\\" content=\\"0;url=/civilization/\\">"; }\n  location /civilization/ { try_files $uri $uri/ /civilization/index.html; }\n}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
