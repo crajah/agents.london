@@ -32,6 +32,9 @@ export function routePosition(waypoints, departedAt, now) {
 }
 
 export function routeHeading(waypoints, departedAt, now) {
+  // cargo updates write single-point movement records: position without a
+  // journey. No second point, no heading -- face east rather than crash.
+  if (!waypoints || waypoints.length < 2) return 0;
   const times = legTimes(waypoints, departedAt);
   for (let k = 0; k < times.length - 1; k++) {
     if (now <= times[k + 1]) {
