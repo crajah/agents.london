@@ -85,6 +85,29 @@ async def ensure_user_world(client: Any, user_id: str,
     return {"world_realm": realm, "created": True, "first_agent": a}
 
 
+async def _user_row(client: Any, user_id: str):
+    rows = await client.find_vertices("agents", realm="genome_agents",
+                                      filters={"key": f"user:{user_id}"},
+                                      limit=1)
+    return rows[0] if rows else None
+
+
+async def is_verified(client: Any, user_id: str) -> bool:
+    row = await _user_row(client, user_id)
+    return bool(row and row.payload.get("email_verified"))
+
+
+async def mark_verified(client: Any, user_id: str) -> None:
+    """The address is proven held -- by following its magic link, or by an
+    OAuth provider attesting it."""
+    row = await _user_row(client, user_id)
+    if row is not None and not row.payload.get("email_verified"):
+        await client.upsert_vertex("agents", realm="genome_agents",
+                                   vertex_id=int(row.id), space="default",
+                                   payload={**row.payload,
+                                            "email_verified": True})
+
+
 def _free_slot(meta: dict) -> dict | None:
     used = {(round(p["x"], 4), round(p["y"], 4))
             for p in meta.get("portals", [])}

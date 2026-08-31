@@ -85,6 +85,29 @@ def verify_cookie(value: str) -> str | None:
     return None
 
 
+def magic_token(user_id: str, ttl: int = 86400) -> str:
+    """One-day link token: same HMAC key as sessions, distinct prefix so a
+    session cookie can never be replayed as a verification and vice versa."""
+    payload = json.dumps({"m": user_id, "exp": int(time.time()) + ttl})
+    sig = hmac.new(SESSION_KEY, payload.encode(), hashlib.sha256).hexdigest()
+    return urllib.parse.quote(f"{payload}|{sig}")
+
+
+def verify_magic(token: str) -> str | None:
+    try:
+        raw = urllib.parse.unquote(token)
+        payload, sig = raw.rsplit("|", 1)
+        good = hmac.new(SESSION_KEY, payload.encode(),
+                        hashlib.sha256).hexdigest()
+        if hmac.compare_digest(sig, good):
+            doc = json.loads(payload)
+            if doc.get("exp", 0) > time.time():
+                return doc.get("m")
+    except Exception:
+        pass
+    return None
+
+
 def normalise_email(email: str) -> str:
     return email.strip().lower()
 

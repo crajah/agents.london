@@ -92,7 +92,9 @@ async def auth_callback(provider: str, code: str):
     from fastapi.responses import RedirectResponse
     info = auth_mod.exchange_code(provider, code)
     uid = auth_mod.user_id_from(provider, info)
-    result = await genesis.ensure_user_world(app.state.pg, uid)
+    result = await genesis.ensure_user_world(app.state.pg, uid,
+                                             email=info.get("email"))
+    await genesis.mark_verified(app.state.pg, uid)   # the provider attests
     web = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
     resp = RedirectResponse(f"{web}/?world={result['world_realm']}")
     resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
@@ -102,15 +104,38 @@ async def auth_callback(provider: str, code: str):
 
 @app.post("/auth/email/login", tags=["Auth"])
 async def email_login(payload: dict):
-    """Direct entry (Rule 6.2i): unverified until the magic-link loop ships,
-    recorded in spec. The id is the same hash OAuth produces for this email."""
+    """Direct entry (Rule 6.2i): the session opens at once so the demo stays
+    frictionless, but it opens UNVERIFIED; a magic link goes to the outbox
+    and only following it proves the address is really held."""
     from fastapi.responses import JSONResponse
     email = (payload.get("email") or "").strip()
     if "@" not in email:
         return JSONResponse({"error": "email required"}, status_code=400)
     uid = auth_mod.user_id_from_email(email)
     result = await genesis.ensure_user_world(app.state.pg, uid, email=email)
-    resp = JSONResponse({"ok": True, "world_realm": result["world_realm"]})
+    link = (f"{auth_mod.REDIRECT_BASE}/auth/email/verify"
+            f"?token={auth_mod.magic_token(uid)}")
+    await notify.outbox(app.state.pg, email, "Verify your genome sign-in",
+                        f"Follow this link to verify your address: {link}\n"
+                        f"It works for one day.")
+    verified = await genesis.is_verified(app.state.pg, uid)
+    resp = JSONResponse({"ok": True, "world_realm": result["world_realm"],
+                         "verified": verified})
+    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.get("/auth/email/verify", tags=["Auth"])
+async def email_verify(token: str):
+    from fastapi.responses import RedirectResponse, JSONResponse
+    uid = auth_mod.verify_magic(token)
+    if not uid:
+        return JSONResponse({"error": "link invalid or expired"},
+                            status_code=400)
+    await genesis.mark_verified(app.state.pg, uid)
+    web = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
+    resp = RedirectResponse(f"{web}/?verified=1")
     resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
                     httponly=True, samesite="lax")
     return resp
@@ -216,7 +241,8 @@ async def me(request: __import__("fastapi").Request):
     if not uid:
         return {"authenticated": False}
     realm = await genesis.user_world_realm(app.state.pg, uid)
-    return {"authenticated": True, "user": uid, "world_realm": realm}
+    return {"authenticated": True, "user": uid, "world_realm": realm,
+            "verified": await genesis.is_verified(app.state.pg, uid)}
 
 
 @app.get("/agents/{agent_uuid}", tags=["Agent"])
