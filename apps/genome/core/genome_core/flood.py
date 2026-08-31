@@ -98,15 +98,24 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
                 and not v.payload.get("spent")), None)
     saved: set[str] = set()
     drowned = 0
-    for v in await store.agents_in(realm):
-        a = v.payload["key"]               # presence rows carry only the key;
-        if a.startswith("user:"):          # the record lives in the agents
-            continue                       # realm and must be fetched
-        rows = await client.find_vertices("agents", realm="genome_agents",
-                                          filters={"key": a}, limit=1)
-        if not rows:
-            continue
-        pl = rows[0].payload
+    import asyncio as _aio
+    sem = _aio.Semaphore(6)
+
+    async def _judge(a):
+        nonlocal drowned
+        async with sem:
+            rows = await client.find_vertices("agents",
+                                              realm="genome_agents",
+                                              filters={"key": a}, limit=1)
+            if not rows:
+                return
+            await _one(a, rows[0].payload)
+
+    keys = [v.payload["key"] for v in await store.agents_in(realm)
+            if not v.payload["key"].startswith("user:")]
+
+    async def _one(a, pl):
+        nonlocal drowned
         if ark and pl.get("aboard_ark") == ark["key"] and pl.get("berth"):
             # holding a berth is not being in it (Rule 4.10): the body must
             # stand at the hull when the water arrives
@@ -123,7 +132,7 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
                     <= ARK_RADIUS ** 2
             if at_hull:
                 saved.add(a)
-                continue
+                return
             # wandered off with a boarding pass: it drowns like anyone else,
             # and the berth returns to the pool via regenerate (Rule 3.7g)
         if not pl.get("genotype"):
@@ -131,11 +140,13 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
             # nothing to carry over); the water simply removes it
             await store.set_presence(realm, a, False)
             drowned += 1
-            continue
+            return
         view = engine.AgentView(a, pl.get("home_realm", realm), realm,
                                 0.5, 0.5, {})
         await drain.regenerate(store, realm, view, pl, now, cause="flood")
         drowned += 1
+
+    await _aio.gather(*(_judge(a) for a in keys))
     # the world reverts to its nascent state (Rule 4.4)
     for v in await store.piles_in(realm):
         p = v.payload

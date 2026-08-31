@@ -26,8 +26,9 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
     present = [v.payload["key"] for v in
                await client.get_vertices("presence", realm=world_realm)
                if v.payload.get("present") is True]
-    agents = []
-    for uuid in present:
+    import asyncio as _aio
+
+    async def _one_agent(uuid):
         rows = await client.find_vertices("agents", realm=AGENTS_REALM,
                                           filters={"key": uuid}, limit=1)
         payload = rows[0].payload if rows else {}
@@ -38,11 +39,12 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             if latest is not None and "waypoints" in latest.payload:
                 intent = {k: latest.payload[k]
                           for k in ("waypoints", "departed_at", "arrives_at")}
-        agents.append({"agent_uuid": uuid,
-                       "colour_pair": payload.get("colour_pair"),
-                       "name": payload.get("name"),
-                       "infected": bool(payload.get("infections")),
-                       "movement": intent})
+        return {"agent_uuid": uuid,
+                "colour_pair": payload.get("colour_pair"),
+                "name": payload.get("name"),
+                "infected": bool(payload.get("infections")),
+                "movement": intent}
+    agents = list(await _aio.gather(*(_one_agent(u) for u in present)))
     import time as _time
     from genome_core import construction as _con
     from genome_core import flood as _flood

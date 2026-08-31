@@ -134,8 +134,11 @@ class TestLoopCloses(unittest.TestCase):
             later = [t for t, w in by_agent[agent] if t > t0 + 1e-9]
             if later:
                 gap = min(later) - t0
-                self.assertGreater(gap, 60.0,
-                                   "write within a minute of departure: "
+                # constant-motion tempo: the shortest legitimate silence is
+                # the 10s minimum stint/pause; anything under it means a
+                # write DURING travel, which Rule 2.2 forbids
+                self.assertGreater(gap, 10.0,
+                                   "write within seconds of departure: "
                                    "travel is not silent")
 
     def test_user_ceiling_respected(self):

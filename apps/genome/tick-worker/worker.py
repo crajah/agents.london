@@ -139,19 +139,38 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
     return hits
 
 
-async def tick_once(store: GenomeStore, realm: str, decider) -> int:
+async def tick_once(store: GenomeStore, realm: str, decider,
+                    do_heal: bool = True) -> int:
     now = time.time()
     happened = await _flood.tick(store, realm, now)
     if happened:
         logger.info("%s: %s", realm, happened)
     await sweep(store, realm, now)
-    await heal(store, realm, now)
+    if do_heal:
+        await heal(store, realm, now)
     done = 0
+    # parallelise-everything: events for DIFFERENT agents drain concurrently
+    # (capped); one agent's events stay serial in due order -- state races
+    # are per-agent, never cross-agent
+    groups: dict[str, list] = {}
     for ev in await store.due_events(realm, drain._iso(now)):
-        outcome = await drain.drain_one(store, realm, realm, ev, decider,
-                                        seed=int(now))
-        logger.info("%s %s -> %s", realm, ev.payload.get("subject"), outcome)
-        done += 1
+        groups.setdefault(ev.payload.get("subject"), []).append(ev)
+    sem = asyncio.Semaphore(8)
+
+    async def _drain_agent(evs):
+        nonlocal done
+        async with sem:
+            for ev in evs:
+                try:
+                    outcome = await drain.drain_one(store, realm, realm, ev,
+                                                    decider, seed=int(now))
+                    logger.info("%s %s -> %s", realm,
+                                ev.payload.get("subject"), outcome)
+                    done += 1
+                except Exception:
+                    logger.exception("drain failed for %s",
+                                     ev.payload.get("subject"))
+    await asyncio.gather(*(_drain_agent(evs) for evs in groups.values()))
     return done
 
 
@@ -166,26 +185,36 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
     logger.info("tick worker up: realms=%s llm=%s", REALMS, USE_LLM)
+    cycle = 0
+    realms = list(REALMS)
     try:
         while not stop.is_set():
-            # user worlds are born at login (genesis) -- discover them each
-            # cycle so a new user's world starts ticking without a deploy
-            realms = list(REALMS)
-            try:
-                for v in await client.get_vertices("agents",
-                                                   realm="genome_agents"):
-                    wr = v.payload.get("world_realm")
-                    if wr and v.payload.get("key", "").startswith("user:")                             and wr not in realms:
-                        realms.append(wr)
-            except Exception:
-                logger.exception("realm discovery failed")
-            for realm in realms:
+            # user worlds are born at login (genesis) -- rediscover every
+            # tenth cycle; heal is a backstop and runs every fifth. The
+            # realms tick IN PARALLEL: a slow world no longer starves the
+            # others of event latency (constant-motion revision).
+            if cycle % 10 == 0:
                 try:
-                    n = await tick_once(store, realm, decider)
+                    realms = list(REALMS)
+                    for v in await client.get_vertices("agents",
+                                                       realm="genome_agents"):
+                        wr = v.payload.get("world_realm")
+                        if wr and v.payload.get("key", "").startswith("user:") \
+                                and wr not in realms:
+                            realms.append(wr)
+                except Exception:
+                    logger.exception("realm discovery failed")
+
+            async def _tick(realm):
+                try:
+                    n = await tick_once(store, realm, decider,
+                                        do_heal=(cycle % 5 == 0))
                     if n:
                         logger.info("%s: drained %d", realm, n)
                 except Exception:
                     logger.exception("tick failed for %s", realm)
+            await asyncio.gather(*(_tick(r) for r in realms))
+            cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
             except TimeoutError:
