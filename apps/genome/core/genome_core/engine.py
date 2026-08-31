@@ -26,6 +26,7 @@ HOME_XY = (0.5, 0.5)                          # legacy deposit point; worlds
 MUSTER_COUNT = 5                              # muster points per world (fixed)
 PILE_STANDOFF = 0.02                          # agents stand AT a pile, not ON it
 MIN_SEPARATION = 0.018                        # no two agents rest on one spot
+REACH = 0.035                                 # build/board reach: hands on it
 
 PROVISIONAL = {"MINE_RATE_UNITS_PER_SEC": MINE_RATE_UNITS_PER_SEC,
                "HOME_XY": HOME_XY}
@@ -89,6 +90,8 @@ class Effects:
     # caller pours it in via construction.contribute, which says what stuck
     board: str | None = None                     # ark site key — the caller
     # claims a berth via construction.board (Rules 3.7e/4.10a)
+    cache_op: tuple[str, str | None] | None = None   # ("build"|"stash"|
+    # "collect", cache_key) — commons larders; the caller applies
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -187,6 +190,16 @@ def far_cells(explored: frozenset, x: float, y: float) -> list[tuple[int, int]]:
                                            + (cell_centre(c)[1] - y) ** 2))       # PROVISIONAL: reveal radius on arrival (Sight scales later)
 
 
+def speed_factor(g: dict) -> float:
+    """The Speed pool's surface (genotype-spec faculty table: movement rate
+    across a map): grounded in Agility and Dexterity, range 0.7x-1.3x. A
+    nimble genotype crosses a world in three-quarters the time a clumsy one
+    takes -- visible in every journey, heritable like everything else."""
+    from .genotype import norm
+    vals = [norm(k, g.get(k, 5000.0)) for k in ("Agility", "Dexterity")]
+    return 0.7 + 0.6 * (sum(vals) / len(vals))
+
+
 def standoff(ax: float, ay: float, tx: float, ty: float,
              r: float = PILE_STANDOFF) -> tuple[float, float]:
     """Stop r short of the target, along the line of approach — an agent
@@ -278,6 +291,25 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     if any(_con.accepts(s, agent.cargo) for s in sites
            if s is not near_site):
         options.append("travel_to_site")
+    # commons caches (user directive): four different kinds, one unit each,
+    # buys a larder in the market square; your colours open it
+    from . import construction as _c2
+    near_cache = None
+    if ctx.get("is_commons"):
+        caches = ctx.get("caches", [])
+        near_cache = next(
+            (s for s in caches
+             if s.get("colours") == ctx.get("colour_pair")
+             and (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2
+             < REACH ** 2), None)
+        if near_cache:
+            if agent.cargo_total() > 0:
+                options.append("stash_cache")
+            if near_cache.get("holdings"):
+                options.append("collect_cache")
+        if _c2.cache_cost(agent.cargo) is not None and \
+                _c2.cache_spot_clear_payloads(caches, agent.x, agent.y):
+            options.append("build_cache")
     # the water is coming (Rule 4.8): a boardable Ark changes everything
     ark = ctx.get("boardable_ark")
     if ark:
@@ -308,13 +340,15 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  "site_here": near_site["key"] if near_site else None,
                  "flood_in_s": ctx.get("flood_in_s"),
                  "ark_key": ark["key"] if ark else None,
+                 "cache_here": near_cache["key"] if near_cache else None,
                  "sites_wanting": [s["key"] for s in sites
                                    if _con.accepts(s, agent.cargo)]})
 
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
                    terrain: list[dict], arrival_kind: str,
-                   arrival_payload: dict, time_scale: float = 1.0) -> Effects:
+                   arrival_payload: dict, time_scale: float = 1.0,
+                   pace: float = 1.0) -> Effects:
     """Route computed once, at decision time (execution-spec Rule 2.1a).
 
     time_scale is a PER-WORLD DEMO AFFORDANCE: journeys in a scaled world
@@ -331,8 +365,9 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
     # few seconds -- observed live, one agent burning a call per tick shuttling
     # between piles at her feet. Arrival, unloading and looking around take
     # time; the floor is that time.
-    scale = max(1.0, time_scale)
-    arrives = now + max((route.arrives_at - now) / scale, 120.0 / scale)
+    scale = max(1.0, time_scale) * max(0.1, pace)
+    arrives = now + max((route.arrives_at - now) / scale,
+                        120.0 / max(1.0, time_scale))
     return Effects(
         movement={"waypoints": list(route.waypoints), "departed_at": now,
                   "arrives_at": arrives},
@@ -349,6 +384,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     terrain = terrain or []
     ctx = ctx or {}
     occupied = [q for q in ctx.get("occupied", [])]
+    pace = speed_factor(ctx.get("genotype") or {})
     by_id = {p.pile_uuid: p for p in piles}
 
     if choice.option == "mine_here":
@@ -367,14 +403,14 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
                               "arrival", {"pile_uuid": pile.pile_uuid},
-                              time_scale)
+                              time_scale, pace)
 
     if choice.option == "go_home_deposit":
         hx, hy = nearest_muster(ctx.get("muster") or [], agent.x, agent.y)
         tx, ty = standoff(agent.x, agent.y, hx, hy)
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
-                              "deposit_arrival", {}, time_scale)
+                              "deposit_arrival", {}, time_scale, pace)
 
     if choice.option in ("explore_frontier", "survey_far"):
         # The LLM chose WHAT (near unknown vs expedition); the genotype and
@@ -414,7 +450,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                       "explored",
                                       {"cell": list(cell_of(tx, ty)),
                                        "style": style},
-                                      time_scale)
+                                      time_scale, pace)
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 
     if choice.option == "contribute_here":
@@ -423,6 +459,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         if key not in sites:
             return Effects(schedule=("decide", now + 60.0,
                                      agent.agent_uuid, {}))
+        s = sites[key]
+        if (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2 > REACH ** 2:
+            # the moment passed and the agent stands elsewhere: walk back
+            tx, ty = standoff(agent.x, agent.y, s["x"], s["y"])
+            tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+            return _route_effects(agent, tx, ty, now, terrain,
+                                  "decide", {}, time_scale, pace)
         return Effects(contribute=(key, dict(agent.cargo)),
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
@@ -439,9 +482,16 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = standoff(agent.x, agent.y, s["x"], s["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
-                              "decide", {}, time_scale)
+                              "decide", {}, time_scale, pace)
 
     if choice.option == "board_ark":
+        ark = ctx.get("boardable_ark")
+        if ark and (ark["x"] - agent.x) ** 2 + (ark["y"] - agent.y) ** 2 \
+                > REACH ** 2:
+            tx, ty = standoff(agent.x, agent.y, ark["x"], ark["y"])
+            tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+            return _route_effects(agent, tx, ty, now, terrain,
+                                  "decide", {}, time_scale, pace)
         return Effects(board=payload.get("ark_key") or choice.target,
                        schedule=("decide", now + 3600.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
@@ -454,7 +504,22 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = standoff(agent.x, agent.y, ark["x"], ark["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
-                              "decide", {}, time_scale)
+                              "decide", {}, time_scale, pace)
+
+    if choice.option == "build_cache":
+        return Effects(cache_op=("build", None),
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option in ("stash_cache", "collect_cache"):
+        key = payload.get("cache_here") or choice.target
+        if not key:
+            return Effects(schedule=("decide", now + 60.0,
+                                     agent.agent_uuid, {}))
+        op = "stash" if choice.option == "stash_cache" else "collect"
+        return Effects(cache_op=(op, key),
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
 
     if choice.option == "take_portal":
         return Effects(

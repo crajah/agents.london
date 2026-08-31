@@ -34,6 +34,25 @@ def _wanted(kind: str, source: str, prefs: dict) -> bool:
     return kind in PIERCE_NONE
 
 
+_bg: set = set()
+
+
+def emit_bg(client: Any, user_id: str, source: str, kind: str,
+            message: str, data: dict | None = None) -> None:
+    """Truly asynchronous emission (user directive): schedules the write and
+    returns at once — the simulation never awaits its own postman. Task
+    references are held until completion; emit() already swallows every
+    failure, so a dropped message can never fail an event."""
+    import asyncio
+    try:
+        task = asyncio.get_running_loop().create_task(
+            emit(client, user_id, source, kind, message, data))
+    except RuntimeError:
+        return                              # no running loop: nothing to do
+    _bg.add(task)
+    task.add_done_callback(_bg.discard)
+
+
 async def emit(client: Any, user_id: str, source: str, kind: str,
                message: str, data: dict | None = None) -> None:
     """One notification to one user, level-filtered, never raising."""

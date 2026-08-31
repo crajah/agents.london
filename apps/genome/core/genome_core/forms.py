@@ -10,8 +10,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# calibration-spec.md Rule 1.2: ~six hours to cross a world
-CROSSING_SECONDS = 6 * 3600.0
+# calibration-spec.md Rule 1.2 (revised): ~one hour to cross a world at
+# base pace -- the six-hour original made movement imperceptible even scaled
+CROSSING_SECONDS = 3600.0
 SPEED = 1.0 / CROSSING_SECONDS  # map units per second
 
 
@@ -88,9 +89,17 @@ def mine(p: PileState, now: float, want: float,
 @dataclass(frozen=True)
 class Route:
     """A waypoint route (genome-spec.md Rule 5.4): computed once at decision
-    time, position derived piecewise ever after (execution-spec Rule 2.2)."""
+    time, position derived piecewise ever after (execution-spec Rule 2.2).
+
+    If arrives_at is given (from a stored movement record), leg times are
+    NORMALISED to span (departed_at, arrives_at) -- so a route compressed by
+    time_scale or hastened by the Speed pool interpolates at its true pace.
+    Without it, legs run at the base SPEED. The stored record's span is the
+    single source of truth; base SPEED is only the scheduler's starting bid.
+    """
     waypoints: tuple[tuple[float, float], ...]
     departed_at: float
+    arrives_at_hint: float | None = None
 
     def leg_times(self) -> list[float]:
         """Cumulative arrival time at each waypoint."""
@@ -99,6 +108,11 @@ class Route:
         for k in range(len(self.waypoints) - 1):
             t += math.dist(self.waypoints[k], self.waypoints[k + 1]) / SPEED
             out.append(t)
+        if self.arrives_at_hint is not None and out[-1] > out[0]:
+            span = self.arrives_at_hint - self.departed_at
+            base = out[-1] - out[0]
+            out = [self.departed_at + (x - self.departed_at) * span / base
+                   for x in out]
         return out
 
     @property

@@ -25,6 +25,7 @@ FLOOD_MIN_DAYS = 15.0
 FLOOD_MAX_DAYS = 30.0
 COUNTDOWN_DAYS = 2.0                      # Rule 4.8
 NASCENT_FILL = 0.7                        # PROVISIONAL pile reversion
+ARK_RADIUS = 0.05                         # being aboard means being HERE
 
 
 def draw_flood_at(now: float, time_scale: float, seed: str) -> float:
@@ -79,7 +80,7 @@ async def tick(store, realm: str, now: float) -> str | None:
             owners.add(meta.get("owner_user_id"))
             hours = remaining / 3600.0
             for uid in filter(None, owners):
-                await notify.emit(store._c, uid, "world", "flood_countdown",
+                notify.emit_bg(store._c, uid, "world", "flood_countdown",
                                   f"The water is coming to {realm}: flood in "
                                   f"{hours:.1f}h. Agents present will die "
                                   f"unless aboard an Ark or elsewhere.")
@@ -107,8 +108,24 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
             continue
         pl = rows[0].payload
         if ark and pl.get("aboard_ark") == ark["key"] and pl.get("berth"):
-            saved.add(a)
-            continue
+            # holding a berth is not being in it (Rule 4.10): the body must
+            # stand at the hull when the water arrives
+            mv = await store.latest_movement(a)
+            at_hull = False
+            if mv is not None and "waypoints" in mv.payload:
+                mp = mv.payload
+                from . import forms as _forms
+                x, y = _forms.route_position(
+                    _forms.Route(tuple(tuple(q) for q in mp["waypoints"]),
+                                 mp["departed_at"], mp.get("arrives_at")),
+                    now)
+                at_hull = (x - ark["x"]) ** 2 + (y - ark["y"]) ** 2 \
+                    <= ARK_RADIUS ** 2
+            if at_hull:
+                saved.add(a)
+                continue
+            # wandered off with a boarding pass: it drowns like anyone else,
+            # and the berth returns to the pool via regenerate (Rule 3.7g)
         if not pl.get("genotype"):
             # a record with no genotype cannot regenerate (Rule 7.3 has
             # nothing to carry over); the water simply removes it
@@ -156,7 +173,7 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
             await store.put_agent(a, pl)
     owners = {meta.get("owner_user_id")}
     for uid in filter(None, owners):
-        await notify.emit(client, uid, "world", "flood_arrived",
+        notify.emit_bg(client, uid, "world", "flood_arrived",
                           f"The flood took {realm}: {drowned} agents drowned "
                           f"and regenerate at home; {len(saved)} survived "
                           f"aboard the Ark. The world is nascent again.")

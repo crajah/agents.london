@@ -53,6 +53,8 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
     site_views = [{"key": s.payload["key"], "name": s.payload["name"],
                    "colour": _branch_colour(s.payload),
                    "wreck": bool(s.payload.get("spent")),
+                   "colours": s.payload.get("colours"),
+                   "holdings": s.payload.get("holdings"),
                    "berths": s.payload.get("berths"),
                    "boarded": len(s.payload.get("boarded", {})),
                    "kind": "ark" if s.payload["name"] == "ark" else "stage",

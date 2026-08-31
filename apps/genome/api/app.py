@@ -260,6 +260,10 @@ async def found_site(realm: str, payload: dict,
     if not uid:
         return JSONResponse({"error": "sign in first"}, status_code=401)
     meta = await drain._world_payload(GenomeStore(app.state.pg), realm)
+    if meta.get("is_commons"):
+        return JSONResponse({"error": "the commons builds nothing from the "
+                             "tree; agents may raise caches there"},
+                            status_code=403)
     if meta.get("owner_user_id") != uid:
         return JSONResponse({"error": "only the owner breaks ground"},
                             status_code=403)

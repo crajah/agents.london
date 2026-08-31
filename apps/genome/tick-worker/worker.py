@@ -94,7 +94,8 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
         if latest is None or "waypoints" not in latest.payload:
             continue
         pl = latest.payload
-        r = _f.Route(tuple(tuple(q) for q in pl["waypoints"]), pl["departed_at"])
+        r = _f.Route(tuple(tuple(q) for q in pl["waypoints"]),
+                     pl["departed_at"], pl.get("arrives_at"))
         positions[a] = _f.route_position(r, now)
         rows = await store._c.find_vertices("agents", realm="genome_agents",
                                             filters={"key": a}, limit=1)

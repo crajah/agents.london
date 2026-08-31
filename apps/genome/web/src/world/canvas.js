@@ -130,6 +130,21 @@ export async function createWorldCanvas(el, opts = {}) {
       const [cx, cy] = P([c.x, c.y]);
       const col = c.colour ?? mc1;
       const prog = Math.max(0, Math.min(1, c.progress ?? 0));
+      if (c.name === "cache") {
+        const holdings = Object.values(c.holdings ?? {})
+          .reduce((a, b) => a + b, 0);
+        const W = 16 + Math.min(10, holdings);
+        const cc1 = c.colours?.[0] ?? col, cc2 = c.colours?.[1] ?? col;
+        g.ellipse(cx, cy, W, W * 0.5).fill({ color: 0x000000, alpha: 0.25 });
+        g.poly([cx - W, cy, cx, cy - W * 0.5, cx + W, cy, cx, cy + W * 0.5])
+          .fill({ color: cc1 });
+        g.poly([cx - W, cy, cx, cy - W * 0.5, cx, cy - W * 0.5 - 8,
+                cx - W, cy - 8]).fill({ color: cc2 });
+        g.poly([cx + W, cy, cx, cy - W * 0.5, cx, cy - W * 0.5 - 8,
+                cx + W, cy - 8]).fill({ color: cc2, alpha: 0.7 });
+        layers.constructions.addChild(g);
+        continue;
+      }
       if (c.kind === "ark") {
         const W = 90, H = 40;
         g.ellipse(cx, cy, W * 0.7, 10).fill({ color: 0x000000, alpha: 0.25 });
@@ -248,8 +263,8 @@ export async function createWorldCanvas(el, opts = {}) {
       const m = e.a.movement;
       let pos = [0.5, 0.5], head = 0, moving = false;
       if (m) {
-        pos = routePosition(m.waypoints, m.departed_at, now);
-        head = routeHeading(m.waypoints, m.departed_at, now);
+        pos = routePosition(m.waypoints, m.departed_at, now, m.arrives_at);
+        head = routeHeading(m.waypoints, m.departed_at, now, m.arrives_at);
         moving = now < m.arrives_at;
       }
       if (!moving) {

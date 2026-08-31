@@ -11,7 +11,24 @@ authoritative and this one records it for comparison.
 
 **Rule 1.1** — A **day is a real day** (`system-spec.md` Rule 2.1).
 
-**Rule 1.2** — Crossing a world edge to edge takes approximately **six hours**.
+**Rule 1.2** — Crossing a world edge to edge takes approximately **one hour**
+at base pace (revised 2026-08-31 from six hours: movement was imperceptible
+even time-scaled). The **Speed pool** (Agility + Dexterity) multiplies each
+agent's pace 0.7×–1.3×, so the walk itself is heritable. Client and server
+interpolate every journey from its record's own `(departed_at, arrives_at)`
+span — scaled and hastened journeys render at their true pace on both sides.
+
+**Rule 1.2a** — **Nothing touches anything.** Every interaction — mining,
+depositing, contributing, boarding, encounters — resolves at *close
+proximity* (standoff rings, the build/board reach, the contact radius),
+never at coincident positions. Bodies exclude each other at rest (genome-spec
+Rule 5.6) and reach suffices for every act.
+
+> The one-hour crossing weakens an argument recorded below: at six hours the
+> two-day flood countdown could not recall distant agents, at one hour it
+> mostly can, so evacuation gets easier relative to the Ark. If the flood
+> loses too much of its teeth in play, the countdown window — not the
+> crossing — is the knob to shorten.
 Map coordinates are a unit square and agent speed is expressed against it.
 
 **Rule 1.3** — Passage through a portal is **instantaneous**
