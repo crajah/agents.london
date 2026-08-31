@@ -132,7 +132,8 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
 
 
 def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
-                      seed: int = 0, timeout: float = 120.0
+                      seed: int = 0, timeout: float = 120.0,
+                      objectives: list[str] | None = None
                       ) -> tuple[str, dict | None, str]:
     """One bargaining turn: returns (action, offer, model). The prompt shows
     the standing offer and the purse; the reply is a single JSON object.
@@ -147,7 +148,7 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
                 f"{json.dumps(last['want'])} from you."
                 if last else "No offer stands yet; you open.")
     sys_p = prompt.system_prompt(genotype, {}, {"total": ctx["cargo_total"]},
-                                 [])
+                                 objectives or [])
     usr_p = (
         f"You are bargaining, turn {ctx['turn']} of {ctx['max_turns']} -- "
         f"at turn {ctx['max_turns']} the talk dies with no deal.\n"
@@ -182,6 +183,66 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
     except Exception:
         pass
     return None, None, model                # caller applies the fallback
+
+
+def market_decider(req: engine.DecisionRequest, genotype: dict,
+                   seed: int = 0, timeout: float = 120.0,
+                   objectives: list[str] | None = None
+                   ) -> tuple[str, dict, str]:
+    """One board action: (action, details, model). details may carry
+    listing/give/want. Unparseable falls to leave -- the board never
+    punishes silence."""
+    from .models import UNBUDGETED, temperament
+    model = assign_models(req.agent_uuid)["deliberative"]
+    ctx = req.context
+    board_lines = []
+    for l in ctx.get("board", []):
+        if l.get("awaiting_collection"):
+            board_lines.append(f"  YOURS, filled -- collect proceeds "
+                               f"{json.dumps(l['proceeds'])} "
+                               f"(listing {l['key']})")
+        else:
+            board_lines.append(
+                f"  {'YOURS ' if l.get('mine') else ''}listing {l['key']}: "
+                f"gives {json.dumps(l['give'])} wants {json.dumps(l['want'])}")
+    board_txt = "\n".join(board_lines) or "  (the board is empty)"
+    sys_p = prompt.system_prompt(genotype, {}, {"total": ctx["cargo_total"]},
+                                 objectives or [])
+    usr_p = (
+        f"You stand at the marketplace. The board:\n{board_txt}\n"
+        f"You carry: {json.dumps(ctx.get('my_cargo', {}))}\n"
+        "Actions: list (post give/want, goods escrowed), fill (pay a "
+        "listing's want, take its give -- binding), collect (your filled "
+        "listing's proceeds), withdraw (your open listing), leave.\n"
+        "A kind you lack can sometimes be reached in TWO fills through a "
+        "kind you hold. Decide quickly; a short answer is a good answer.\n"
+        'Reply with JSON only: {"choice": "<action>", "listing": "<key>", '
+        '"give": {"<kind>": units}, "want": {"<kind>": units}}. '
+        "listing for fill/collect/withdraw; give+want for list. "
+        "No explanation.")
+    req_body = {"model": model,
+                "temperature": temperament(req.agent_uuid),
+                "messages": [{"role": "system", "content": sys_p},
+                             {"role": "user", "content": usr_p}]}
+    if model not in UNBUDGETED:
+        req_body["max_tokens"] = 200
+    rq = urllib.request.Request(
+        ROUTER + "/v1/chat/completions", data=json.dumps(req_body).encode(),
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + KEY})
+    try:
+        with urllib.request.urlopen(rq, timeout=timeout) as r:
+            text = json.load(r)["choices"][0]["message"]["content"] or ""
+        s, e = text.index("{"), text.rindex("}")
+        doc = json.loads(text[s:e + 1])
+        action = str(doc.get("choice", "")).lower()
+        if action in ("list", "fill", "collect", "withdraw", "leave"):
+            return action, {"listing": doc.get("listing"),
+                            "give": doc.get("give") or {},
+                            "want": doc.get("want") or {}}, model
+    except Exception:
+        pass
+    return "leave", {}, model
 
 
 def make_decider(use_llm: bool):

@@ -48,13 +48,34 @@ async def work_one(store: GenomeStore, client, item) -> str:
                                       filters={"key": pl["agent_uuid"]}, limit=1)
     agent_payload = rows[0].payload if rows else {}
     g = agent_payload.get("genotype")
+    if pl["situation"] == "market":
+        from genome_core.decider import market_decider
+        action, det, model = ("leave", {}, "stub")
+        if USE_LLM and g:
+            action, det, model = market_decider(
+                req, g, seed=int(now),
+                objectives=agent_payload.get("objectives"))
+        outcome = await drain.apply_market_turn(
+            store, pl["world_realm"], pl["agent_uuid"], action,
+            det.get("listing"), det.get("give"), det.get("want"), now)
+        await store.record_decision(pl["agent_uuid"], {
+            "at": drain._iso(now), "situation": "market",
+            "options": list(req.options), "choice": action,
+            "detail": det, "model": model, "tier": "deliberative"})
+        await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
+                                   vertex_id=int(item.id),
+                                   payload={**pl, "done_at": drain._iso(now),
+                                            "outcome": outcome})
+        return outcome
     if pl["situation"] == "negotiate":
         from genome_core.decider import negotiate_decider
         from genome_core import negotiation as nego
         action = offer = None
         model = "stub"
         if USE_LLM and g:
-            action, offer, model = negotiate_decider(req, g, seed=int(now))
+            action, offer, model = negotiate_decider(
+                req, g, seed=int(now),
+                objectives=agent_payload.get("objectives"))
         if action is None:
             state = {"participants": [pl["agent_uuid"], ""],
                      "turns": ([{"offer": req.context["last_offer"]}]
@@ -103,16 +124,21 @@ async def main() -> None:
     logger.info("decision worker up: llm=%s", USE_LLM)
     try:
         while not stop.is_set():
-            items = [v for v in await client.get_vertices(
-                        "decision_queue", realm=AGENTS_REALM)
-                     if v.payload.get("done_at") is None]
+            try:
+                items = [v for v in await client.get_vertices(
+                            "decision_queue", realm=AGENTS_REALM)
+                         if v.payload.get("done_at") is None]
+            except Exception:
+                # a re-dialing tunnel resets connections; survive it
+                logger.exception("queue poll failed; retrying")
+                items = []
             # constant-motion revision: decisions run IN PARALLEL, capped,
             # but never two for the same agent at once -- oldest question
             # per agent this cycle, the rest next poll
             per_agent: dict[str, object] = {}
             for item in sorted(items, key=lambda v: v.payload["queued_at"]):
                 per_agent.setdefault(item.payload["agent_uuid"], item)
-            sem = asyncio.Semaphore(8)
+            sem = asyncio.Semaphore(16)
 
             async def _work(item):
                 async with sem:

@@ -52,8 +52,13 @@ async def lifespan(app: FastAPI):
     client = make_client()
     await client.connect()
     app.state.pg = client
-    await store.ensure_agents_realm(client)
-    logger.info("agents realm ensured")
+    try:
+        await store.ensure_agents_realm(client)
+        logger.info("agents realm ensured")
+    except Exception:
+        # concurrent CREATE TABLE with a worker races the pg catalog
+        # ("tuple concurrently updated"); the tables exist -- carry on
+        logger.exception("ensure raced; continuing")
     try:
         yield
     finally:

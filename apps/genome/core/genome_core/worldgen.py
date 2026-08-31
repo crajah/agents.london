@@ -108,11 +108,21 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
             portal_slots.append({"x": q[0], "y": q[1]})
             break
     muster = muster_points(r, terrain)
+    # the marketplace (Rule 4.20): one board, terrain-clear, near the middle
+    market = {"x": 0.5, "y": 0.5}
+    for _try in range(40):
+        q = (r.uniform(0.35, 0.65), r.uniform(0.35, 0.65))
+        if not any((q[0]-o["x"])**2 + (q[1]-o["y"])**2
+                   < (o["r"]+pathmod.INFLATE)**2 for o in terrain) \
+                and pathmod.find_path(terrain, *HOME_XY, *q) is not None:
+            market = {"x": round(q[0], 4), "y": round(q[1], 4)}
+            break
     return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
             "owner_user_id": owner_user_id, "kinds": kinds,
             "colours": [A100[kinds[0]], A100[kinds[1]]],
             "founding_centre": centre, "piles": piles, "terrain": terrain,
-            "portal_slots": portal_slots, "muster_points": muster}
+            "portal_slots": portal_slots, "muster_points": muster,
+            "market": market}
 
 
 def muster_points(r: random.Random, terrain: list[dict]) -> list[dict]:

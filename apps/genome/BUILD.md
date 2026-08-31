@@ -243,6 +243,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 ## Phase 6 — A2A, negotiation, trade
 
+- [x] **The marketplace** (user directive; genome-spec 4.20–4.23): one board per world + commons centre; listings are bid/ask pairs with goods ESCROWED at posting (no goods, no listing — proven live when a freshly-robbed agent tried to list its stolen stock); the board is world-public in deliberation, acting requires presence; completion is HAND-TO-HAND — both parties at the stall, summons notification if the lister is away; withdraw recovers escrow; the flood drowns the board. Engine: trade_at_market/go_to_market with the board summoning its listers; structured market decider (list/fill/collect/withdraw/leave) through the deliberative tier; 9 unit tests. First live listing posted by MiniMax: six kind-15 asking six kind-9
+- [x] Emergent-behaviour finds while staging the barter triangle: told only to "acquire kind 15", an agent chose COMBAT and looted the holder (Rule 9.3c working as designed — robbery beat trade); recorded in RESULTS
+
 - [x] **Negotiation lands** (execution-spec §7): mutual offer_trade opens a bounded turn sequence — propose/counter/accept/walk_away, six turns then death (7.2), acceptance BINDING with both purses verified at the instant (7.3), an empty purse killing rather than half-executing; state on a negotiations vertex, every turn an LLM decision through the ordinary queue (deliberative tier, JSON offer), non-strategic fallback proposes-then-walks. Live within minutes: three negotiations opened organically, first completed one a genuine walk-away refusal
 
 - [ ] A2A endpoints **per worker**, agent identity in the envelope (`system-spec.md` Rule 8.5)

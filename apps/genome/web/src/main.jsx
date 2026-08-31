@@ -211,6 +211,21 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
         <div className="px-3 py-1.5 opacity-70">to {hit.data.to_world}</div>
         <Item onClick={() => onTravel(hit.data.to_world)}>View that world</Item>
       </>}
+      {hit.type === "market" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          marketplace — {hit.data.listings.length} open listing
+          {hit.data.listings.length === 1 ? "" : "s"}</div>
+        {hit.data.listings.slice(0, 6).map(l => (
+          <div key={l.key} className="px-3 py-1 text-xs">
+            gives {Object.entries(l.give).map(([k, u]) =>
+              `${u}× kind ${k}`).join(", ")}
+            <span className="opacity-60"> for </span>
+            {Object.entries(l.want).map(([k, u]) =>
+              `${u}× kind ${k}`).join(", ")}
+          </div>))}
+        {hit.data.listings.length === 0 &&
+          <div className="px-3 py-1.5 opacity-60">the board is bare</div>}
+      </>}
       {hit.type === "muster" && <>
         <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
           muster point {hit.data.idx + 1} of 5</div>

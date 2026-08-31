@@ -225,6 +225,8 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
             vertex_id=int(v.id), space="default",
             payload={**s, "destroyed": True, "complete": False,
                      "delivered": {}, "contributors": {}})
+    from . import market as _market
+    await _market.flood_wipe(client, realm)   # Rule 4.23: the board drowns
     scale = meta.get("time_scale", 1.0)
     carried = dict((ark or {}).get("stock_manifest", {})) \
         if ark and saved else {}

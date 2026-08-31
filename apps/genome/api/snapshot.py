@@ -48,6 +48,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
     import time as _time
     from genome_core import construction as _con
     from genome_core import flood as _flood
+    from genome_core import market as _mkt
     from genome_core.worldgen import A100
     def _branch_colour(s):
         fam = _con.FAMILIES.get(s.get("branch"), [])
@@ -75,6 +76,11 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "portals": meta.get("portals", []),
             "stock": meta.get("stock", {}),
             "muster_points": meta.get("muster_points", []),
+            "market": meta.get("market"),
+            "market_open": [{"key": l["key"], "give": l["give"],
+                             "want": l["want"]}
+                            for l in await _mkt.board(client, world_realm)
+                            if l.get("status") == "open"],
             "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "flood_countdown": _flood.countdown_visible(meta, _time.time()),

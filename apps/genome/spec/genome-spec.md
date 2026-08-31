@@ -204,6 +204,42 @@ birth world**, and nowhere else. Cargo in transit counts toward nothing.
 > single case where undeposited resources do work, and it is what makes breeding
 > strategically distinct from materialising.
 
+### 4.5 The marketplace
+
+**Rule 4.20** — Every world carries **one marketplace**: a fixture placed at
+generation like piles and portals, and at the centre of the commons. An agent
+**at the market** may post a **listing** — a bid/ask pair: *I give G, I want
+W* — with the offered goods **escrowed from its hold at that moment**. No
+listing without the goods in hand.
+
+**Rule 4.21** — Listings are **public within the world**: every agent's
+deliberation sees the open board. Acting on it — posting, filling,
+collecting, withdrawing — requires **standing at the market** (Rule 1.2a's
+proximity, as everywhere).
+
+**Rule 4.22** — **Filling is binding, atomic, and hand-to-hand** (user
+directive 2026-09-01): the exchange completes only when BOTH parties stand
+at the stall together — the filler pays W into the lister's hands and takes
+G in the same act. A fill attempted while the lister is elsewhere waits; the
+board summons, presence completes. Trades therefore LOOK like trades: a
+huddle at the stall.
+
+**Rule 4.23** — A lister may **withdraw** an unfilled listing in person and
+recover its escrow. **The flood takes the board**: open escrow and
+uncollected proceeds are destroyed with everything else (Rule 4.4) — leaving
+value at the market through a countdown is a choice with consequences.
+
+> The board exists to break the double coincidence of wants. Two agents can
+> already bargain face to face (execution-spec §7); what they cannot do is
+> trade when A wants what only C has while C wants what only B has. A public
+> escrowed board makes the wants VISIBLE and the fills ASYNCHRONOUS, so a
+> middleman holding what B wants can fill B's listing, carry the proceeds,
+> and fill C's — a three-party clearing no pair could reach. Nothing in the
+> mechanism plans that chain: the board is furniture, and if triangles
+> emerge they emerge from play (Rule 12.5 respected). Escrow-in-person,
+> collect-in-person keeps the market a PLACE — footfall, meetings, contagion
+> — rather than an order-matching abstraction.
+
 **Rule 4.3b(commons)** — The **commons has no muster points and builds
 nothing from the Ark tree**. The one thing an agent may raise there is a
 **cache**: cost **four different kinds, one unit each**, paid from the hold
