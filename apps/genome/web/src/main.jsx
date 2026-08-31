@@ -257,6 +257,11 @@ function App() {
         </>}
         {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
+        {me?.authenticated && me.verified === false &&
+          <span className="text-xs px-2 py-0.5 rounded bg-amber-900
+                           text-amber-200"
+                title="A verification link was sent to your address">
+            unverified</span>}
         {me?.authenticated &&
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
