@@ -145,7 +145,13 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
     for v in await construction.sites_in(client, realm):
         s = v.payload
         if s["name"] == "ark":
-            if s.get("complete") and saved:
+            if s.get("spent"):
+                # last cycle's wreck: this flood washes it away entirely
+                # (user directive; consistent with 4.4b's decaying hull)
+                await client.upsert_vertex(construction.TABLE, realm=realm,
+                    vertex_id=int(v.id), space="default",
+                    payload={**s, "destroyed": True})
+            elif s.get("complete") and saved:
                 # a voyage with passengers spends the hull (Rule 4.4b)
                 await client.upsert_vertex(construction.TABLE, realm=realm,
                     vertex_id=int(v.id), space="default",

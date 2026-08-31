@@ -10,9 +10,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# calibration-spec.md Rule 1.2 (revised): ~one hour to cross a world at
-# base pace -- the six-hour original made movement imperceptible even scaled
-CROSSING_SECONDS = 3600.0
+# calibration-spec.md Rule 1.2 (revised twice): ~six MINUTES to cross a
+# world at base pace. Six hours was imperceptible, one hour still crawled
+# (user: "extremely slow... at least 10x"); at 360s a journey is something
+# you watch happen, not something you check back on.
+CROSSING_SECONDS = 360.0
 SPEED = 1.0 / CROSSING_SECONDS  # map units per second
 
 
