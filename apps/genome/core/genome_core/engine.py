@@ -120,9 +120,16 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         other = payload["other"]
         # Rule 6.6/3.4: the other agent's COLOUR is visible, nothing else; the
         # agent's own OPINION of that uuid (if any) rides in the payload.
+        # Rule 3.7a/b: a held berth may change hands at any co-location,
+        # countdown included -- the option appears only for a holder while
+        # the water is coming
+        enc_options = ["offer_trade", "propose_breeding", "attack", "ignore"]
+        if (ctx or {}).get("has_berth") and \
+                (ctx or {}).get("flood_in_s") is not None:
+            enc_options.insert(0, "offer_berth")
         return DecisionRequest(
             agent_uuid=agent.agent_uuid, situation="encounter",
-            options=("offer_trade", "propose_breeding", "attack", "ignore"),
+            options=tuple(enc_options),
             context={"cargo_total": agent.cargo_total(),
                      "other_uuid": other["agent_uuid"],
                      "other_colours": other.get("colour_pair"),
@@ -542,7 +549,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                  {"answer": choice.option,
                                   "proposer": payload.get("proposer", {})}))
 
-    if choice.option in ("offer_trade", "propose_breeding", "attack", "ignore"):
+    if choice.option in ("offer_trade", "propose_breeding", "attack",
+                         "ignore", "offer_berth"):
         # resolution is pairwise and happens in the drain once BOTH have
         # answered; the engine only records intent
         return Effects(schedule=("encounter_answer", now, agent.agent_uuid,

@@ -15,6 +15,7 @@ from . import combat, construction, engine, forms, identity, notify, \
     opinion, pathogen
 from . import genotype as G
 from . import worldgen
+from . import flood as _flood_mod
 from .models import assign_models
 from .genotype import BUDGETED, expressed, lifespan_days
 from .store import GenomeStore
@@ -97,8 +98,7 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
                                                             world_realm)
              if not v.payload.get("destroyed")]
     effects = await construction.world_effects(store._c, world_realm)
-    from . import flood as _flood
-    flood_in = _flood.countdown_visible(world_payload, now)
+    flood_in = _flood_mod.countdown_visible(world_payload, now)
     boardable = None
     if flood_in is not None:
         me = agent_payload.get("owner_user_id")
@@ -384,7 +384,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                 agent_payload, agent, pile_views, now)
                if pl["kind"] in ("arrival", "decide")
                else {"genotype": agent_payload.get("genotype") or {},
-                     "time_scale": world_payload.get("time_scale", 1.0)})
+                     "time_scale": world_payload.get("time_scale", 1.0),
+                     "has_berth": bool(agent_payload.get("berth")),
+                     "flood_in_s": _flood_mod.countdown_visible(
+                         world_payload, now)})
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):
@@ -590,6 +593,48 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
     other_view, _ = await load_agent(store, world_realm, other_uuid,
                                      world_realm, now)
     outcome = "pass"
+    if "offer_berth" in (a_ans, b_ans) and "attack" not in (a_ans, b_ans):
+        # Rule 3.7a/b: the holder gives, the co-located other receives --
+        # acceptance is not attacking the hand that offers
+        giver_uuid = me if a_ans == "offer_berth" else other_uuid
+        g_p = agent_payload if giver_uuid == me else other_payload
+        r_uuid = other_uuid if giver_uuid == me else me
+        r_p = other_payload if giver_uuid == me else agent_payload
+        ark_key = g_p.get("aboard_ark")
+        if g_p.get("berth") and ark_key and not r_p.get("berth"):
+            srows = await store._c.find_vertices(
+                construction.TABLE, realm=world_realm,
+                filters={"key": ark_key}, limit=1)
+            if srows:
+                site = dict(srows[0].payload)
+                boarded = dict(site.get("boarded", {}))
+                donor = boarded.pop(giver_uuid, None) or \
+                    g_p.get("owner_user_id")
+                boarded[r_uuid] = donor
+                await store._c.upsert_vertex(
+                    construction.TABLE, realm=world_realm,
+                    vertex_id=int(srows[0].id), space="default",
+                    payload={**site, "boarded": boarded})
+                for uuid_, payload_, gains in ((giver_uuid, g_p, False),
+                                               (r_uuid, r_p, True)):
+                    np = dict(payload_)
+                    if gains:
+                        np["aboard_ark"] = ark_key
+                        np["berth"] = True
+                    else:
+                        np.pop("aboard_ark", None)
+                        np.pop("berth", None)
+                    await store.put_agent(uuid_, np)
+                for uid in filter(None, {g_p.get("owner_user_id"),
+                                         r_p.get("owner_user_id")}):
+                    notify.emit_bg(store._c, uid, "agents", "berth_event",
+                                   "A berth changed hands at the hull: one "
+                                   "agent's place in the lifeboat is now "
+                                   "another's.")
+                outcome = "berth_given"
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        if outcome == "berth_given":
+            return outcome
     if "attack" in (a_ans, b_ans):
         att_uuid = me if a_ans == "attack" else other_uuid
         att_v, att_p = (agent, agent_payload) if att_uuid == me \

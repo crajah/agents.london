@@ -214,6 +214,55 @@ async def contribute(client: Any, realm: str, site_key: str,
     return {"taken": take, "complete": complete}
 
 
+def manifest_slots_used(ark: dict, sites: list[dict]) -> int:
+    """Rule 4.3b: twelve slots, everything priced against them -- an agent 1,
+    a construction its contributor count, stock 1 per unit (stock later)."""
+    used = len(ark.get("boarded", {}))
+    used += sum(int(n) for n in ark.get("berths", {}).values())   # reserved
+    used += sum(s.get("required_users", 1) for s in sites
+                if s.get("manifested"))
+    return used
+
+
+async def manifest_construction(client: Any, realm: str, ark_key: str,
+                                user_id: str, site_key: str) -> dict:
+    """A berth-holding user gives up hold space for a building: the
+    construction costs its contributor count in slots, paid by retiring
+    that many of the user's unassigned berths (Rule 4.3b's exchange rate
+    made literal -- your people or your works)."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": ark_key}, limit=1)
+    if not rows or not rows[0].payload.get("complete") \
+            or rows[0].payload.get("spent"):
+        return {"error": "no ark to load here"}
+    ark = dict(rows[0].payload)
+    srows = await client.find_vertices(TABLE, realm=realm,
+                                       filters={"key": site_key}, limit=1)
+    if not srows or not srows[0].payload.get("complete") \
+            or srows[0].payload.get("destroyed"):
+        return {"error": "no completed construction by that name here"}
+    site = dict(srows[0].payload)
+    if site.get("manifested"):
+        return {"error": "already aboard"}
+    if site["name"] == "ark":
+        return {"error": "the ark does not carry itself"}
+    price = site.get("required_users", 1)
+    pool = dict(ark.get("berths", {}))
+    if pool.get(user_id, 0) < price:
+        return {"error": f"carrying the {site['name']} costs {price} "
+                f"berths; your claim holds {pool.get(user_id, 0)}"}
+    pool[user_id] -= price
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**ark, "berths": pool})
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(srows[0].id),
+                               space="default",
+                               payload={**site, "manifested": True,
+                                        "manifested_by": user_id})
+    return {"ok": True, "slots_paid": price,
+            "berths_left": pool[user_id]}
+
+
 async def board(client: Any, realm: str, ark_key: str, user_id: str,
                 agent_uuid: str) -> dict:
     """An agent AT the Ark claims one of its owner's berths and steps aboard

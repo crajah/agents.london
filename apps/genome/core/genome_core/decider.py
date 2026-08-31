@@ -44,6 +44,8 @@ OPTION_TEXT = {
     "propose_breeding": "Propose to breed with this agent (costs resources; "
                         "compatibility is discovered only if it agrees).",
     "ignore": "Pass by without engaging.",
+    "offer_berth": "Give this agent your Ark berth -- your place in the "
+                   "lifeboat becomes theirs.",
     "accept_mate": "Accept: breed with this agent (spends pooled resources; "
                    "two offspring, one raised as yours).",
     "decline_mate": "Decline the proposal.",

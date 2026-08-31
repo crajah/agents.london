@@ -273,6 +273,71 @@ async def found_site(realm: str, payload: dict,
                                          x, y, meta.get("kinds", []))
 
 
+@app.post("/worlds/{realm}/ark/manifest", tags=["World"])
+async def ark_manifest(realm: str, payload: dict,
+                       request: __import__("fastapi").Request):
+    """Rule 4.3b: spend unassigned berths to carry a construction through
+    the flood. Your people or your works."""
+    from fastapi.responses import JSONResponse
+    from genome_core import construction
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    return await construction.manifest_construction(
+        app.state.pg, realm, payload.get("ark", ""), uid,
+        payload.get("site", ""))
+
+
+@app.get("/agents/{agent_uuid}/chat", tags=["Agent"])
+async def agent_chat_history(agent_uuid: str, limit: int = 30):
+    try:
+        rows = await app.state.pg.get_vertices("chats", realm="genome_agents")
+    except Exception:
+        rows = []
+    msgs = sorted((v.payload for v in rows
+                   if v.payload.get("agent_uuid") == agent_uuid),
+                  key=lambda m: m.get("at", 0))
+    return msgs[-limit:]
+
+
+@app.post("/agents/{agent_uuid}/chat", tags=["Agent"])
+async def agent_chat(agent_uuid: str, payload: dict,
+                     request: __import__("fastapi").Request):
+    """Owner instruction (genome-spec 13.5 / 10.1a): what you tell your agent
+    becomes its TOP-RANKED objective -- marked owner-sourced, outranking the
+    standing floor, obeyed to the agent's Amenability. Non-owners may not
+    instruct (assertions arrive with Phase 7 proper)."""
+    from fastapi.responses import JSONResponse
+    import time as _t, uuid as _u
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": agent_uuid},
+                                            limit=1)
+    if not rows:
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    apl = rows[0].payload
+    if apl.get("owner_user_id") != uid:
+        return JSONResponse({"error": "only the owner instructs; talking to "
+                             "strangers' agents arrives with Phase 7"},
+                            status_code=403)
+    objectives = [text] + [o for o in apl.get("objectives", [])
+                           if o != text]
+    await app.state.pg.upsert_vertex("agents", realm="genome_agents",
+                                     vertex_id=int(rows[0].id),
+                                     space=agent_uuid,
+                                     payload={**apl,
+                                              "objectives": objectives[:3]})
+    await app.state.pg.add_vertex("chats", realm="genome_agents", payload={
+        "key": f"chat-{_u.uuid4().hex[:12]}", "agent_uuid": agent_uuid,
+        "from": uid, "kind": "instruction", "text": text, "at": _t.time()})
+    return {"ok": True, "objectives": objectives[:3]}
+
+
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
     uid = auth_mod.verify_cookie(
