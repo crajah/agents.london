@@ -65,5 +65,20 @@ def parse_choice(text: str, valid: list[str]) -> str | None:
                 return k
     except Exception:
         pass
+    # reasoning models deliberate before the verdict and may NAME options
+    # while weighing them ("waiting has no purpose... mine_here"): the last
+    # line is the answer, and failing that the LAST-mentioned option wins
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    if lines:
+        last = lines[-1]
+        exact = [k for k in valid if last == k.lower()]
+        if exact:
+            return exact[0]
+        inlast = [k for k in valid if k.lower() in last]
+        if len(inlast) == 1:
+            return inlast[0]
     hits = [k for k in valid if k.lower() in t]
+    # a single unambiguous mention anywhere still counts; several mentions
+    # with no clear last-line verdict stay None ("mine_here, not wait" must
+    # never read as wait) and the caller's non-strategic fallback applies
     return hits[0] if len(hits) == 1 else None
