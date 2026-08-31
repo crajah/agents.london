@@ -156,6 +156,17 @@ async def enqueue_decision(store: GenomeStore, world_realm: str,
     """system-spec Rule 8.4: the world queue never blocks on inference. The
     request carries everything the decision worker needs to decide AND apply."""
     import uuid as _u
+    # One pending question per (agent, situation): at demo time-scales the
+    # tick loop laps the decider and would otherwise queue the same situation
+    # repeatedly -- observed live, 167 deep with fourfold duplicates, every
+    # one an LLM call. The situation string is exact, so a genuinely new
+    # context still queues.
+    pending = await store._c.find_vertices(
+        DECISION_QUEUE, realm="genome_agents",
+        filters={"agent_uuid": req.agent_uuid,
+                 "situation": req.situation}, limit=20)
+    if any(v.payload.get("done_at") is None for v in pending):
+        return
     await store._c.add_vertex(DECISION_QUEUE, realm="genome_agents",
         payload={"key": f"dq-{_u.uuid4().hex[:12]}",
                  "world_realm": world_realm,
