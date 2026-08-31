@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import random
 
-# Screened pools. flash-lite passed the full validation programme
-# (validation/RESULTS.md); candidates join by passing the screen, never by
-# being available.
+# Pools revised 2026-09-01 (user decision): Gemini out, the unbudgeted
+# self-hosted trio in -- MiniMax-M2.7, DeepSeek-V3.2 and Llama-3.3-70B all
+# answer the constrained decision call cleanly through the router (probed
+# live before admission; the formal Rule 10.6 screen re-run is still owed).
+# Three models in one pool restores what Rule 10.1 wants: per-agent
+# assignment with genuine variety.
 POOLS: dict[str, list[str]] = {
-    "economy": ["gemini-3.5-flash-lite"],
-    "deliberative": ["gemini-3.5-flash-lite"],   # placeholder until a
-    # deliberative candidate passes the screen (gemini-3.7-flash was
-    # rate-limited out of validation; re-run before admitting)
+    "economy": ["MiniMax-M2.7", "DeepSeek-V3.2",
+                "Meta-Llama-3.3-70B-Instruct"],
+    "deliberative": ["DeepSeek-V3.2"],
 }
+
+# flat-rate models: no per-token budget applies; reasoning may run long
+UNBUDGETED = {"MiniMax-M2.7", "DeepSeek-V3.2",
+              "Meta-Llama-3.3-70B-Instruct"}
 
 
 def assign_models(agent_uuid: str) -> dict[str, str]:
