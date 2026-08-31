@@ -206,7 +206,7 @@ async def contribute(client: Any, realm: str, site_key: str,
                                                 "completed_at": time.time(),
                                                 **extra})
         for uid in contributors:
-            await notify.emit(client, uid, "world", "construction_complete",
+            notify.emit_bg(client, uid, "world", "construction_complete",
                               f"The {site['name']} is complete. "
                               f"{len(contributors)} users raised it."
                               + (f" {extra['berths'].get(uid, 0)} berths fall "
@@ -283,3 +283,100 @@ async def world_effects(client: Any, realm: str) -> dict:
     done = await completed_names(client, realm)
     return {"stock_ceiling_bonus": 25.0 if "store" in done else 0.0,
             "mine_rate_mult": 1.5 if "toolhouse" in done else 1.0}
+
+
+# ---------------------------------------------------------------------------
+# Caches — the commons' ONLY construction (user directive 2026-08-31). The
+# commons has no muster points and no Ark tree; what an agent may raise there
+# is a cache: cost FOUR DIFFERENT kinds, one unit each, paid from the hold.
+# A cache wears its builder's parent-world colours, and no two caches may
+# stand next to each other. Agents of the same colours may stash into and
+# take from it — a larder in the market square.
+# ---------------------------------------------------------------------------
+
+CACHE_COST_KINDS = 4
+CACHE_SPACING = 0.06
+
+
+def cache_cost(cargo: dict[str, float]) -> dict[str, float] | None:
+    """Four different kinds, one unit each — or nothing."""
+    kinds = sorted(k for k, u in cargo.items() if u >= 1.0)
+    if len(kinds) < CACHE_COST_KINDS:
+        return None
+    return {k: 1.0 for k in kinds[:CACHE_COST_KINDS]}
+
+
+async def caches_in(client: Any, realm: str) -> list:
+    return [v for v in await sites_in(client, realm)
+            if v.payload.get("name") == "cache"
+            and not v.payload.get("destroyed")]
+
+
+def cache_spot_clear(caches: list, x: float, y: float) -> bool:
+    return all((c.payload["x"] - x) ** 2 + (c.payload["y"] - y) ** 2
+               >= CACHE_SPACING ** 2 for c in caches)
+
+
+def cache_spot_clear_payloads(caches: list[dict], x: float, y: float) -> bool:
+    return all((c["x"] - x) ** 2 + (c["y"] - y) ** 2
+               >= CACHE_SPACING ** 2 for c in caches)
+
+
+async def build_cache(client: Any, realm: str, agent_payload: dict,
+                      x: float, y: float,
+                      cargo: dict[str, float]) -> dict:
+    cost = cache_cost(cargo)
+    if cost is None:
+        return {"error": "a cache costs four different kinds, one unit each"}
+    caches = await caches_in(client, realm)
+    if not cache_spot_clear(caches, x, y):
+        return {"error": "too close to another cache"}
+    import uuid as _u
+    site = {"key": f"cache-{_u.uuid4().hex[:10]}",
+            "name": "cache", "branch": "commons", "tier": 1,
+            "x": x, "y": y, "needs": {}, "delivered": dict(cost),
+            "contributors": {}, "required_users": 1, "complete": True,
+            "colours": agent_payload.get("colour_pair"),
+            "home_realm": agent_payload.get("home_realm"),
+            "owner_user_id": agent_payload.get("owner_user_id"),
+            "holdings": {}, "founded_at": time.time()}
+    await client.add_vertex(TABLE, realm=realm, payload=site)
+    return {"ok": True, "cache": site["key"], "cost": cost}
+
+
+def cache_open_to(site: dict, agent_payload: dict) -> bool:
+    """A cache opens to agents wearing its colours — the parent world's
+    line, wherever its members were born since."""
+    return site.get("colours") == agent_payload.get("colour_pair")
+
+
+async def cache_exchange(client: Any, realm: str, cache_key: str,
+                         agent_payload: dict, put: dict[str, float],
+                         take_budget: float = 0.0) -> dict:
+    """Stash and/or withdraw. take_budget caps what leaves the cache — the
+    agent's free hold — so a full larder never overloads a small carrier."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": cache_key}, limit=1)
+    if not rows:
+        return {"error": "no such cache"}
+    site = dict(rows[0].payload)
+    if not cache_open_to(site, agent_payload):
+        return {"error": "not your colours"}
+    holdings = dict(site.get("holdings", {}))
+    took: dict[str, float] = {}
+    budget = take_budget
+    for kind in sorted(holdings, key=lambda k: -holdings[k]):
+        if budget <= 1e-9:
+            break
+        grab = min(holdings[kind], budget)
+        took[kind] = grab
+        budget -= grab
+        holdings[kind] -= grab
+        if holdings[kind] <= 1e-9:
+            del holdings[kind]
+    for kind, units in (put or {}).items():
+        holdings[kind] = holdings.get(kind, 0.0) + units
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**site, "holdings": holdings})
+    return {"ok": True, "took": took, "holdings": holdings}

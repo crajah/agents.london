@@ -217,7 +217,25 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
         <div className="px-3 py-1.5 opacity-70">
           agents deliver their load at the nearest flag</div>
       </>}
-      {hit.type === "construction" && <>
+      {hit.type === "construction" && hit.data.name === "cache" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          cache
+          <span className="ml-2">
+            {(hit.data.colours ?? []).map(c =>
+              <span key={c} className="inline-block w-3 h-3 rounded-full mr-1"
+                    style={{ background: c }} />)}
+          </span>
+        </div>
+        <div className="px-3 py-1.5 opacity-80">
+          {Object.entries(hit.data.holdings ?? {}).length === 0
+            ? "empty"
+            : Object.entries(hit.data.holdings).map(([k, u]) =>
+                `kind ${k}: ${u.toFixed(1)}`).join(", ")}
+        </div>
+        <div className="px-3 py-1.5 opacity-50">
+          opens only to its line's colours</div>
+      </>}
+      {hit.type === "construction" && hit.data.name !== "cache" && <>
         <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
           {hit.data.kind === "ark" ? "the Ark" :
             `${hit.data.name ?? "construction"} · tier ${hit.data.tier ?? 1}`}

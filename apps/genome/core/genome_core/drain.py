@@ -46,7 +46,7 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
         cargo = pl.get("cargo", {})
         if "waypoints" in pl:
             r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
-                            pl["departed_at"])
+                            pl["departed_at"], pl.get("arrives_at"))
             x, y = forms.route_position(r, now)
     if payload.get("infections"):
         settled, events = pathogen.settle(payload, now)
@@ -55,7 +55,7 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
             payload = settled
             if payload.get("owner_user_id"):
                 for e in events:
-                    await notify.emit(store._c, payload["owner_user_id"],
+                    notify.emit_bg(store._c, payload["owner_user_id"],
                                       "agents", "recovery",
                                       f"{payload.get('name', agent_uuid)} "
                                       f"{e}; an antigen is retained.")
@@ -80,7 +80,7 @@ async def _positions_of_others(store: GenomeStore, world_realm: str,
             continue
         pl = mv.payload
         r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
-                        pl["departed_at"])
+                        pl["departed_at"], pl.get("arrives_at"))
         out.append(forms.route_position(r, now))
     return out
 
@@ -111,7 +111,48 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
             "muster": world_payload.get("muster_points", []),
             "sites": sites, "flood_in_s": flood_in,
-            "boardable_ark": boardable, **effects}
+            "boardable_ark": boardable,
+            "is_commons": bool(world_payload.get("is_commons")),
+            "colour_pair": agent_payload.get("colour_pair"),
+            "caches": [s for s in sites if s.get("name") == "cache"],
+            **effects}
+
+
+async def apply_cache_op(store: GenomeStore, world_realm: str,
+                         agent: engine.AgentView, agent_payload: dict,
+                         eff: engine.Effects, now: float) -> None:
+    """Commons larders: build (four kinds, a unit each, from the hold),
+    stash (everything aboard), collect (up to the free hold)."""
+    op, key = eff.cache_op
+    cargo = dict(agent.cargo)
+    if op == "build":
+        res = await construction.build_cache(store._c, world_realm,
+                                             agent_payload, agent.x, agent.y,
+                                             cargo)
+        for kind, units in (res.get("cost") or {}).items():
+            cargo[kind] = cargo.get(kind, 0.0) - units
+            if cargo[kind] <= 1e-9:
+                del cargo[kind]
+        if not res.get("ok"):
+            return
+    elif op == "stash":
+        res = await construction.cache_exchange(store._c, world_realm, key,
+                                                agent_payload, cargo, 0.0)
+        if not res.get("ok"):
+            return
+        cargo = {}
+    else:
+        room = engine.CARGO_CEILING - sum(cargo.values())
+        res = await construction.cache_exchange(store._c, world_realm, key,
+                                                agent_payload, {}, room)
+        if not res.get("ok"):
+            return
+        for kind, units in res.get("took", {}).items():
+            cargo[kind] = cargo.get(kind, 0.0) + units
+    await store.set_movement(agent.agent_uuid,
+                             {"waypoints": [[agent.x, agent.y]],
+                              "departed_at": now, "arrives_at": now,
+                              "cargo": cargo})
 
 
 async def apply_contribution(store: GenomeStore, world_realm: str,
@@ -247,6 +288,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.contribute:
         await apply_contribution(store, world_realm, agent, agent_payload,
                                  eff, now)
+    if eff.cache_op:
+        await apply_cache_op(store, world_realm, agent, agent_payload,
+                             eff, now)
     if eff.board:
         await construction.board(store._c, world_realm, eff.board,
                                  agent_payload.get("owner_user_id", ""),
@@ -282,9 +326,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     world_payload = await _world_payload(store, world_realm)
     terrain = world_payload.get("terrain", [])
     portals = world_payload.get("portals", [])
-    if world_payload.get("is_commons"):
-        # Rule 6.2g: the commons shows each agent ONE portal -- back the way it
-        # came. A market square, never a transit hub.
+    if world_payload.get("is_commons") and not portals:
+        # 6.2g revised (user directive): links are two-way and the commons
+        # lists real outbound doors. This synthesized return survives only
+        # as a fallback for an agent whose entry world has no door yet.
         entry = agent_payload.get("commons_entry_from")
         portals = ([{"x": 0.5, "y": 0.08, "to_world": entry,
                      "dest_xy": agent_payload.get("commons_entry_xy") or [0.5, 0.5],
@@ -344,7 +389,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
             if decider is None:                     # queue mode (Rule 8.4)
                 merged_q = dict(pl.get("payload", {}))
                 for k in ("portal_to", "portal_xy", "proposer", "other",
-                          "site_here"):
+                          "site_here", "cache_here", "ark_key"):
                     if res.context.get(k):
                         merged_q[k] = res.context[k]
                 await enqueue_decision(store, world_realm, res,
@@ -360,7 +405,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 "options": list(res.options), "choice": choice.option,
                 "model": model, "tier": "economy" if model != "stub" else "stub"})
             merged = dict(pl.get("payload", {}))
-            for k in ("portal_to", "portal_xy", "site_here"):
+            for k in ("portal_to", "portal_xy", "site_here", "cache_here",
+                      "ark_key"):
                 if res.context.get(k):
                     merged[k] = res.context[k]
             eff = engine.apply_choice(choice, agent, pile_views, now,
@@ -375,6 +421,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.contribute:
         await apply_contribution(store, world_realm, agent, agent_payload,
                                  eff, now)
+    if eff.cache_op:
+        await apply_cache_op(store, world_realm, agent, agent_payload,
+                             eff, now)
     if eff.board:
         await construction.board(store._c, world_realm, eff.board,
                                  agent_payload.get("owner_user_id", ""),
@@ -470,7 +519,7 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
                 {**r_meta, "strains": existing + [strain]})
             agent_payload = pathogen.infect(agent_payload, strain, now)
             if agent_payload.get("owner_user_id"):
-                await notify.emit(store._c, agent_payload["owner_user_id"],
+                notify.emit_bg(store._c, agent_payload["owner_user_id"],
                                   "agents", "infection",
                                   f"{agent_payload.get('name')} caught "
                                   f"{strain['strain_uuid']} at the {end} portal.")
@@ -491,11 +540,11 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
                                "commons_entry_xy": entry_xy})
     dest_owner = dest_meta.get("owner_user_id")
     if dest_owner:
-        await notify.emit(store._c, dest_owner, "world", "arrival",
+        notify.emit_bg(store._c, dest_owner, "world", "arrival",
                           f"{agent_payload.get('name', agent.agent_uuid)} "
                           f"arrived in your world from {origin_realm}.")
     if agent_payload.get("owner_user_id"):
-        await notify.emit(store._c, agent_payload["owner_user_id"], "agents",
+        notify.emit_bg(store._c, agent_payload["owner_user_id"], "agents",
                           "teleport",
                           f"{agent_payload.get('name')} crossed to {to_world}.")
     return True
@@ -595,7 +644,7 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
             if pl_side.get("owner_user_id"):
                 won = pl_side.get("name") and res["winner"] in (
                     att_v.agent_uuid, dfd_v.agent_uuid)
-                await notify.emit(store._c, pl_side["owner_user_id"], "agents",
+                notify.emit_bg(store._c, pl_side["owner_user_id"], "agents",
                                   "combat",
                                   f"{pl_side.get('name')} fought "
                                   f"{other_name}; winner: {res['winner']}.")
@@ -713,7 +762,7 @@ async def consummate(store: GenomeStore, world_realm: str,
         born.append((child_uuid, name, home))
         for side in (parent_pl, mate_pl):
             if side.get("owner_user_id"):
-                await notify.emit(store._c, side["owner_user_id"], "agents",
+                notify.emit_bg(store._c, side["owner_user_id"], "agents",
                                   "birth",
                                   f"{name} was born to "
                                   f"{parent_pl.get('name')} and "
@@ -796,7 +845,7 @@ async def regenerate(store: GenomeStore, event_realm: str,
         "choice": f"regenerated({cause})", "model": "arithmetic",
         "tier": "computed"})
     if agent_payload.get("owner_user_id"):
-        await notify.emit(store._c, agent_payload["owner_user_id"], "agents",
+        notify.emit_bg(store._c, agent_payload["owner_user_id"], "agents",
                           "agent_perished",
                           f"{agent_payload.get('name', a)} perished "
                           f"({cause}) and woke at home, its earned life lost.")

@@ -315,6 +315,11 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] First effects live (calibration §5): Store lifts the stock ceiling, Toolhouse the collection rate
 - [x] Berth claims proportional to contribution (3.7) — 12 slots, largest remainder, minted at Ark completion; unassigned per user (3.7e); boarding at the Ark consumes one (4.10a); death returns it to the pool (3.7g)
 - [x] Flood clock per world (4.7–4.9): undisclosed 15–30 day draw (÷ time_scale), 2-day countdown visible in snapshot + banner + notification; execution drowns everyone unboarded (visitors included), resets piles/stock/constructions, keeps the partial hull (4.4a), spends a voyaging Ark (4.4b), redraws the clock. Live-proven in genome_demo3: 1 drowned+regenerated bare, 1 survived aboard, Ark spent
+- [x] Movement overhaul (user directive): base crossing 6h → 1h (calibration 1.2 revised); Speed pool (Agility+Dexterity) paces each journey 0.7×–1.3×; client AND server interpolate from each record's own (departed_at, arrives_at) span — the latent renders-at-base-speed bug is gone; Rule 1.2a: nothing touches, proximity suffices for every act
+- [x] Proximity enforced at APPLY time for contribute/board (a stale queued decision walks back instead of acting at range); Ark salvation requires the body at the hull when the water arrives (4.10) — a wandering berth-holder drowns
+- [x] Two-way teleport links (6.2g revised): the commons lists an outbound rim door for every linked world; backfilled — 10 doors live
+- [x] Commons caches (user directive): four different kinds × 1 unit builds a colour-gated larder; no adjacency; stash/collect budgeted by free hold; commons has no muster points and founds nothing from the tree
+- [x] Notifications made truly async (emit_bg): the simulation never awaits its own postman
 - [ ] Berth exchange between co-located agents (3.7a/b); unclaimed-berth scramble at the water (3.7f); manifest slots for constructions and stock (4.3b); multi-world voyage (4.3c)
 - [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
 - [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)

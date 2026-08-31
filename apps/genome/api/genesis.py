@@ -202,18 +202,44 @@ async def ensure_commons(client: Any) -> str:
     return COMMONS
 
 
+def commons_rim_xy(realm: str) -> list[float]:
+    """A deterministic spot on the commons rim for a world's door — hashed
+    from the realm name so every reseed agrees."""
+    import hashlib as _h
+    a = int(_h.sha256(realm.encode()).hexdigest()[:8], 16) / 0xffffffff
+    ang = a * 2 * 3.141592653589793
+    import math as _m
+    return [round(0.5 + 0.40 * _m.cos(ang), 4),
+            round(0.5 + 0.40 * _m.sin(ang), 4)]
+
+
 async def link_to_commons(client: Any, realm: str) -> bool:
-    """Slot 0 is the commons door (Rule 6.2f). One-sided by design: the
-    commons never lists outbound portals (6.2g handles the return)."""
+    """Slot 0 is the commons door (Rule 6.2f). TWO-WAY (user directive
+    2026-08-31, revising 6.2g): the commons lists an outbound door for every
+    linked world, placed on its rim."""
     store = GenomeStore(client)
     await ensure_commons(client)
     meta = await drain._world_payload(store, realm)
-    if any(p.get("to_world") == COMMONS for p in meta.get("portals", [])):
-        return False
-    slots = meta.get("portal_slots") or [{"x": 0.15, "y": 0.15}]
-    s0 = slots[0]
-    portal = {"x": s0["x"], "y": s0["y"], "to_world": COMMONS,
-              "dest_xy": [0.5, 0.5], "dest_colours": COMMONS_COLOURS}
-    await store.put_world(realm, {**meta,
-                                  "portals": meta.get("portals", []) + [portal]})
-    return True
+    changed = False
+    if not any(p.get("to_world") == COMMONS
+               for p in meta.get("portals", [])):
+        slots = meta.get("portal_slots") or [{"x": 0.15, "y": 0.15}]
+        s0 = slots[0]
+        portal = {"x": s0["x"], "y": s0["y"], "to_world": COMMONS,
+                  "dest_xy": commons_rim_xy(realm),
+                  "dest_colours": COMMONS_COLOURS}
+        await store.put_world(realm, {**meta, "portals":
+                                      meta.get("portals", []) + [portal]})
+        changed = True
+    cmeta = await drain._world_payload(store, COMMONS)
+    if not any(p.get("to_world") == realm
+               for p in cmeta.get("portals", [])):
+        rim = commons_rim_xy(realm)
+        back = {"x": rim[0], "y": rim[1], "to_world": realm,
+                "dest_xy": [meta.get("portal_slots", [{"x": .15, "y": .15}])[0]["x"],
+                            meta.get("portal_slots", [{"x": .15, "y": .15}])[0]["y"]],
+                "dest_colours": meta.get("colours")}
+        await store.put_world(COMMONS, {**cmeta, "portals":
+                                        cmeta.get("portals", []) + [back]})
+        changed = True
+    return changed

@@ -28,6 +28,10 @@ OPTION_TEXT = {
     "travel_to_pile": "Travel to another pile you know of.",
     "go_home_deposit": "Return home and deposit your cargo.",
     "contribute_here": "Pour your cargo into the construction site here.",
+    "build_cache": "Build a cache here (costs four different kinds, one "
+                   "unit each) -- a larder only your colours can open.",
+    "stash_cache": "Stash everything you carry into your line's cache.",
+    "collect_cache": "Take what fits from your line's cache.",
     "board_ark": "Board the Ark and claim a berth -- the only shelter from "
                  "the coming flood.",
     "flee_to_ark": "Run for the Ark before the water arrives.",

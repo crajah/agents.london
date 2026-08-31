@@ -204,6 +204,20 @@ birth world**, and nowhere else. Cargo in transit counts toward nothing.
 > single case where undeposited resources do work, and it is what makes breeding
 > strategically distinct from materialising.
 
+**Rule 4.3b(commons)** — The **commons has no muster points and builds
+nothing from the Ark tree**. The one thing an agent may raise there is a
+**cache**: cost **four different kinds, one unit each**, paid from the hold
+on the spot. A cache wears its builder's parent-world **colour pair** and
+opens only to agents wearing the same colours — stash what you carry,
+collect up to your free hold. **No two caches may stand adjacent** (a
+minimum spacing applies). Caches make the market square a depot: a line can
+pre-position goods for its traders without the host ceiling ever applying.
+
+**Rule 6.2g (revised 2026-08-31)** — **All teleport links are two-way.** The
+commons lists a visible outbound door for every linked world, placed on its
+rim; the per-agent "back the way it came" synthesis survives only as a
+fallback for an agent whose entry world has no door yet.
+
 **Rule 4.3a** — Deposits happen at **muster points**: exactly **five per
 world**, placed at generation like piles and portal slots — spaced, clear of
 terrain, reachable — and fixed for the world's life. An agent choosing to

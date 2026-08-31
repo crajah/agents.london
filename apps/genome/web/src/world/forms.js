@@ -1,23 +1,31 @@
 // Client-side closed forms — MUST match genome_core/forms.py exactly
 // (interface-spec Rule 6.13: same forms both sides; the arrival event is
 // authoritative and any divergence is a bug in one of them).
-export const CROSSING_SECONDS = 6 * 3600;
+export const CROSSING_SECONDS = 3600;
 export const SPEED = 1 / CROSSING_SECONDS;
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-export function legTimes(waypoints, departedAt) {
+// When arrivesAt is given (every stored movement record carries it), leg
+// times are normalised to span (departedAt, arrivesAt) — the record's own
+// pace, whether compressed by time_scale or hastened by the Speed pool.
+export function legTimes(waypoints, departedAt, arrivesAt) {
   let t = departedAt;
   const out = [t];
   for (let k = 0; k < waypoints.length - 1; k++) {
     t += dist(waypoints[k], waypoints[k + 1]) / SPEED;
     out.push(t);
   }
+  const base = out[out.length - 1] - out[0];
+  if (arrivesAt != null && base > 0) {
+    const span = arrivesAt - departedAt;
+    return out.map(x => departedAt + (x - departedAt) * span / base);
+  }
   return out;
 }
 
-export function routePosition(waypoints, departedAt, now) {
-  const times = legTimes(waypoints, departedAt);
+export function routePosition(waypoints, departedAt, now, arrivesAt) {
+  const times = legTimes(waypoints, departedAt, arrivesAt);
   if (now <= times[0]) return waypoints[0];
   if (now >= times[times.length - 1]) return waypoints[waypoints.length - 1];
   for (let k = 0; k < times.length - 1; k++) {
@@ -31,11 +39,11 @@ export function routePosition(waypoints, departedAt, now) {
   return waypoints[waypoints.length - 1];
 }
 
-export function routeHeading(waypoints, departedAt, now) {
+export function routeHeading(waypoints, departedAt, now, arrivesAt) {
   // cargo updates write single-point movement records: position without a
   // journey. No second point, no heading -- face east rather than crash.
   if (!waypoints || waypoints.length < 2) return 0;
-  const times = legTimes(waypoints, departedAt);
+  const times = legTimes(waypoints, departedAt, arrivesAt);
   for (let k = 0; k < times.length - 1; k++) {
     if (now <= times[k + 1]) {
       const [ax, ay] = waypoints[k];
