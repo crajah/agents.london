@@ -178,6 +178,20 @@ async def notifications_read(payload: dict,
                                            payload.get("keys", []))}
 
 
+@app.get("/me/prefs", tags=["Social"])
+async def get_prefs(request: __import__("fastapi").Request):
+    from genome_core.notify import DEFAULT_PREFS
+    uid = _uid(request)
+    if not uid:
+        return {"prefs": DEFAULT_PREFS}
+    rows = await app.state.pg.find_vertices(
+        "agents", realm="genome_agents",
+        filters={"key": f"user:{uid}"}, limit=1)
+    prefs = (rows[0].payload.get("notification_prefs")
+             if rows else None) or DEFAULT_PREFS
+    return {"prefs": {**DEFAULT_PREFS, **prefs}}
+
+
 @app.put("/me/prefs", tags=["Social"])
 async def set_prefs(payload: dict, request: __import__("fastapi").Request):
     uid = _uid(request)
