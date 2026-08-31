@@ -119,7 +119,7 @@ jobs:
             BUILD_ARGS="--build-arg VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }} --build-arg VITE_MS_CLIENT_ID=${{ secrets.VITE_MS_CLIENT_ID }}"
           fi
           if [ "${IMAGE_NAME}" = "genome-web" ]; then
-            BUILD_ARGS="--build-arg VITE_GENOME_API=https://genome.agents.london/api"
+            BUILD_ARGS="--build-arg VITE_GENOME_API=/genome-api"
           fi
 
           docker buildx build \

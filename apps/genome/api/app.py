@@ -67,10 +67,30 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="genome api", lifespan=lifespan)
 
+# Behind the GCE ingress the API lives at /genome-api/* and GCE never
+# rewrites paths; strip the prefix here so routes stay clean everywhere.
+_PREFIX = os.getenv("GENOME_PATH_PREFIX", "").rstrip("/")
+if _PREFIX:
+    class _StripPrefix:
+        def __init__(self, app_):
+            self.app = app_
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http" and                     scope["path"].startswith(_PREFIX):
+                scope = dict(scope)
+                scope["path"] = scope["path"][len(_PREFIX):] or "/"
+                scope["root_path"] = _PREFIX
+            await self.app(scope, receive, send)
+
+    app.add_middleware(_StripPrefix)
+
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("GENOME_WEB_BASE", "http://localhost:5173")],
+    allow_origins=[__import__("urllib.parse", fromlist=["urlparse"])
+                   .urlparse(os.getenv("GENOME_WEB_BASE",
+                                       "http://localhost:5173"))
+                   ._replace(path="", query="", fragment="").geturl()],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
