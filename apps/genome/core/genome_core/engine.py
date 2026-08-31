@@ -21,7 +21,11 @@ from . import path as pathmod
 MINE_RATE_UNITS_PER_SEC = 1.0 / 60.0          # one unit a minute
 CARGO_CEILING = 15.0                          # genome-spec Rule 4.16
 USER_CEILING_PER_KIND = 25.0                  # genome-spec Rule 4.15
-HOME_XY = (0.5, 0.5)                          # deposit point PROVISIONAL
+HOME_XY = (0.5, 0.5)                          # legacy deposit point; worlds
+# without muster points (pre-migration) still deposit here
+MUSTER_COUNT = 5                              # muster points per world (fixed)
+PILE_STANDOFF = 0.02                          # agents stand AT a pile, not ON it
+MIN_SEPARATION = 0.018                        # no two agents rest on one spot
 
 PROVISIONAL = {"MINE_RATE_UNITS_PER_SEC": MINE_RATE_UNITS_PER_SEC,
                "HOME_XY": HOME_XY}
@@ -88,10 +92,13 @@ class Effects:
 def on_event(kind: str, agent: AgentView, piles: list[PileView],
              now: float, payload: dict,
              stock: dict[str, float] | None = None,
-             portals: list[dict] | None = None) -> DecisionRequest | Effects:
-    """Entry point for every drained event."""
+             portals: list[dict] | None = None,
+             ctx: dict | None = None) -> DecisionRequest | Effects:
+    """Entry point for every drained event. ctx (optional) carries the world
+    around the decision: genotype, neighbour positions, occupied spots,
+    muster points — loaded by the caller, never fetched here."""
     if kind == "arrival":
-        return _decide_here(agent, piles, payload, stock, portals)
+        return _decide_here(agent, piles, payload, stock, portals, ctx)
     if kind == "mining_done":
         # mechanical: the decision was taken when mining began; the next
         # decision is a fresh event a minute on, never at the same instant
@@ -137,7 +144,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                        mark_explored=(cell_of(agent.x, agent.y),),
                        schedule=("decide", now + 60.0, agent.agent_uuid, {}))
     if kind == "decide":
-        return _decide_here(agent, piles, payload, stock, portals)
+        return _decide_here(agent, piles, payload, stock, portals, ctx)
     raise ValueError(f"unknown event kind {kind!r}")
 
 
@@ -176,10 +183,54 @@ def far_cells(explored: frozenset, x: float, y: float) -> list[tuple[int, int]]:
                                            + (cell_centre(c)[1] - y) ** 2))       # PROVISIONAL: reveal radius on arrival (Sight scales later)
 
 
+def standoff(ax: float, ay: float, tx: float, ty: float,
+             r: float = PILE_STANDOFF) -> tuple[float, float]:
+    """Stop r short of the target, along the line of approach — an agent
+    stands AT a pile or flag, never on top of it (collision rule)."""
+    dx, dy = tx - ax, ty - ay
+    d = (dx * dx + dy * dy) ** 0.5
+    if d <= r:
+        return (ax, ay)
+    k = (d - r) / d
+    return (ax + dx * k, ay + dy * k)
+
+
+def separate(tx: float, ty: float, occupied: list, seed: str,
+             r: float = MIN_SEPARATION) -> tuple[float, float]:
+    """If the target rests on an occupied spot, walk a deterministic spiral of
+    candidate offsets until clear. Occupied = other agents' rest positions and
+    pile centres; two agents never share a pixel and nobody parks on a pile."""
+    import math as _m
+    import random as _r
+    if not any((tx - ox) ** 2 + (ty - oy) ** 2 < r * r for ox, oy in occupied):
+        return (tx, ty)
+    a0 = _r.Random(f"sep:{seed}").uniform(0, 2 * _m.pi)
+    for ring in (1.2, 2.0, 3.0):
+        for i in range(8):
+            a = a0 + i * _m.pi / 4
+            cx = min(0.95, max(0.05, tx + _m.cos(a) * r * ring))
+            cy = min(0.95, max(0.05, ty + _m.sin(a) * r * ring))
+            if not any((cx - ox) ** 2 + (cy - oy) ** 2 < r * r
+                       for ox, oy in occupied):
+                return (cx, cy)
+    return (tx, ty)                       # a crowd this dense keeps its pile-up
+
+
+def nearest_muster(muster: list[dict], x: float, y: float) -> tuple[float, float]:
+    """Deposits happen at the nearest muster flag (user directive: agents go
+    to a muster point to drop their load; five per world)."""
+    if not muster:
+        return HOME_XY
+    m = min(muster, key=lambda q: (q["x"] - x) ** 2 + (q["y"] - y) ** 2)
+    return (m["x"], m["y"])
+
+
 def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  stock: dict[str, float] | None = None,
-                 portals: list[dict] | None = None) -> DecisionRequest:
+                 portals: list[dict] | None = None,
+                 ctx: dict | None = None) -> DecisionRequest:
     stock = stock or {}
+    ctx = ctx or {}
     at_pile = payload.get("pile_uuid")
     by_id = {p.pile_uuid: p for p in piles}
     options: list[str] = []
@@ -211,7 +262,13 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
             near_portal = pt
             break
     if near_portal:
-        options.append("take_portal")
+        # Teleport Affinity (genotype disposition): some agents simply will
+        # not step through. Below the floor the option is never offered —
+        # a mechanical faculty, like Gender's gate on carrying young.
+        from .genotype import norm as _norm
+        g = ctx.get("genotype") or {}
+        if _norm("Teleport Affinity", g.get("Teleport Affinity", 5000.0)) >= 0.15:
+            options.append("take_portal")
     if not options:
         options = ["wait"]
     return DecisionRequest(
@@ -258,9 +315,12 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
 def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                  now: float, payload: dict,
                  terrain: list[dict] | None = None,
-                 time_scale: float = 1.0) -> Effects:
+                 time_scale: float = 1.0,
+                 ctx: dict | None = None) -> Effects:
     """Turn a decision into effects. The caller records the decision first."""
     terrain = terrain or []
+    ctx = ctx or {}
+    occupied = [q for q in ctx.get("occupied", [])]
     by_id = {p.pile_uuid: p for p in piles}
 
     if choice.option == "mine_here":
@@ -274,27 +334,57 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
     if choice.option == "travel_to_pile":
         pile = by_id[choice.target]
-        return _route_effects(agent, pile.x, pile.y, now, terrain,
+        tx, ty = standoff(agent.x, agent.y, pile.x, pile.y)
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
                               "arrival", {"pile_uuid": pile.pile_uuid},
                               time_scale)
 
     if choice.option == "go_home_deposit":
-        hx, hy = HOME_XY
-        return _route_effects(agent, hx, hy, now, terrain,
+        hx, hy = nearest_muster(ctx.get("muster") or [], agent.x, agent.y)
+        tx, ty = standoff(agent.x, agent.y, hx, hy)
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
                               "deposit_arrival", {}, time_scale)
 
     if choice.option in ("explore_frontier", "survey_far"):
-        if choice.option == "explore_frontier":
-            cand = sorted(frontier_cells(agent.explored),
-                          key=lambda c: (cell_centre(c)[0] - agent.x) ** 2
-                          + (cell_centre(c)[1] - agent.y) ** 2)
+        # The LLM chose WHAT (near unknown vs expedition); the genotype and
+        # the world around the agent choose HOW the walk looks — its movement
+        # style (swarm, brownian, levy, lawnmower, perimeter). Computed
+        # faculty: deterministic per (agent, moment), replayable.
+        from . import styles as stylemod
+        g = ctx.get("genotype") or {}
+        env = {"neighbours": ctx.get("neighbours", []),
+               "explored_frac": len(agent.explored) / (GRID_K * GRID_K)}
+        seed = f"{agent.agent_uuid}:{int(now)}"
+        style = stylemod.pick_style(g, env, seed)
+        cand: list[tuple[float, float]] = []
+        if choice.option == "survey_far":
+            # expeditions stay expeditions: farthest unknown, style adds gait
+            import random as _r
+            jr = _r.Random(f"far:{seed}")
+            cand += [(min(0.95, max(0.05, cx + jr.uniform(-0.04, 0.04))),
+                      min(0.95, max(0.05, cy + jr.uniform(-0.04, 0.04))))
+                     for cx, cy in (cell_centre(c) for c in
+                                    far_cells(agent.explored, agent.x,
+                                              agent.y)[:8])]
         else:
-            cand = far_cells(agent.explored, agent.x, agent.y)
-        for c in cand[:8]:          # nearest frontier / farthest unknown first
-            tx, ty = cell_centre(c)
+            sx, sy = stylemod.target_for(style, agent.x, agent.y,
+                                         agent.explored, env, seed)
+            if cell_of(sx, sy) not in agent.explored:
+                cand.append((sx, sy))       # the style's own pick, if it
+            # teaches anything new; frontier cells back it up
+            cand += [cell_centre(c) for c in sorted(
+                frontier_cells(agent.explored),
+                key=lambda c: (cell_centre(c)[0] - agent.x) ** 2
+                + (cell_centre(c)[1] - agent.y) ** 2)]
+        for tx, ty in cand[:8]:
+            tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
             if pathmod.find_path(terrain, agent.x, agent.y, tx, ty) is not None:
                 return _route_effects(agent, tx, ty, now, terrain,
-                                      "explored", {"cell": list(c)},
+                                      "explored",
+                                      {"cell": list(cell_of(tx, ty)),
+                                       "style": style},
                                       time_scale)
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 

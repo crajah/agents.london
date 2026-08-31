@@ -43,8 +43,8 @@ export async function createWorldCanvas(el, opts = {}) {
   viewport.moveCenter(0, WORLD_PX / 2);
 
   const layers = {};
-  for (const name of ["terrain", "routes", "piles", "portals", "agents",
-                      "pulses"]) {
+  for (const name of ["terrain", "constructions", "muster", "routes",
+                      "piles", "portals", "agents", "pulses"]) {
     layers[name] = new Container();
     viewport.addChild(layers[name]);
   }
@@ -100,6 +100,71 @@ export async function createWorldCanvas(el, opts = {}) {
       g.ellipse(cx, cy, o.r * WORLD_PX, o.r * WORLD_PX * 0.5)
         .fill({ color: 0x3a3f45 });
       layers.terrain.addChild(g);
+    }
+    // muster flags — five per world, striped in the world's colour pair;
+    // the drop points where agents deliver their load
+    clearLayer(layers.muster);
+    const mc1 = s.colours?.[0] ?? "#cccccc", mc2 = s.colours?.[1] ?? "#888888";
+    for (const m of s.muster_points ?? []) {
+      const g = new Graphics();
+      const [cx, cy] = P([m.x, m.y]);
+      g.ellipse(cx, cy, 14, 7).fill({ color: 0x000000, alpha: 0.25 });
+      g.moveTo(cx, cy).lineTo(cx, cy - 34)
+        .stroke({ width: 2.5, color: 0xd8d0c0 });
+      // three-striped pennant, alternating world colours
+      const fw = 22, fh = 12, fy = cy - 34;
+      for (let k = 0; k < 3; k++)
+        g.poly([cx, fy + k * fh / 3,
+                cx + fw * (1 - k * 0.12), fy + k * fh / 3 + fh / 6,
+                cx + fw * (1 - (k + 1) * 0.12), fy + (k + 1) * fh / 3 + fh / 6,
+                cx, fy + (k + 1) * fh / 3])
+         .fill({ color: k % 2 === 0 ? mc1 : mc2 });
+      layers.muster.addChild(g);
+    }
+    // constructions — Phase 10's surface arrives ahead of its mechanics:
+    // interim stages read as scaffolded towers filling bottom-up; the Ark
+    // reads as a ribbed hull growing rib by rib. progress is 0..1.
+    clearLayer(layers.constructions);
+    for (const c of s.constructions ?? []) {
+      const g = new Graphics();
+      const [cx, cy] = P([c.x, c.y]);
+      const col = c.colour ?? mc1;
+      const prog = Math.max(0, Math.min(1, c.progress ?? 0));
+      if (c.kind === "ark") {
+        const W = 90, H = 40;
+        g.ellipse(cx, cy, W * 0.7, 10).fill({ color: 0x000000, alpha: 0.25 });
+        // keel + deck outline, ghosted until built
+        g.moveTo(cx - W / 2, cy - H)
+          .quadraticCurveTo(cx - W * 0.45, cy, cx, cy + 4)
+          .quadraticCurveTo(cx + W * 0.45, cy, cx + W / 2, cy - H)
+          .stroke({ width: 2, color: col, alpha: 0.25 });
+        g.moveTo(cx - W / 2, cy - H).lineTo(cx + W / 2, cy - H)
+          .stroke({ width: 2, color: col, alpha: 0.25 });
+        // ribs rise with progress, stern to bow
+        const ribs = 9, done = Math.round(prog * ribs);
+        for (let k = 0; k < ribs; k++) {
+          const fx = cx - W / 2 + (k + 0.5) * (W / ribs);
+          const depth = H * (0.35 + 0.65 * Math.sin(Math.PI * (k + 0.5) / ribs));
+          g.moveTo(fx, cy - H).lineTo(fx, cy - H + depth)
+            .stroke({ width: 3, color: col, alpha: k < done ? 0.95 : 0.15 });
+        }
+        if (prog >= 0.7)                       // mast goes up late
+          g.moveTo(cx, cy - H).lineTo(cx, cy - H - 26)
+            .stroke({ width: 2.5, color: col });
+      } else {
+        // interim stage: scaffolded tower, taller by tier, filled by progress
+        const W = 34, H = 24 + (c.tier ?? 1) * 8;
+        g.ellipse(cx, cy, W * 0.8, 8).fill({ color: 0x000000, alpha: 0.25 });
+        const filled = H * prog;
+        g.rect(cx - W / 2, cy - filled, W, filled)
+          .fill({ color: col, alpha: 0.8 });
+        g.rect(cx - W / 2, cy - H, W, H)
+          .stroke({ width: 1.5, color: col, alpha: 0.45 });
+        for (let yy = cy; yy > cy - H + 6; yy -= 8)   // cross-braces read
+          g.moveTo(cx - W / 2, yy).lineTo(cx + W / 2, yy - 6)   // as scaffold
+            .stroke({ width: 1, color: 0xd8d0c0, alpha: 0.3 });
+      }
+      layers.constructions.addChild(g);
     }
     clearLayer(layers.portals);
     for (const pt of s.portals ?? []) {
@@ -229,6 +294,14 @@ export async function createWorldCanvas(el, opts = {}) {
     for (const pt of snapshot?.portals ?? []) {
       const d = Math.hypot(pt.x - q[0], pt.y - q[1]);
       if (d < bestD) { bestD = d; best = { type: "portal", data: pt }; }
+    }
+    (snapshot?.muster_points ?? []).forEach((m, i) => {
+      const d = Math.hypot(m.x - q[0], m.y - q[1]);
+      if (d < bestD) { bestD = d; best = { type: "muster", data: { ...m, idx: i } }; }
+    });
+    for (const c of snapshot?.constructions ?? []) {
+      const d = Math.hypot(c.x - q[0], c.y - q[1]);
+      if (d < bestD) { bestD = d; best = { type: "construction", data: c }; }
     }
     return best;
   }

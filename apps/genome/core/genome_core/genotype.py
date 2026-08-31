@@ -31,7 +31,7 @@ RANGES: dict[str, tuple[float, float]] = {
     "Honesty": (0, 10000), "Credulity": (0, 10000), "Amenability": (0, 10000),
     "Loyalty": (0, 10000), "Patience": (0, 10000), "Curiosity": (0, 10000),
     "Prudence": (0, 10000), "Wanderlust": (0, 10000), "Fecundity": (0, 10000),
-    "Selectivity": (0, 10000),
+    "Selectivity": (0, 10000), "Teleport Affinity": (0, 10000),
     # meta (outside)
     "Gender": (0, 1), "Mutability": (0, 10000),
 }

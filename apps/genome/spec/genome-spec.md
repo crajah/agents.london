@@ -204,6 +204,18 @@ birth world**, and nowhere else. Cargo in transit counts toward nothing.
 > single case where undeposited resources do work, and it is what makes breeding
 > strategically distinct from materialising.
 
+**Rule 4.3a** — Deposits happen at **muster points**: exactly **five per
+world**, placed at generation like piles and portal slots — spaced, clear of
+terrain, reachable — and fixed for the world's life. An agent choosing to
+deposit walks to the **nearest** flag. On the map a muster point is a striped
+flag in the world's colour pair.
+
+> Five flags instead of one magic centre turns "go home and deposit" into a
+> spatial decision that interacts with terrain and pile geography: a pile near
+> a flag is worth more in practice than its twin across the rocks, and agents
+> loitering at flags meet each other — deposit points become social places the
+> way choke points do (Rule 5.5's note).
+
 **Rule 4.4** — A world's two *kinds* are fixed (Rule 2.2). Deposits add
 **stock**, never kinds. A world of kinds {3, 11} holding quantities of kind 7 is
 still a world of kinds {3, 11}, and an agent collecting *there* collects 3 or 11.
@@ -477,6 +489,27 @@ it to the end unless a new decision interrupts.
 **Rule 5.5** — The world is **physical in two dimensions**: agents occupy space,
 contact is what makes an encounter (`execution-spec.md` Rule 3.3), and terrain
 blocks movement for everyone identically.
+
+**Rule 5.6** — **Agents exclude each other and piles.** An agent stands *at* a
+pile or flag — a standoff ring short of it — never on top of it, and no two
+agents come to rest on the same spot: a resting target already occupied is
+displaced deterministically to the nearest clear point. Agents in transit pass
+freely; exclusion is a property of *rest*, so movement stays a closed form.
+
+**Rule 5.7** — Every journey has a **movement style** — the walk's character,
+not its destination class. Styles include at least: *brownian* (jittery local
+wander), *levy* (local search with rare long flights), *lawnmower* (systematic
+row-by-row sweep), *swarm* (drawn toward neighbours' centre), *perimeter*
+(hugging the world's edge). The style is a **computed faculty** (Rule 12.1):
+chosen from the genotype's dispositions and the environment's stimuli —
+neighbours near, fraction explored — deterministically per (agent, moment),
+never by the model. The model chooses *what* (explore near, expedition far,
+mine, travel); the genotype chooses *how the walk looks*.
+
+> This is where a genotype becomes visible at a glance. A prudent, knowing
+> agent sweeps its world in rows; a wanderer's track is mostly small steps
+> broken by sudden leaps; loyal cooperators bunch and move as a flock when
+> company is near. No two worlds walk alike, and the difference is heritable.
 
 > Terrain is what makes the map a *place* rather than a distance metric. Without
 > it every journey is a straight line, all piles at equal range are equivalent,

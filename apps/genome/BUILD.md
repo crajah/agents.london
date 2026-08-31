@@ -392,6 +392,13 @@ Diagnosed, in order of harm:
 - [x] **Snapshot cadence 15s** makes the world feel stale between polls → 5s, cheap locally.
 - [x] **Follow an agent** (interface Rule 5.3 route #1) has no UI.
 
+### Movement & world-surface directive (user, 2026-08-31)
+- [x] **Collision/standoff**: agents never rest on top of each other or on piles — pile approaches stop at a standoff ring, arrivals take a real (deterministic) separation offset, explore targets reject occupied spots
+- [x] **Teleport Affinity** locus (disposition, outside budget): gates whether take_portal is even offered (mechanical faculty) and speaks in the prompt; some agents simply do not teleport
+- [x] **Muster points**: exactly 5 per world, spaced, terrain-clear; deposits happen at the NEAREST muster, not a magic centre; drawn as striped flags in the world's colour pair
+- [x] **Construction visualisation** (ahead of Phase 10 mechanics): interim stages as scaffold frames filling with branch colour by progress; the Ark as a hull at its site; snapshot carries `constructions`
+- [x] **Movement styles from genotype × stimuli** (computed faculty, Rule 12.1: styles are how a chosen action is performed): brownian, levy-flight, lawnmower sweep, swarm (neighbour centroid), perimeter-hug — scored from phenotype + environment (neighbours, explored fraction), argmax picks; the LLM still chooses WHAT (explore/mine/travel), the genotype shapes HOW the exploring moves
+
 ## Testing strategy
 
 - [ ] **Property tests** for every closed form: position, pile quantity, decay, opinion update — a stored value that could be derived is a defect

@@ -927,6 +927,21 @@ reward.
 
 ---
 
+## 4.3 What a construction looks like
+
+The mechanics above land before their surface; the surface is specified here so
+the map can carry it from day one. An **interim stage** renders as a scaffolded
+tower on its site — taller by tier, its frame filling bottom-up with the
+branch's colour as `progress` runs 0→1, cross-braces reading as scaffold while
+unfinished. The **Ark** renders as a ribbed hull: keel and deck ghosted at
+first, ribs rising stern-to-bow with progress, the mast stepping up only past
+70%. Sites carry `{kind, name, tier, progress, x, y, colour}` in the world's
+snapshot; the world's own colour pair is the default palette.
+
+> The point of the ghosted outline is legible ambition: a visitor sees not only
+> what a world has built but what it is *trying* to build, and how far along it
+> is — reputation you can read from the shoreline.
+
 ## 5. Open questions
 
 **5.1 Resolved** — a flood returns the world to its nascent state (§4.1):
