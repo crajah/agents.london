@@ -18,7 +18,8 @@ from . import forms
 from . import path as pathmod
 
 # PROVISIONAL (calibration §4: base collection rate — Toolhouse improves it)
-MINE_RATE_UNITS_PER_SEC = 1.0 / 60.0          # one unit a minute
+MINE_RATE_UNITS_PER_SEC = 1.0 / 10.0          # one unit per 10s (constant-
+# motion revision: agents sip and move, never camp)
 CARGO_CEILING = 15.0                          # genome-spec Rule 4.16
 USER_CEILING_PER_KIND = 25.0                  # genome-spec Rule 4.15
 HOME_XY = (0.5, 0.5)                          # legacy deposit point; worlds
@@ -27,6 +28,7 @@ MUSTER_COUNT = 5                              # muster points per world (fixed)
 PILE_STANDOFF = 0.02                          # agents stand AT a pile, not ON it
 MIN_SEPARATION = 0.018                        # no two agents rest on one spot
 REACH = 0.035                                 # build/board reach: hands on it
+MINE_STINT_UNITS = 5.0                        # one stint, then decide again
 
 PROVISIONAL = {"MINE_RATE_UNITS_PER_SEC": MINE_RATE_UNITS_PER_SEC,
                "HOME_XY": HOME_XY}
@@ -101,6 +103,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
              stock: dict[str, float] | None = None,
              portals: list[dict] | None = None,
              ctx: dict | None = None) -> DecisionRequest | Effects:
+    ts = max(1.0, (ctx or {}).get("time_scale", 1.0))
     """Entry point for every drained event. ctx (optional) carries the world
     around the decision: genotype, neighbour positions, occupied spots,
     muster points — loaded by the caller, never fetched here."""
@@ -111,7 +114,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         # decision is a fresh event a minute on, never at the same instant
         take = payload["take"]
         return Effects(cargo_delta={str(payload["pile_kind"]): take},
-                       schedule=("decide", now + 60.0, agent.agent_uuid,
+                       schedule=("decide", now + 15.0 / ts, agent.agent_uuid,
                                  {"pile_uuid": payload["pile_uuid"]}))
     if kind == "encounter":
         other = payload["other"]
@@ -149,7 +152,8 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                       <= SIGHT_RADIUS ** 2)
         return Effects(reveal=found,
                        mark_explored=(cell_of(agent.x, agent.y),),
-                       schedule=("decide", now + 60.0, agent.agent_uuid, {}))
+                       schedule=("decide", now + 15.0 / ts,
+                                 agent.agent_uuid, {}))
     if kind == "decide":
         return _decide_here(agent, piles, payload, stock, portals, ctx)
     raise ValueError(f"unknown event kind {kind!r}")
@@ -392,7 +396,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
     if choice.option == "mine_here":
         pile = by_id[payload["pile_uuid"]]
-        want = min(pile.qty, CARGO_CEILING - agent.cargo_total())
+        want = min(pile.qty, CARGO_CEILING - agent.cargo_total(),
+                   MINE_STINT_UNITS)
         rate = MINE_RATE_UNITS_PER_SEC * ctx.get("mine_rate_mult", 1.0)
         duration = want / rate / max(1.0, time_scale)
         return Effects(mine_pile=(pile.pile_uuid, want),
@@ -454,13 +459,14 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                       {"cell": list(cell_of(tx, ty)),
                                        "style": style},
                                       time_scale, pace)
-        return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
+        return Effects(schedule=("decide", now + 600.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
 
     if choice.option == "contribute_here":
         sites = {s["key"]: s for s in ctx.get("sites", [])}
         key = choice.target or payload.get("site_here")
         if key not in sites:
-            return Effects(schedule=("decide", now + 60.0,
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         s = sites[key]
         if (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2 > REACH ** 2:
@@ -478,7 +484,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         cand = [s for s in ctx.get("sites", [])
                 if not s.get("complete") and _con.accepts(s, agent.cargo)]
         if not cand:
-            return Effects(schedule=("decide", now + 60.0,
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         s = min(cand, key=lambda q: (q["x"] - agent.x) ** 2
                 + (q["y"] - agent.y) ** 2)
@@ -502,7 +508,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "flee_to_ark":
         ark = ctx.get("boardable_ark")
         if not ark:
-            return Effects(schedule=("decide", now + 60.0,
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         tx, ty = standoff(agent.x, agent.y, ark["x"], ark["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
@@ -517,7 +523,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option in ("stash_cache", "collect_cache"):
         key = payload.get("cache_here") or choice.target
         if not key:
-            return Effects(schedule=("decide", now + 60.0,
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         op = "stash" if choice.option == "stash_cache" else "collect"
         return Effects(cache_op=(op, key),
@@ -544,7 +550,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                   "other": payload.get("other", {})}))
 
     if choice.option == "wait":
-        return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
+        return Effects(schedule=("decide", now + 600.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
 
     raise ValueError(f"unknown option {choice.option!r}")
 

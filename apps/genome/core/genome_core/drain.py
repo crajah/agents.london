@@ -70,12 +70,12 @@ async def _positions_of_others(store: GenomeStore, world_realm: str,
                                me_uuid: str, now: float) -> list:
     """Where everyone else in this world stands right now — closed-form from
     their latest movement, never stored. Feeds swarm style and separation."""
+    import asyncio as _aio
+    others = [v.payload["key"] for v in await store.agents_in(world_realm)
+              if v.payload["key"] != me_uuid]
+    moves = await _aio.gather(*(store.latest_movement(u) for u in others))
     out = []
-    for v in await store.agents_in(world_realm):
-        u = v.payload["key"]
-        if u == me_uuid:
-            continue
-        mv = await store.latest_movement(u)
+    for mv in moves:
         if mv is None or "waypoints" not in mv.payload:
             continue
         pl = mv.payload
@@ -107,6 +107,7 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
              and not s.get("spent") and s.get("berths", {}).get(me, 0) > 0),
             None)
     return {"genotype": agent_payload.get("genotype") or {},
+            "time_scale": world_payload.get("time_scale", 1.0),
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
             "muster": world_payload.get("muster_points", []),
@@ -382,7 +383,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         ctx = (await engine_ctx(store, world_realm, world_payload,
                                 agent_payload, agent, pile_views, now)
                if pl["kind"] in ("arrival", "decide")
-               else {"genotype": agent_payload.get("genotype") or {}})
+               else {"genotype": agent_payload.get("genotype") or {},
+                     "time_scale": world_payload.get("time_scale", 1.0)})
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):

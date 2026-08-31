@@ -79,20 +79,31 @@ async def main() -> None:
             items = [v for v in await client.get_vertices(
                         "decision_queue", realm=AGENTS_REALM)
                      if v.payload.get("done_at") is None]
+            # constant-motion revision: decisions run IN PARALLEL, capped,
+            # but never two for the same agent at once -- oldest question
+            # per agent this cycle, the rest next poll
+            per_agent: dict[str, object] = {}
             for item in sorted(items, key=lambda v: v.payload["queued_at"]):
-                try:
-                    outcome = await work_one(store, client, item)
-                    logger.info("%s %s -> %s", item.payload["world_realm"],
-                                item.payload["agent_uuid"], outcome)
-                except Exception:
-                    logger.exception("decision failed for %s",
-                                     item.payload.get("agent_uuid"))
-                    await client.upsert_vertex(
-                        "decision_queue", realm=AGENTS_REALM,
-                        vertex_id=int(item.id),
-                        payload={**item.payload,
-                                 "done_at": drain._iso(time.time()),
-                                 "outcome": "error"})
+                per_agent.setdefault(item.payload["agent_uuid"], item)
+            sem = asyncio.Semaphore(8)
+
+            async def _work(item):
+                async with sem:
+                    try:
+                        outcome = await work_one(store, client, item)
+                        logger.info("%s %s -> %s",
+                                    item.payload["world_realm"],
+                                    item.payload["agent_uuid"], outcome)
+                    except Exception:
+                        logger.exception("decision failed for %s",
+                                         item.payload.get("agent_uuid"))
+                        await client.upsert_vertex(
+                            "decision_queue", realm=AGENTS_REALM,
+                            vertex_id=int(item.id),
+                            payload={**item.payload,
+                                     "done_at": drain._iso(time.time()),
+                                     "outcome": "error"})
+            await asyncio.gather(*(_work(i) for i in per_agent.values()))
             try:
                 await asyncio.wait_for(stop.wait(), timeout=POLL_SECONDS)
             except TimeoutError:
