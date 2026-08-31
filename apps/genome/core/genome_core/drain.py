@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import combat, construction, engine, forms, identity, notify, \
-    opinion, pathogen
+from . import combat, construction, engine, forms, identity, \
+    negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
 from . import worldgen
 from . import flood as _flood_mod
@@ -353,6 +353,34 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                         world_realm, now)
         return await consummate(store, world_realm, agent, agent_payload,
                                 p_view, p_pl, f"mate-{pl['key']}", now)
+
+    if pl["kind"] == "negotiate":
+        neg_key = pl["payload"]["neg_key"]
+        rows = await store._c.find_vertices("negotiations", realm=world_realm,
+                                            filters={"key": neg_key}, limit=1)
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        if not rows or rows[0].payload.get("status") != "open":
+            return "negotiate:stale"
+        st = rows[0].payload
+        if nego.whose_turn(st) != agent_uuid:
+            return "negotiate:not_my_turn"
+        _, other_pl2 = await load_agent(store, world_realm,
+                                        nego.other(st, agent_uuid),
+                                        world_realm, now)
+        req = engine.DecisionRequest(
+            agent_uuid=agent_uuid, situation="negotiate",
+            options=tuple(nego.ACTIONS),
+            context={"neg_key": neg_key,
+                     "turn": len(st.get("turns", [])) + 1,
+                     "max_turns": nego.MAX_TURNS,
+                     "last_offer": nego.last_offer(st),
+                     "my_cargo": agent.cargo,
+                     "cargo_total": agent.cargo_total(),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
+        await enqueue_decision(store, world_realm, req,
+                               {"neg_key": neg_key}, now)
+        return "negotiate:queued"
 
     if pl["kind"] == "encounter_answer":
         return await resolve_encounter(store, world_realm, agent,
@@ -715,28 +743,77 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                                           .get(proposer))})
         outcome = "mating:proposed"
     elif a_ans == "offer_trade" and b_ans == "offer_trade":
-        # simplest exchange: one unit of each side's most-held kind, both ways,
-        # ceilings respected (proper negotiation arrives with A2A turns)
-        mine = max(agent.cargo, key=agent.cargo.get, default=None)
-        theirs = max(other_view.cargo, key=other_view.cargo.get, default=None)
-        if mine and theirs and mine != theirs:
-            ac, oc = dict(agent.cargo), dict(other_view.cargo)
-            ac[mine] -= 1.0; oc[mine] = oc.get(mine, 0.0) + 1.0
-            oc[theirs] -= 1.0; ac[theirs] = ac.get(theirs, 0.0) + 1.0
-            for v, cargo in ((agent, ac), (other_view, oc)):
-                cargo = {k: u for k, u in cargo.items() if u > 1e-9}
-                await store.set_movement(v.agent_uuid,
-                    {"waypoints": [[v.x, v.y]], "departed_at": now,
-                     "arrives_at": now, "cargo": cargo})
-            outcome = "trade:1for1"
-        else:
-            outcome = "trade:nothing_to_exchange"
+        # execution-spec §7: willingness opens a NEGOTIATION -- a bounded
+        # turn sequence, proposals binding on acceptance, dead at six turns
+        # or an empty purse. The opener is the lexicographically smaller
+        # uuid; each turn is an LLM decision through the ordinary queue.
+        opener, respondent = sorted((me, other_uuid))
+        key = f"neg-{opener[:12]}-{respondent[:12]}-{int(now)}"
+        state = nego.open_state(opener, respondent, now)
+        await store._c.add_vertex("negotiations", realm=world_realm,
+                                  payload={"key": key, **state})
+        await store.schedule(world_realm, f"ng-{key}-0", _iso(now + 5.0),
+                             "negotiate", opener, {"neg_key": key})
+        outcome = "negotiation:opened"
     # both resume their lives
     for u in (me, other_uuid):
         await store.schedule(world_realm, f"post-enc-{u}-{int(now)}",
                              _iso(now + 60.0), "decide", u, {})
     await store.complete_event(world_realm, pl["key"], _iso(now))
     return outcome
+
+
+async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
+                                 neg_key: str, me: str, action: str,
+                                 offer: dict | None, now: float) -> str:
+    """The decision worker's negotiation half: apply the turn, persist, and
+    keep the sequence moving. Exchanges execute atomically here (7.3)."""
+    rows = await store._c.find_vertices("negotiations", realm=world_realm,
+                                        filters={"key": neg_key}, limit=1)
+    if not rows:
+        return "negotiate:gone"
+    st = dict(rows[0].payload)
+    my_view, my_pl = await load_agent(store, world_realm, me,
+                                      world_realm, now)
+    other_uuid = nego.other(st, me)
+    ot_view, ot_pl = await load_agent(store, world_realm, other_uuid,
+                                      world_realm, now)
+    st2, out = nego.apply_turn(st, me, action, offer,
+                               my_view.cargo, ot_view.cargo)
+    await store._c.upsert_vertex("negotiations", realm=world_realm,
+                                 vertex_id=int(rows[0].id), space="default",
+                                 payload=st2)
+    if out["kind"] == "continue":
+        await store.schedule(world_realm,
+                             f"ng-{neg_key}-{len(st2['turns'])}",
+                             _iso(now + 5.0), "negotiate", other_uuid,
+                             {"neg_key": neg_key})
+        return f"negotiate:{action}"
+    if out["kind"] == "exchange":
+        for uuid_, view in ((me, my_view), (other_uuid, ot_view)):
+            cargo = dict(view.cargo)
+            for k, u in out["gives"][uuid_].items():
+                cargo[k] = cargo.get(k, 0.0) - u
+                if cargo[k] <= 1e-9:
+                    del cargo[k]
+            for k, u in out["gains"][uuid_].items():
+                cargo[k] = cargo.get(k, 0.0) + u
+            await store.set_movement(uuid_,
+                {"waypoints": [[view.x, view.y]], "departed_at": now,
+                 "arrives_at": now, "cargo": cargo})
+        for uid in filter(None, {my_pl.get("owner_user_id"),
+                                 ot_pl.get("owner_user_id")}):
+            notify.emit_bg(store._c, uid, "agents", "trade_done",
+                           "A bargain was struck and executed.")
+        for u in (me, other_uuid):
+            await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
+                                 _iso(now + 30.0), "decide", u, {})
+        return "negotiate:bargain_struck"
+    # dead: both resume their lives
+    for u in (me, other_uuid):
+        await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
+                             _iso(now + 30.0), "decide", u, {})
+    return f"negotiate:dead({out.get('why', '?')})"
 
 
 async def consummate(store: GenomeStore, world_realm: str,

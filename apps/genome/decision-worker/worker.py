@@ -48,6 +48,32 @@ async def work_one(store: GenomeStore, client, item) -> str:
                                       filters={"key": pl["agent_uuid"]}, limit=1)
     agent_payload = rows[0].payload if rows else {}
     g = agent_payload.get("genotype")
+    if pl["situation"] == "negotiate":
+        from genome_core.decider import negotiate_decider
+        from genome_core import negotiation as nego
+        action = offer = None
+        model = "stub"
+        if USE_LLM and g:
+            action, offer, model = negotiate_decider(req, g, seed=int(now))
+        if action is None:
+            state = {"participants": [pl["agent_uuid"], ""],
+                     "turns": ([{"offer": req.context["last_offer"]}]
+                               if req.context.get("last_offer") else []),
+                     "status": "open"}
+            action, offer = nego.fallback_turn(
+                state, pl["agent_uuid"], req.context.get("my_cargo", {}))
+        outcome = await drain.apply_negotiation_turn(
+            store, pl["world_realm"], req.context["neg_key"],
+            pl["agent_uuid"], action, offer, now)
+        await store.record_decision(pl["agent_uuid"], {
+            "at": drain._iso(now), "situation": "negotiate",
+            "options": list(req.options), "choice": action,
+            "offer": offer, "model": model, "tier": "deliberative"})
+        await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
+                                   vertex_id=int(item.id),
+                                   payload={**pl, "done_at": drain._iso(now),
+                                            "outcome": outcome})
+        return outcome
     if USE_LLM and g:
         from genome_core import pathogen
         eff = pathogen.phenotype(agent_payload, now) \

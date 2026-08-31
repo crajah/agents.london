@@ -243,6 +243,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 ## Phase 6 — A2A, negotiation, trade
 
+- [x] **Negotiation lands** (execution-spec §7): mutual offer_trade opens a bounded turn sequence — propose/counter/accept/walk_away, six turns then death (7.2), acceptance BINDING with both purses verified at the instant (7.3), an empty purse killing rather than half-executing; state on a negotiations vertex, every turn an LLM decision through the ordinary queue (deliberative tier, JSON offer), non-strategic fallback proposes-then-walks. Live within minutes: three negotiations opened organically, first completed one a genuine walk-away refusal
+
 - [ ] A2A endpoints **per worker**, agent identity in the envelope (`system-spec.md` Rule 8.5)
 - [ ] Claims, questions, testimony, capability requests travel freely (`genome-spec.md` Rule 9.1c)
 - [ ] **Binding proposals require co-location** (9.1b); addressable counterparties only (9.1d)
