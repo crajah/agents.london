@@ -131,6 +131,58 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
     return engine.Choice(option=opt, target=target), model
 
 
+def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
+                      seed: int = 0, timeout: float = 60.0
+                      ) -> tuple[str, dict | None, str]:
+    """One bargaining turn: returns (action, offer, model). The prompt shows
+    the standing offer and the purse; the reply is a single JSON object.
+    Anything unparseable falls to the non-strategic default."""
+    from . import negotiation as nego
+    from .models import UNBUDGETED, temperament
+    model = assign_models(req.agent_uuid)["deliberative"]
+    ctx = req.context
+    last = ctx.get("last_offer")
+    last_txt = (f"Their standing offer: they give you "
+                f"{json.dumps(last['give'])} and want "
+                f"{json.dumps(last['want'])} from you."
+                if last else "No offer stands yet; you open.")
+    sys_p = prompt.system_prompt(genotype, {}, {"total": ctx["cargo_total"]},
+                                 [])
+    usr_p = (
+        f"You are bargaining, turn {ctx['turn']} of {ctx['max_turns']} -- "
+        f"at turn {ctx['max_turns']} the talk dies with no deal.\n"
+        f"You carry: {json.dumps(ctx.get('my_cargo', {}))}\n{last_txt}\n"
+        "Actions: propose (make an offer), counter (replace theirs), "
+        "accept (take their standing offer, binding), walk_away.\n"
+        'Reply with JSON only: {"choice": "<action>", '
+        '"give": {"<kind>": units}, "want": {"<kind>": units}}. '
+        "give/want required for propose and counter, ignored otherwise. "
+        "Offer only what you carry. No explanation.")
+    req_body = {"model": model,
+                "temperature": temperament(req.agent_uuid),
+                "messages": [{"role": "system", "content": sys_p},
+                             {"role": "user", "content": usr_p}]}
+    if model not in UNBUDGETED:
+        req_body["max_tokens"] = 200
+    rq = urllib.request.Request(
+        ROUTER + "/v1/chat/completions", data=json.dumps(req_body).encode(),
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + KEY})
+    try:
+        with urllib.request.urlopen(rq, timeout=timeout) as r:
+            text = json.load(r)["choices"][0]["message"]["content"] or ""
+        s, e = text.index("{"), text.rindex("}")
+        doc = json.loads(text[s:e + 1])
+        action = str(doc.get("choice", "")).lower()
+        if action in nego.ACTIONS:
+            offer = {"give": doc.get("give") or {},
+                     "want": doc.get("want") or {}}                 if action in ("propose", "counter") else None
+            return action, offer, model
+    except Exception:
+        pass
+    return None, None, model                # caller applies the fallback
+
+
 def make_decider(use_llm: bool):
     """The drain's decider contract: (req, agent_payload, seed) ->
     (Choice, model) or a bare Choice."""
