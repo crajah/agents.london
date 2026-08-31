@@ -71,6 +71,54 @@ function Ticker({ realm }) {
     </div>);
 }
 
+function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
+  const { hit, x, y } = menu;
+  const Item = ({ children, onClick }) => (
+    <button onClick={onClick}
+      className="block w-full text-left px-3 py-1.5 hover:bg-neutral-700">
+      {children}</button>);
+  const now = Date.now() / 1000;
+  return (
+    <div className="absolute z-20 bg-neutral-800 border border-neutral-600
+                    rounded shadow-lg text-sm min-w-52"
+         style={{ left: x + 8, top: y + 8 }}
+         onMouseLeave={onClose}>
+      {hit.type === "agent" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          {hit.data.name ?? hit.data.agent_uuid}
+          {hit.data.infected && <span className="text-red-400"> · infected</span>}
+        </div>
+        <Item onClick={() => onInspect(hit.data.agent_uuid)}>Inspect genotype</Item>
+        <Item onClick={() => onFollow(hit.data.agent_uuid)}>Follow</Item>
+      </>}
+      {hit.type === "pile" && (() => {
+        const p = hit.data;
+        const dt = Math.max(0, now - p.measured_at);
+        const qty = Math.min(p.cap, p.qty_at + p.rate * dt);
+        return <>
+          <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+            resource pile · kind {p.kind}</div>
+          <div className="px-3 py-1.5">
+            {qty.toFixed(1)} / {p.cap.toFixed(1)} units
+            <div className="opacity-60">
+              regenerates {(p.rate * 3600).toFixed(2)}/hour</div>
+          </div>
+        </>; })()}
+      {hit.type === "portal" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          teleport portal
+          <span className="ml-2">
+            {(hit.data.dest_colours ?? []).map(c =>
+              <span key={c} className="inline-block w-3 h-3 rounded-full mr-1"
+                    style={{ background: c }} />)}
+          </span>
+        </div>
+        <div className="px-3 py-1.5 opacity-70">to {hit.data.to_world}</div>
+        <Item onClick={() => onTravel(hit.data.to_world)}>View that world</Item>
+      </>}
+    </div>);
+}
+
 function App() {
   const ref = useRef(null);
   const [realm, setRealm] = useState(
@@ -85,23 +133,17 @@ function App() {
   }, []);
   const [status, setStatus] = useState("no world selected");
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
+  const [menu, setMenu] = useState(null);         // {hit, x, y}
+  const canvasApi = useRef(null);
 
   useEffect(() => {
     if (!realm || !ref.current) return;
     let canvas, timer, dead = false;
     (async () => {
       canvas = await createWorldCanvas(ref.current, {
-        onPortalClick: (toWorld) => {           // traverse (Rule 5.3/5.4):
-          history.pushState({}, "", `?world=${toWorld}`);  // free, unbounded
-          setInspect(null); setRealm(toWorld);
-        },
-        onAgentClick: async (uuid) => {
-          const [r, rd] = await Promise.all([
-            fetch(`${API}/agents/${uuid}`),
-            fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
-          setInspect({ ...(await r.json()), decisions: await rd.json() });
-        },
+        onEntityMenu: (hit, at) => setMenu({ hit, x: at.x, y: at.y }),
       });
+      canvasApi.current = canvas;
       const load = async () => {
         try {
           const r = await fetch(`${API}/worlds/${realm}/snapshot`);
@@ -111,7 +153,7 @@ function App() {
         } catch (e) { setStatus(`cannot reach world: ${e.message}`); }
       };
       await load();
-      timer = setInterval(load, 15000);     // events feed replaces this later
+      timer = setInterval(load, 5000);     // events feed replaces this later
     })();
     return () => { dead = true; clearInterval(timer); canvas?.destroy(); };
   }, [realm]);
@@ -150,6 +192,19 @@ function App() {
       <div className="flex-1 flex min-h-0 relative">
         <div ref={ref} className="flex-1" />
         <Ticker realm={realm} />
+        {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}
+          onInspect={async (uuid) => {
+            const [r, rd] = await Promise.all([
+              fetch(`${API}/agents/${uuid}`),
+              fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
+            setInspect({ ...(await r.json()), decisions: await rd.json() });
+            setMenu(null);
+          }}
+          onFollow={(uuid) => { canvasApi.current?.follow(uuid); setMenu(null); }}
+          onTravel={(toWorld) => {
+            history.pushState({}, "", `?world=${toWorld}`);
+            setInspect(null); setMenu(null); setRealm(toWorld);
+          }} />}
         {inspect && (
           <aside className="w-80 overflow-y-auto border-l border-neutral-700 p-3 text-sm">
             <div className="flex justify-between items-center mb-2">

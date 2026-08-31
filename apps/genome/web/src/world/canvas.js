@@ -1,56 +1,99 @@
-// The world canvas — interface-spec §6. Pixi driven imperatively (Rule 6.2):
-// the scene is derived from TIME, never from React state. One texture atlas's
-// worth of generated shapes, tinted per entity, so batching holds (6.12).
+// The world canvas, v2 — interface-spec §6, rebuilt after the treacle audit.
 //
-// Visual grammar (6.8-6.10): the canvas shows what agents can see. An agent IS
-// its two colours — disc in the first, heading triangle in the second (6.9a-c),
-// broken outline when infected (6.9i). A pile is a soft cloud: hue = kind,
-// lightness = fill, size = capacity (6.9e/6.9f). A portal is a hollow ring in
-// its DESTINATION's pair (6.9h). Terrain blocks everyone identically (5.5).
+// Performance contract: display objects are PERSISTENT. Geometry is
+// (re)tessellated only when the underlying data changes or on a slow cadence
+// (piles 1Hz for fill-lightness); per-frame work is transform updates only.
+// Nothing allocates in the ticker path; swapped-out objects are destroyed,
+// not orphaned (Pixi removeChildren() does not destroy — the old code leaked
+// GPU geometry sixty times a second and the tab drowned in GC).
 import { Application, Container, Graphics } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { routePosition, routeHeading, pileQuantity, isoProject, isoUnproject } from "./forms.js";
+import { routePosition, routeHeading, pileQuantity, isoProject, isoUnproject }
+  from "./forms.js";
 
-const WORLD_PX = 1000;               // unit square -> pixels before projection
+const WORLD_PX = 1000;
 
-function lerpColour(hex, t) {        // white -> hex as fill deepens (6.9f)
+function lerpColour(hex, t) {
   const c = parseInt(hex.slice(1), 16);
   const r = 255 + ((c >> 16 & 255) - 255) * t;
   const g = 255 + ((c >> 8 & 255) - 255) * t;
   const b = 255 + ((c & 255) - 255) * t;
   return (r << 16) + (g << 8) | b;
 }
+const P = ([x, y]) => isoProject([x * WORLD_PX, y * WORLD_PX]);
 
-const P = ([x, y]) => {
-  const [px, py] = isoProject([x * WORLD_PX, y * WORLD_PX]);
-  return [px, py];
-};
+// deterministic sub-contact display spread for agents parked on one point —
+// visual only, never in data; radius stays inside the contact radius
+function spread(uuid) {
+  let h = 0;
+  for (const ch of uuid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const a = (h % 628) / 100;
+  return [Math.cos(a) * 0.006, Math.sin(a) * 0.006];
+}
 
 export async function createWorldCanvas(el, opts = {}) {
   const app = new Application();
   await app.init({ background: 0x101418, resizeTo: el, antialias: true });
   el.appendChild(app.canvas);
 
-  const viewport = new Viewport({
-    events: app.renderer.events,
-    worldWidth: WORLD_PX * 2, worldHeight: WORLD_PX * 1.5,
-  });
-  viewport.drag().pinch().wheel().decelerate();      // Rule 6.11
+  const viewport = new Viewport({ events: app.renderer.events,
+    worldWidth: WORLD_PX * 2, worldHeight: WORLD_PX * 1.5 });
+  viewport.drag().pinch().wheel().decelerate();
   app.stage.addChild(viewport);
   viewport.moveCenter(0, WORLD_PX / 2);
 
-  const layers = { terrain: new Container(), piles: new Container(),
-                   routes: new Container(),
-                   portals: new Container(), agents: new Container() };
-  for (const l of Object.values(layers)) viewport.addChild(l);
+  const layers = {};
+  for (const name of ["terrain", "routes", "piles", "portals", "agents",
+                      "pulses"]) {
+    layers[name] = new Container();
+    viewport.addChild(layers[name]);
+  }
 
   let snapshot = null;
-  const agentSprites = new Map();
-  const pileSprites = new Map();
+  let followUuid = null;
+  const agents = new Map();   // uuid -> {a, body, tri, ring, route, pulse, pos}
+  const piles = new Map();    // uuid -> {p, g, lastFill}
+  let lastPileTick = 0;
+
+  function clearLayer(l) { l.removeChildren().forEach(c => c.destroy(true)); }
+
+  function buildAgent(a) {
+    const body = new Graphics();
+    const c1 = a.colour_pair?.[0] ?? "#cccccc";
+    const c2 = a.colour_pair?.[1] ?? "#888888";
+    if (opts.ownAgents?.has(a.agent_uuid))
+      body.ellipse(0, 0, 15, 8).stroke({ width: 2, color: 0xffffff });
+    body.ellipse(0, 0, 10, 5.5).fill({ color: c1 });
+    if (a.infected)
+      for (let k = 0; k < 6; k++)
+        body.arc(0, 0, 12, k * Math.PI / 3, k * Math.PI / 3 + Math.PI / 5)
+            .stroke({ width: 2, color: c1 });
+    const tri = new Graphics();
+    tri.poly([14, 0, -6, 6, -6, -6]).fill({ color: c2 });
+    tri.scale.y = 0.5;                       // iso squash for the pointer
+    layers.agents.addChild(body); layers.agents.addChild(tri);
+    const route = new Graphics(); layers.routes.addChild(route);
+    const pulse = new Graphics(); layers.pulses.addChild(pulse);
+    pulse.ellipse(0, 0, 14, 7).stroke({ width: 1.5,
+      color: a.colour_pair?.[0] ?? "#cccccc", alpha: 0.6 });
+    return { a, body, tri, route, pulse, pos: [0.5, 0.5] };
+  }
+
+  function drawRouteOnce(e) {
+    e.route.clear();
+    const m = e.a.movement;
+    if (!m || m.waypoints.length < 2) return;
+    const pts = m.waypoints.map(P);
+    e.route.moveTo(pts[0][0], pts[0][1]);
+    for (let k = 1; k < pts.length; k++)
+      e.route.lineTo(pts[k][0], pts[k][1]);
+    e.route.stroke({ width: 2,
+      color: e.a.colour_pair?.[1] ?? "#888888", alpha: 0.35 });
+  }
 
   function setSnapshot(s) {
     snapshot = s;
-    layers.terrain.removeChildren();
+    clearLayer(layers.terrain);
     for (const o of s.terrain ?? []) {
       const g = new Graphics();
       const [cx, cy] = P([o.x, o.y]);
@@ -58,16 +101,8 @@ export async function createWorldCanvas(el, opts = {}) {
         .fill({ color: 0x3a3f45 });
       layers.terrain.addChild(g);
     }
-    layers.piles.removeChildren(); pileSprites.clear();
-    for (const p of s.piles ?? []) {
-      const g = new Graphics();
-      layers.piles.addChild(g);
-      pileSprites.set(p.pile_uuid, { g, p });
-    }
-    layers.portals.removeChildren();
+    clearLayer(layers.portals);
     for (const pt of s.portals ?? []) {
-      // hollow split ring wearing the DESTINATION's pair (Rule 6.9h): the
-      // portal names where it goes without a label
       const g = new Graphics();
       const [cx, cy] = P([pt.x, pt.y]);
       const R = 26;
@@ -75,104 +110,144 @@ export async function createWorldCanvas(el, opts = {}) {
         .stroke({ width: 6, color: pt.dest_colours?.[0] ?? "#ffffff" });
       g.arc(cx, cy, R, Math.PI / 2, 3 * Math.PI / 2)
         .stroke({ width: 6, color: pt.dest_colours?.[1] ?? "#ffffff" });
-      g.eventMode = "static";
-      g.cursor = "pointer";
-      g.on("pointertap", () => opts.onPortalClick?.(pt.to_world));
       layers.portals.addChild(g);
     }
-    layers.agents.removeChildren(); agentSprites.clear();
+    // piles: persist, rebuild only membership
+    const seenP = new Set();
+    for (const p of s.piles ?? []) {
+      seenP.add(p.pile_uuid);
+      if (!piles.has(p.pile_uuid)) {
+        const g = new Graphics();
+        layers.piles.addChild(g);
+        piles.set(p.pile_uuid, { p, g, lastFill: -1 });
+      } else piles.get(p.pile_uuid).p = p;
+    }
+    for (const [id, e] of piles)
+      if (!seenP.has(id)) { e.g.destroy(true); piles.delete(id); }
+    // agents: persist bodies, rebuild only membership / changed looks
+    const seenA = new Set();
     for (const a of s.agents ?? []) {
-      const g = new Graphics();
-      layers.agents.addChild(g);
-      agentSprites.set(a.agent_uuid, { g, a });
+      seenA.add(a.agent_uuid);
+      const cur = agents.get(a.agent_uuid);
+      if (!cur) {
+        agents.set(a.agent_uuid, buildAgent(a));
+        drawRouteOnce(agents.get(a.agent_uuid));
+      } else {
+        const lookChanged = cur.a.infected !== a.infected;
+        const routeChanged =
+          JSON.stringify(cur.a.movement) !== JSON.stringify(a.movement);
+        cur.a = a;
+        if (lookChanged) {
+          for (const k of ["body", "tri", "pulse"]) cur[k].destroy(true);
+          cur.route.destroy(true);
+          agents.set(a.agent_uuid, buildAgent(a));
+          drawRouteOnce(agents.get(a.agent_uuid));
+        } else if (routeChanged) drawRouteOnce(cur);
+      }
     }
+    for (const [id, e] of agents)
+      if (!seenA.has(id)) {
+        for (const k of ["body", "tri", "route", "pulse"]) e[k].destroy(true);
+        agents.delete(id);
+      }
+    forceDraw(Date.now() / 1000);
   }
 
-  function draw(now) {
+  function forceDraw(now) { lastPileTick = 0; tick(now); }
+
+  function tick(now) {
     if (!snapshot) return;
-    const kindColour = {};
-    (snapshot.kinds ?? []).forEach((k, i) =>
-      kindColour[k] = snapshot.colours?.[i] ?? "#888888");
-    for (const { g, p } of pileSprites.values()) {
-      const q = pileQuantity(p, now);
-      const fill = p.cap > 0 ? q / p.cap : 0;
-      const R = 12 + (p.cap / 50) * 26;            // size = capacity (6.9e)
-      const [cx, cy] = P([p.x, p.y]);
-      g.clear();
-      for (const [dx, dy, s] of [[-0.5, -0.2, 0.8], [0.5, -0.15, 0.75],
-                                 [0, 0, 1], [-0.2, 0.25, 0.7], [0.3, 0.3, 0.65]]) {
-        g.ellipse(cx + dx * R, cy + dy * R * 0.5, R * s, R * s * 0.55)
-          .fill({ color: lerpColour(kindColour[p.kind] ?? "#888888", fill),
-                  alpha: 0.85 });
+    // piles at 1Hz — fill lightness changes over minutes
+    if (now - lastPileTick > 1.0) {
+      lastPileTick = now;
+      const kindColour = {};
+      (snapshot.kinds ?? []).forEach((k, i) =>
+        kindColour[k] = snapshot.colours?.[i] ?? "#888888");
+      for (const e of piles.values()) {
+        const fill = e.p.cap > 0 ? pileQuantity(e.p, now) / e.p.cap : 0;
+        if (Math.abs(fill - e.lastFill) < 0.01) continue;
+        e.lastFill = fill;
+        const R = 12 + (e.p.cap / 50) * 26;
+        const [cx, cy] = P([e.p.x, e.p.y]);
+        e.g.clear();
+        for (const [dx, dy, s] of [[-0.5, -0.2, 0.8], [0.5, -0.15, 0.75],
+                                   [0, 0, 1], [-0.2, 0.25, 0.7],
+                                   [0.3, 0.3, 0.65]])
+          e.g.ellipse(cx + dx * R, cy + dy * R * 0.5, R * s, R * s * 0.55)
+            .fill({ color: lerpColour(kindColour[e.p.kind] ?? "#888888",
+                                      fill), alpha: 0.85 });
       }
     }
-    layers.routes.removeChildren();
-    for (const { a } of agentSprites.values()) {
-      // Rule 6.10: activity must be LEGIBLE. At six hours a crossing an agent
-      // moves ~0.05px/s -- honest, and invisible. The remaining route and a
-      // breathing pulse make slow motion readable without faking speed.
-      const m = a.movement;
-      if (!m || now >= m.arrives_at) continue;
-      const pts = m.waypoints.map(P);
-      const cur = P(routePosition(m.waypoints, m.departed_at, now));
-      const g2 = new Graphics();
-      const gp = new Graphics();
-      gp.moveTo(pts[0][0], pts[0][1]);
-      for (let k = 1; k < pts.length; k++) gp.lineTo(pts[k][0], pts[k][1]);
-      gp.stroke({ width: 2, color: a.colour_pair?.[1] ?? "#888888",
-                  alpha: 0.35 });
-      layers.routes.addChild(gp);
-      const pulse = 6 + 3 * Math.sin(now * 2 + cur[0]);
-      g2.ellipse(cur[0], cur[1], pulse + 8, (pulse + 8) * 0.5)
-        .stroke({ width: 1.5, color: a.colour_pair?.[0] ?? "#cccccc",
-                  alpha: 0.6 });
-      layers.routes.addChild(g2);
-    }
-    for (const { g, a } of agentSprites.values()) {
-      let pos = [0.5, 0.5], head = 0;
-      if (a.movement) {
-        pos = routePosition(a.movement.waypoints, a.movement.departed_at, now);
-        head = routeHeading(a.movement.waypoints, a.movement.departed_at, now);
+    // agents every frame — transforms only, zero allocation
+    for (const e of agents.values()) {
+      const m = e.a.movement;
+      let pos = [0.5, 0.5], head = 0, moving = false;
+      if (m) {
+        pos = routePosition(m.waypoints, m.departed_at, now);
+        head = routeHeading(m.waypoints, m.departed_at, now);
+        moving = now < m.arrives_at;
       }
+      if (!moving) {
+        const [sx, sy] = spread(e.a.agent_uuid);
+        pos = [pos[0] + sx, pos[1] + sy];
+      }
+      e.pos = pos;
       const [cx, cy] = P(pos);
-      const c1 = a.colour_pair?.[0] ?? "#cccccc";
-      const c2 = a.colour_pair?.[1] ?? "#888888";
-      g.clear();
-      if (opts.ownAgents?.has(a.agent_uuid))       // ownership ring (6.9d)
-        g.ellipse(cx, cy, 15, 8).stroke({ width: 2, color: 0xffffff });
-      g.ellipse(cx, cy, 10, 5.5).fill({ color: c1 });
-      if (a.infected)                               // broken outline (6.9i)
-        for (let k = 0; k < 6; k++)
-          g.arc(cx, cy, 12, k * Math.PI / 3, k * Math.PI / 3 + Math.PI / 5)
-            .stroke({ width: 2, color: c1 });
-      // heading triangle in world space, projected (6.9b/6.9c)
-      const t = 0.014;
-      const tip = P([pos[0] + Math.cos(head) * t, pos[1] + Math.sin(head) * t]);
-      const l = P([pos[0] + Math.cos(head + 2.5) * t * 0.6,
-                   pos[1] + Math.sin(head + 2.5) * t * 0.6]);
-      const r = P([pos[0] + Math.cos(head - 2.5) * t * 0.6,
-                   pos[1] + Math.sin(head - 2.5) * t * 0.6]);
-      g.poly([tip[0], tip[1], l[0], l[1], r[0], r[1]]).fill({ color: c2 });
+      e.body.position.set(cx, cy);
+      e.tri.position.set(cx, cy);
+      // heading in world space -> screen: project a unit heading vector
+      const [hx, hy] = P([pos[0] + Math.cos(head) * 0.01,
+                          pos[1] + Math.sin(head) * 0.01]);
+      e.tri.rotation = Math.atan2(hy - cy, hx - cx);
+      e.route.visible = moving;
+      e.pulse.visible = moving;
+      if (moving) {
+        e.pulse.position.set(cx, cy);
+        const s = 1 + 0.25 * Math.sin(now * 3);
+        e.pulse.scale.set(s, s);
+      }
+    }
+    if (followUuid && agents.has(followUuid)) {
+      const [cx, cy] = P(agents.get(followUuid).pos);
+      viewport.moveCenter(cx, cy);
     }
   }
 
-  // Hit-testing is the projection's inverse (Rule 6.5): pointer -> world
-  // coords -> nearest agent within a small radius.
-  viewport.on("clicked", (e) => {
-    if (!snapshot || !opts.onAgentClick) return;
-    const [wx, wy] = isoUnproject([e.world.x, e.world.y]);
-    const now = opts.clock ? opts.clock() : Date.now() / 1000;
-    let best = null, bestD = 0.03 * WORLD_PX;
-    for (const { a } of agentSprites.values()) {
-      let pos = [0.5, 0.5];
-      if (a.movement)
-        pos = routePosition(a.movement.waypoints, a.movement.departed_at, now);
-      const d = Math.hypot(pos[0] * WORLD_PX - wx, pos[1] * WORLD_PX - wy);
-      if (d < bestD) { bestD = d; best = a; }
+  // ---- hit-testing: nearest entity of any kind via the iso inverse ----
+  function entityAt(worldPt) {
+    const [wx, wy] = isoUnproject([worldPt.x, worldPt.y]);
+    const q = [wx / WORLD_PX, wy / WORLD_PX];
+    let best = null, bestD = 0.035;
+    for (const e of agents.values()) {
+      const d = Math.hypot(e.pos[0] - q[0], e.pos[1] - q[1]);
+      if (d < bestD) { bestD = d; best = { type: "agent", data: e.a }; }
     }
-    if (best) opts.onAgentClick(best.agent_uuid);
+    for (const e of piles.values()) {
+      const d = Math.hypot(e.p.x - q[0], e.p.y - q[1]);
+      if (d < bestD) { bestD = d; best = { type: "pile", data: e.p }; }
+    }
+    for (const pt of snapshot?.portals ?? []) {
+      const d = Math.hypot(pt.x - q[0], pt.y - q[1]);
+      if (d < bestD) { bestD = d; best = { type: "portal", data: pt }; }
+    }
+    return best;
+  }
+
+  viewport.on("clicked", (e) => {
+    const hit = entityAt(e.world);
+    if (hit) opts.onEntityMenu?.(hit, e.event.global);
+  });
+  app.canvas.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    const world = viewport.toWorld(ev.offsetX, ev.offsetY);
+    const hit = entityAt(world);
+    if (hit) opts.onEntityMenu?.(hit, { x: ev.offsetX, y: ev.offsetY });
   });
 
-  app.ticker.add(() => draw(opts.clock ? opts.clock() : Date.now() / 1000));
-  return { setSnapshot, destroy: () => app.destroy(true, { children: true }) };
+  app.ticker.add(() => tick(opts.clock ? opts.clock() : Date.now() / 1000));
+  return {
+    setSnapshot,
+    follow: (uuid) => { followUuid = uuid; },
+    destroy: () => app.destroy(true, { children: true, texture: true }),
+  };
 }
