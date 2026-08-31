@@ -43,6 +43,46 @@ function Bell() {
     </span>);
 }
 
+function Settings() {
+  const [open, setOpen] = useState(false);
+  const [prefs, setPrefs] = useState(null);
+  useEffect(() => {
+    if (!open || prefs) return;
+    fetch(`${API}/me/prefs`, { credentials: "include" })
+      .then(r => r.json()).then(d => setPrefs(d.prefs)).catch(() => {});
+  }, [open]);
+  const set = async (source, level) => {
+    const next = { ...prefs, [source]: level };
+    setPrefs(next);
+    await fetch(`${API}/me/prefs`, {
+      method: "PUT", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefs: next }) });
+  };
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} aria-label="Settings"
+              className="text-sm opacity-80">⚙</button>
+      {open && prefs && (
+        <div className="absolute right-0 top-7 z-30 w-72 bg-neutral-800 border
+                        border-neutral-600 rounded shadow-lg text-sm p-3">
+          <div className="font-semibold mb-2">Notifications</div>
+          {["world", "agents", "platform"].map(src => (
+            <div key={src} className="flex items-center gap-2 py-1">
+              <span className="w-20 capitalize">{src}</span>
+              {["all", "important", "none"].map(lv => (
+                <button key={lv} onClick={() => set(src, lv)}
+                  className={"px-2 py-0.5 rounded " +
+                    (prefs[src] === lv ? "bg-emerald-700"
+                                       : "bg-neutral-700 opacity-60")}>
+                  {lv}</button>))}
+            </div>))}
+          <div className="opacity-50 mt-2">Invitations and new links always
+            reach you; floods, deaths and berths pierce “important”.</div>
+        </div>)}
+    </div>);
+}
+
 function Connections() {
   const [open, setOpen] = useState(false);
   const [props, setProps] = useState({ incoming: [], outgoing: [] });
@@ -202,6 +242,10 @@ function App() {
       }).catch(() => setMe({ authenticated: false }));
   }, []);
   const [status, setStatus] = useState("no world selected");
+  const [live, setLive] = useState(true);
+  const [agentList, setAgentList] = useState([]);
+  const [listOpen, setListOpen] = useState(false);
+  const loadRef = useRef(null);
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
   const [menu, setMenu] = useState(null);         // {hit, x, y}
   const canvasApi = useRef(null);
@@ -218,10 +262,21 @@ function App() {
         try {
           const r = await fetch(`${API}/worlds/${realm}/snapshot`);
           if (!r.ok) throw new Error(r.status);
-          canvas.setSnapshot(await r.json());
+          const snap = await r.json();
+          if (dead) return;
+          canvas.setSnapshot(snap);
+          setAgentList((snap.agents ?? []).map(a =>
+            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+          setLive(true);
           setStatus(`watching ${realm}`);
-        } catch (e) { setStatus(`cannot reach world: ${e.message}`); }
+        } catch (e) {
+          if (dead) return;
+          setLive(false);                       // banner; poll keeps trying
+          setStatus(`disconnected — retrying (${e.message})`);
+        }
       };
+      loadRef.current = load;
+      setStatus(`loading ${realm}…`);
       await load();
       timer = setInterval(load, 5000);     // events feed replaces this later
     })();
@@ -255,6 +310,7 @@ function App() {
           <a className="text-sm underline opacity-80"
              href={`${API}/auth/microsoft/login`}>Microsoft</a>
         </>}
+        {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
         {me?.authenticated && me.verified === false &&
@@ -266,7 +322,35 @@ function App() {
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
       <div className="flex-1 flex min-h-0 relative">
+        {!live && (
+          <div className="absolute top-0 inset-x-0 z-30 bg-red-900/90 text-sm
+                          px-4 py-1.5 flex items-center gap-3">
+            <span>Connection to the world lost — retrying every 5s.</span>
+            <button className="underline"
+                    onClick={() => loadRef.current?.()}>retry now</button>
+          </div>)}
         <div ref={ref} className="flex-1" />
+        <button onClick={() => setListOpen(o => !o)}
+                aria-expanded={listOpen}
+                className="absolute bottom-2 left-2 z-20 text-xs px-2 py-1
+                           bg-neutral-800/90 border border-neutral-600 rounded">
+          agents ({agentList.length})</button>
+        {listOpen && (
+          <nav aria-label="Agents in this world"
+               className="absolute bottom-9 left-2 z-20 max-h-64 w-64
+                          overflow-y-auto bg-neutral-800/95 border
+                          border-neutral-600 rounded text-sm">
+            {agentList.map(a => (
+              <button key={a.uuid}
+                className="block w-full text-left px-3 py-1.5
+                           hover:bg-neutral-700 focus:bg-neutral-700"
+                onClick={() => canvasApi.current?.follow(a.uuid)}>
+                {a.name ?? a.uuid}
+                {a.infected && <span className="text-red-400"> · infected</span>}
+              </button>))}
+            {agentList.length === 0 &&
+              <div className="px-3 py-2 opacity-60">nobody here</div>}
+          </nav>)}
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}
           onInspect={async (uuid) => {
