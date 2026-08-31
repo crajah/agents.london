@@ -16,14 +16,14 @@ import random
 # Three models in one pool restores what Rule 10.1 wants: per-agent
 # assignment with genuine variety.
 POOLS: dict[str, list[str]] = {
-    "economy": ["MiniMax-M2.7", "DeepSeek-V3.2",
-                "Meta-Llama-3.3-70B-Instruct"],
+    "economy": ["MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"],
     "deliberative": ["DeepSeek-V3.2"],
 }
 
-# flat-rate models: no per-token budget applies; reasoning may run long
-UNBUDGETED = {"MiniMax-M2.7", "DeepSeek-V3.2",
-              "Meta-Llama-3.3-70B-Instruct"}
+# flat-rate models: NO token cap at all -- the request omits max_tokens and
+# the model reasons as long as it needs (user decision; llama swapped for
+# gpt-oss-120b, probed clean through the router)
+UNBUDGETED = {"MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"}
 
 
 def assign_models(agent_uuid: str) -> dict[str, str]:

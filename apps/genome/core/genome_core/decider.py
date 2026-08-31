@@ -99,11 +99,13 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
     usr_p = prompt.user_prompt(situation_text(req),
                                {k: OPTION_TEXT.get(k, k) for k in req.options})
     from .models import UNBUDGETED
-    cap = 2000 if model in UNBUDGETED else 24   # reasoning needs room; the
-    # flat-rate trio has no per-token budget (user decision)
-    body = json.dumps({"model": model, "temperature": 1.0, "max_tokens": cap,
-                       "messages": [{"role": "system", "content": sys_p},
-                                    {"role": "user", "content": usr_p}]}).encode()
+    req_body = {"model": model, "temperature": 1.0,
+                "messages": [{"role": "system", "content": sys_p},
+                             {"role": "user", "content": usr_p}]}
+    if model not in UNBUDGETED:
+        req_body["max_tokens"] = 24        # budgeted models stay terse; the
+        # flat-rate pair runs UNCAPPED (user decision)
+    body = json.dumps(req_body).encode()
     rq = urllib.request.Request(
         ROUTER + "/v1/chat/completions", data=body,
         headers={"Content-Type": "application/json",
