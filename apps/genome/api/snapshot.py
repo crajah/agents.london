@@ -113,6 +113,33 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     return out
 
 
+async def agent_beliefs(client: Any, agent_uuid: str) -> dict:
+    """Rule 4.1: belief beside truth. Every counterpart this agent holds an
+    opinion about, each believed locus next to the subject's REAL value --
+    the gap is the story."""
+    rows = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                      filters={"key": agent_uuid}, limit=1)
+    if not rows:
+        return {"beliefs": []}
+    opinions = rows[0].payload.get("opinions") or {}
+    out = []
+    for subject, loci in opinions.items():
+        srow = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                          filters={"key": subject}, limit=1)
+        spl = srow[0].payload if srow else {}
+        truth = spl.get("genotype") or {}
+        out.append({
+            "subject": subject,
+            "name": spl.get("name"),
+            "colour_pair": spl.get("colour_pair"),
+            "loci": [{"locus": k,
+                      "believed": v.get("estimate"),
+                      "weight": v.get("weight"),
+                      "actual": truth.get(k)}
+                     for k, v in loci.items()]})
+    return {"beliefs": out}
+
+
 async def agent_decisions(client: Any, agent_uuid: str, limit: int = 20) -> list[dict]:
     """The experimental record, per agent, newest first (execution-spec §6) —
     a user may always read why their world looks the way it does."""

@@ -299,6 +299,75 @@ async def ark_manifest(realm: str, payload: dict,
         payload.get("site", ""))
 
 
+@app.get("/agents/{agent_uuid}/beliefs", tags=["Agent"])
+async def get_agent_beliefs(agent_uuid: str):
+    return await snapshot.agent_beliefs(app.state.pg, agent_uuid)
+
+
+@app.get("/me/digest", tags=["Social"])
+async def my_digest(request: __import__("fastapi").Request,
+                    since: float = 0.0):
+    """Phase 11: the since-you-were-away digest, built from the event and
+    decision record, never a separate log."""
+    from genome_core import construction as _con
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    uid = _uid(request)
+    if not uid:
+        return {"error": "sign in first"}
+    store = GenomeStore(app.state.pg)
+    realm = await genesis.user_world_realm(app.state.pg, uid)
+    if not realm:
+        return {"world": None}
+    meta = await _dr._world_payload(store, realm)
+    counts: dict[str, int] = {}
+    try:
+        for v in await app.state.pg.get_vertices("events", realm=realm):
+            pl = v.payload
+            done = pl.get("done_at")
+            if not done or float(done) < since:
+                continue
+            k = pl.get("kind")
+            counts[k] = counts.get(k, 0) + 1
+    except Exception:
+        pass
+    deals = refusals = 0
+    try:
+        for v in await app.state.pg.get_vertices("negotiations", realm=realm):
+            st = v.payload
+            if st.get("opened_at", 0) < since:
+                continue
+            if st.get("status") == "done":
+                deals += 1
+            elif st.get("status") == "dead":
+                refusals += 1
+    except Exception:
+        pass
+    built = []
+    for v in await _con.sites_in(app.state.pg, realm):
+        s = v.payload
+        if s.get("completed_at", 0) >= since and s.get("complete"):
+            built.append(s["name"])
+    my_agents = []
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        pl = v.payload
+        if pl.get("owner_user_id") != uid or "genotype" not in pl:
+            continue
+        my_agents.append({"agent_uuid": pl["key"], "name": pl.get("name"),
+                          "infected": bool(pl.get("infections")),
+                          "reborn": pl.get("born_at", 0) >= since > 0})
+    flooded = meta.get("last_flood_at", 0) >= since > 0
+    return {"world": realm, "since": since,
+            "events": counts,
+            "bargains": {"struck": deals, "dead": refusals},
+            "constructions_completed": built,
+            "flooded": flooded,
+            "flood_countdown": __import__(
+                "genome_core.flood", fromlist=["countdown_visible"]
+            ).countdown_visible(meta, __import__("time").time()),
+            "agents": my_agents}
+
+
 @app.get("/agents/{agent_uuid}/chat", tags=["Agent"])
 async def agent_chat_history(agent_uuid: str, limit: int = 30):
     try:

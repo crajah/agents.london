@@ -252,6 +252,12 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
 
 function AgentModal({ inspect, onClose }) {
   const [chat, setChat] = useState([]);
+  const [beliefs, setBeliefs] = useState([]);
+  useEffect(() => {
+    fetch(`${API}/agents/${inspect.agent_uuid}/beliefs`)
+      .then(r => r.json()).then(d => setBeliefs(d.beliefs ?? []))
+      .catch(() => {});
+  }, [inspect.agent_uuid]);
   const [draft, setDraft] = useState("");
   const [chatErr, setChatErr] = useState(null);
   const load = () =>
@@ -310,6 +316,34 @@ function AgentModal({ inspect, onClose }) {
                 <div key={k} className="flex justify-between">
                   <span>{k}</span>
                   <span className="opacity-60">{v.toFixed(3)}</span>
+                </div>))}
+            </>}
+            {beliefs.length > 0 && <>
+              <h4 className="opacity-70 mt-3 mb-1">
+                Beliefs — what it thinks of others, beside the truth</h4>
+              {beliefs.map((b, i) => (
+                <div key={i} className="mb-2 pb-2 border-b border-neutral-800">
+                  <div className="flex items-center gap-1.5">
+                    {(b.colour_pair ?? []).map(c =>
+                      <span key={c} className="w-3 h-3 rounded-full
+                                               inline-block"
+                            style={{ background: c }} />)}
+                    <span>{b.name ?? b.subject}</span>
+                  </div>
+                  {b.loci.map((l, j) => (
+                    <div key={j} className="text-xs mt-1">
+                      <span className="opacity-60">{l.locus}: </span>
+                      believes {Math.round(l.believed)}
+                      <span className="opacity-60"> · truth </span>
+                      {l.actual != null ? Math.round(l.actual) : "?"}
+                      <span className={
+                        Math.abs((l.believed ?? 0) - (l.actual ?? 0)) > 2000
+                          ? "text-amber-400" : "text-emerald-500"}>
+                        {" "}({l.actual != null
+                          ? (Math.abs(l.believed - l.actual) > 2000
+                             ? "way off" : "close")
+                          : "unknowable"})</span>
+                    </div>))}
                 </div>))}
             </>}
             {inspect.decisions?.length > 0 && <>
@@ -376,6 +410,17 @@ function App() {
   const [status, setStatus] = useState("no world selected");
   const [live, setLive] = useState(true);
   const [flood, setFlood] = useState(null);
+  const [digest, setDigest] = useState(null);
+  useEffect(() => {
+    if (!me?.authenticated) return;
+    const last = Number(localStorage.getItem("genome_last_seen") || 0);
+    localStorage.setItem("genome_last_seen", String(Date.now() / 1000));
+    if (!last) return;
+    fetch(`${API}/me/digest?since=${last}`, { credentials: "include" })
+      .then(r => r.json())
+      .then(d => { if (d.world) setDigest(d); })
+      .catch(() => {});
+  }, [me?.authenticated]);
   const [agentList, setAgentList] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const loadRef = useRef(null);
@@ -456,6 +501,42 @@ function App() {
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
       <div className="flex-1 flex min-h-0 relative">
+        {digest && (
+          <div className="absolute top-10 right-3 z-30 w-80 bg-neutral-800
+                          border border-neutral-600 rounded-lg shadow-xl
+                          text-sm p-3">
+            <div className="flex justify-between items-center mb-1">
+              <strong>While you were away</strong>
+              <button className="opacity-60"
+                      onClick={() => setDigest(null)}>✕</button>
+            </div>
+            {digest.flooded &&
+              <div className="text-sky-300 mb-1">🌊 Your world FLOODED and
+                is nascent again.</div>}
+            {digest.flood_countdown != null &&
+              <div className="text-sky-300 mb-1">⚠ The water is coming —
+                {" "}{Math.round(digest.flood_countdown / 60)}m.</div>}
+            <div className="opacity-80">
+              {digest.bargains.struck} bargains struck,
+              {" "}{digest.bargains.dead} talks died
+              {digest.constructions_completed.length > 0 &&
+                <> · built: {digest.constructions_completed.join(", ")}</>}
+            </div>
+            <div className="opacity-60 mt-1">
+              {Object.entries(digest.events)
+                .filter(([k]) => ["arrival", "explored", "mining_done",
+                                  "encounter"].includes(k))
+                .map(([k, n]) => `${n} ${k}`).join(" · ") || "a quiet spell"}
+            </div>
+            {digest.agents.some(a => a.reborn) &&
+              <div className="text-amber-300 mt-1">
+                {digest.agents.filter(a => a.reborn).map(a => a.name)
+                  .join(", ")} died and regenerated.</div>}
+            {digest.agents.some(a => a.infected) &&
+              <div className="text-red-400 mt-1">
+                infected: {digest.agents.filter(a => a.infected)
+                  .map(a => a.name || a.agent_uuid).join(", ")}</div>}
+          </div>)}
         {flood != null && (
           <div className="absolute top-0 inset-x-0 z-30 bg-sky-950/95
                           text-sky-100 text-sm px-4 py-1.5 text-center
