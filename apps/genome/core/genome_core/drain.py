@@ -94,13 +94,24 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
     neighbours = await _positions_of_others(store, world_realm,
                                             agent.agent_uuid, now)
     sites = [v.payload for v in await construction.sites_in(store._c,
-                                                            world_realm)]
+                                                            world_realm)
+             if not v.payload.get("destroyed")]
     effects = await construction.world_effects(store._c, world_realm)
+    from . import flood as _flood
+    flood_in = _flood.countdown_visible(world_payload, now)
+    boardable = None
+    if flood_in is not None:
+        me = agent_payload.get("owner_user_id")
+        boardable = next(
+            (s for s in sites if s["name"] == "ark" and s.get("complete")
+             and not s.get("spent") and s.get("berths", {}).get(me, 0) > 0),
+            None)
     return {"genotype": agent_payload.get("genotype") or {},
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
             "muster": world_payload.get("muster_points", []),
-            "sites": sites, **effects}
+            "sites": sites, "flood_in_s": flood_in,
+            "boardable_ark": boardable, **effects}
 
 
 async def apply_contribution(store: GenomeStore, world_realm: str,
@@ -236,6 +247,10 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.contribute:
         await apply_contribution(store, world_realm, agent, agent_payload,
                                  eff, now)
+    if eff.board:
+        await construction.board(store._c, world_realm, eff.board,
+                                 agent_payload.get("owner_user_id", ""),
+                                 agent.agent_uuid)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, world_payload.get("portals", []), now)
@@ -360,6 +375,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.contribute:
         await apply_contribution(store, world_realm, agent, agent_payload,
                                  eff, now)
+    if eff.board:
+        await construction.board(store._c, world_realm, eff.board,
+                                 agent_payload.get("owner_user_id", ""),
+                                 agent.agent_uuid)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, portals, now)
@@ -748,6 +767,25 @@ async def regenerate(store: GenomeStore, event_realm: str,
               "victories": 0, "stamina": 1.0, "stamina_max": 1.0,
               "born_at": now, "infections": [], "antigens": []}
     reborn.pop("perishes_at", None)
+    # Rule 3.7g: a berth does not survive its holder -- back to the pool,
+    # contested afresh
+    ark_key = reborn.pop("aboard_ark", None)
+    had_berth = reborn.pop("berth", None)
+    if ark_key and had_berth:
+        rows = await store._c.find_vertices(construction.TABLE,
+                                            realm=event_realm,
+                                            filters={"key": ark_key}, limit=1)
+        if rows:
+            s = dict(rows[0].payload)
+            uid = s.get("boarded", {}).pop(a, None) or \
+                agent_payload.get("owner_user_id")
+            if uid:
+                pool = dict(s.get("berths", {}))
+                pool[uid] = pool.get(uid, 0) + 1
+                await store._c.upsert_vertex(
+                    construction.TABLE, realm=event_realm,
+                    vertex_id=int(rows[0].id), space="default",
+                    payload={**s, "berths": pool})
     await store.put_agent(a, reborn)
     await store.set_movement(a, {"waypoints": [[engine.HOME_XY[0],
                                                 engine.HOME_XY[1]]],

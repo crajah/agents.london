@@ -243,6 +243,7 @@ function App() {
   }, []);
   const [status, setStatus] = useState("no world selected");
   const [live, setLive] = useState(true);
+  const [flood, setFlood] = useState(null);
   const [agentList, setAgentList] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const loadRef = useRef(null);
@@ -267,6 +268,7 @@ function App() {
           canvas.setSnapshot(snap);
           setAgentList((snap.agents ?? []).map(a =>
             ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+          setFlood(snap.flood_countdown ?? null);
           setLive(true);
           setStatus(`watching ${realm}`);
         } catch (e) {
@@ -322,6 +324,15 @@ function App() {
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
       <div className="flex-1 flex min-h-0 relative">
+        {flood != null && (
+          <div className="absolute top-0 inset-x-0 z-30 bg-sky-950/95
+                          text-sky-100 text-sm px-4 py-1.5 text-center
+                          font-semibold tracking-wide">
+            ⚠ THE WATER IS COMING — flood in {flood > 3600
+              ? `${(flood / 3600).toFixed(1)}h`
+              : `${Math.max(0, Math.round(flood / 60))}m`}.
+            Agents here die unless aboard an Ark or gone.
+          </div>)}
         {!live && (
           <div className="absolute top-0 inset-x-0 z-30 bg-red-900/90 text-sm
                           px-4 py-1.5 flex items-center gap-3">

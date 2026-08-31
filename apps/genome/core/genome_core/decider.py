@@ -28,6 +28,9 @@ OPTION_TEXT = {
     "travel_to_pile": "Travel to another pile you know of.",
     "go_home_deposit": "Return home and deposit your cargo.",
     "contribute_here": "Pour your cargo into the construction site here.",
+    "board_ark": "Board the Ark and claim a berth -- the only shelter from "
+                 "the coming flood.",
+    "flee_to_ark": "Run for the Ark before the water arrives.",
     "travel_to_site": "Carry your cargo to a construction site that needs it.",
     "explore_frontier": "Push into the unexplored region nearest the edge of what you know.",
     "survey_far": "Mount an expedition to the farthest unexplored region.",

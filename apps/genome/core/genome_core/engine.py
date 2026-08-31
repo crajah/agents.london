@@ -87,6 +87,8 @@ class Effects:
     # caller signs the assertion and flips presence (genome-spec §6)
     contribute: tuple[str, dict] | None = None   # site_key, offered cargo — the
     # caller pours it in via construction.contribute, which says what stuck
+    board: str | None = None                     # ark site key — the caller
+    # claims a berth via construction.board (Rules 3.7e/4.10a)
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -276,6 +278,12 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     if any(_con.accepts(s, agent.cargo) for s in sites
            if s is not near_site):
         options.append("travel_to_site")
+    # the water is coming (Rule 4.8): a boardable Ark changes everything
+    ark = ctx.get("boardable_ark")
+    if ark:
+        near_ark = (ark["x"] - agent.x) ** 2 + (ark["y"] - agent.y) ** 2 \
+            < 0.03 ** 2
+        options.append("board_ark" if near_ark else "flee_to_ark")
     if near_portal:
         # Teleport Affinity (genotype disposition): some agents simply will
         # not step through. Below the floor the option is never offered —
@@ -298,6 +306,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  if agent.explored else 0,
                  "unexplored_count": GRID_K * GRID_K - len(agent.explored),
                  "site_here": near_site["key"] if near_site else None,
+                 "flood_in_s": ctx.get("flood_in_s"),
+                 "ark_key": ark["key"] if ark else None,
                  "sites_wanting": [s["key"] for s in sites
                                    if _con.accepts(s, agent.cargo)]})
 
@@ -427,6 +437,21 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         s = min(cand, key=lambda q: (q["x"] - agent.x) ** 2
                 + (q["y"] - agent.y) ** 2)
         tx, ty = standoff(agent.x, agent.y, s["x"], s["y"])
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale)
+
+    if choice.option == "board_ark":
+        return Effects(board=payload.get("ark_key") or choice.target,
+                       schedule=("decide", now + 3600.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "flee_to_ark":
+        ark = ctx.get("boardable_ark")
+        if not ark:
+            return Effects(schedule=("decide", now + 60.0,
+                                     agent.agent_uuid, {}))
+        tx, ty = standoff(agent.x, agent.y, ark["x"], ark["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
                               "decide", {}, time_scale)

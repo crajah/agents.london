@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from post_graph import AsyncPostGraph
 from genome_core import drain
+from genome_core import flood as _flood
 from genome_core import drain as _d
 from genome_core.decider import make_decider
 from genome_core.store import GenomeStore
@@ -139,6 +140,9 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
 
 async def tick_once(store: GenomeStore, realm: str, decider) -> int:
     now = time.time()
+    happened = await _flood.tick(store, realm, now)
+    if happened:
+        logger.info("%s: %s", realm, happened)
     await sweep(store, realm, now)
     await heal(store, realm, now)
     done = 0
