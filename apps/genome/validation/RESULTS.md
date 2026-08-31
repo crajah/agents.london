@@ -259,3 +259,21 @@ finally being swept (a discovery bug had left the market square untended).
   own home_realm now always wins; and parallel decision-processing could
   split an encounter's pair-state between two first-writers — pair events
   now serialize on the sorted pair key.
+
+## The first bargains
+
+Negotiation went live and behaviour differentiated immediately:
+
+- **The first completed negotiation was a refusal** — the opener proposed,
+  the counterpart read the standing offer and walked away. Several more
+  refusals followed; saying no is the commonest outcome, as bazaar economics
+  would predict.
+- **The first executed deal was a gift**: agent-ad929f2166 proposed one unit
+  of kind 4 for nothing and demo2-native-10 accepted — binding, verified,
+  atomic. Whether generosity, reciprocity-seeding, or an LLM's opening
+  gambit taken literally, the ledger records it.
+- **A latency lesson worth keeping**: uncapped reasoning models will
+  deliberate a two-line bargain for minutes. One sentence in the prompt —
+  "decide quickly; a short answer is a good answer" — brought MiniMax from
+  90s+ timeouts to 1.6s with identical answer quality. Verbosity control
+  belongs in the prompt, not the token cap.

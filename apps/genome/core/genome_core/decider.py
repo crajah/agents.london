@@ -132,7 +132,7 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
 
 
 def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
-                      seed: int = 0, timeout: float = 60.0
+                      seed: int = 0, timeout: float = 120.0
                       ) -> tuple[str, dict | None, str]:
     """One bargaining turn: returns (action, offer, model). The prompt shows
     the standing offer and the purse; the reply is a single JSON object.
@@ -154,6 +154,7 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
         f"You carry: {json.dumps(ctx.get('my_cargo', {}))}\n{last_txt}\n"
         "Actions: propose (make an offer), counter (replace theirs), "
         "accept (take their standing offer, binding), walk_away.\n"
+        "Decide quickly; a short answer is a good answer.\n"
         'Reply with JSON only: {"choice": "<action>", '
         '"give": {"<kind>": units}, "want": {"<kind>": units}}. '
         "give/want required for propose and counter, ignored otherwise. "
