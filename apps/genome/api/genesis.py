@@ -51,6 +51,7 @@ async def ensure_user_world(client: Any, user_id: str,
         "owner_user_id": user_id, "kinds": w["kinds"], "colours": w["colours"],
         "terrain": w["terrain"], "founding_centre": w["founding_centre"],
         "portal_slots": w["portal_slots"], "portals": [], "stock": {},
+        "muster_points": w["muster_points"],
         "cert": cert, "root_public_pem": root_public})
     for p in w["piles"]:
         await store.put_pile(realm, p["pile_uuid"], p)

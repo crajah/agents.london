@@ -65,6 +65,39 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
     return view, payload
 
 
+async def _positions_of_others(store: GenomeStore, world_realm: str,
+                               me_uuid: str, now: float) -> list:
+    """Where everyone else in this world stands right now — closed-form from
+    their latest movement, never stored. Feeds swarm style and separation."""
+    out = []
+    for v in await store.agents_in(world_realm):
+        u = v.payload["key"]
+        if u == me_uuid:
+            continue
+        mv = await store.latest_movement(u)
+        if mv is None or "waypoints" not in mv.payload:
+            continue
+        pl = mv.payload
+        r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
+                        pl["departed_at"])
+        out.append(forms.route_position(r, now))
+    return out
+
+
+async def engine_ctx(store: GenomeStore, world_realm: str,
+                     world_payload: dict, agent_payload: dict,
+                     agent: engine.AgentView, pile_views: list,
+                     now: float) -> dict:
+    """Everything the engine's collision, muster and movement-style faculties
+    need of the world, loaded once per decision."""
+    neighbours = await _positions_of_others(store, world_realm,
+                                            agent.agent_uuid, now)
+    return {"genotype": agent_payload.get("genotype") or {},
+            "neighbours": neighbours,
+            "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
+            "muster": world_payload.get("muster_points", [])}
+
+
 async def persist_effects(store: GenomeStore, world_realm: str,
                           agent: engine.AgentView, eff: engine.Effects,
                           piles_meta: dict, now: float) -> None:
@@ -156,9 +189,11 @@ async def apply_decided(store: GenomeStore, world_realm: str,
         "at": _iso(now), "situation": req_situation,
         "options": req_options, "choice": choice.option,
         "model": model, "tier": "economy" if model != "stub" else "stub"})
+    ctx = await engine_ctx(store, world_realm, world_payload, agent_payload,
+                           agent, pile_views, now)
     eff = engine.apply_choice(choice, agent, pile_views, now,
                               event_payload, terrain,
-                              world_payload.get("time_scale", 1.0))
+                              world_payload.get("time_scale", 1.0), ctx)
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
@@ -224,8 +259,12 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         eff = engine.on_deposit_arrival(agent, stock, now)
         outcome = "deposit"
     else:
+        ctx = (await engine_ctx(store, world_realm, world_payload,
+                                agent_payload, agent, pile_views, now)
+               if pl["kind"] in ("arrival", "decide")
+               else {"genotype": agent_payload.get("genotype") or {}})
         res = engine.on_event(pl["kind"], agent, pile_views, now,
-                              pl.get("payload", {}), stock, portals)
+                              pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):
             if decider is None:                     # queue mode (Rule 8.4)
                 merged_q = dict(pl.get("payload", {}))
@@ -250,7 +289,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     merged[k] = res.context[k]
             eff = engine.apply_choice(choice, agent, pile_views, now,
                                       merged, terrain,
-                                      world_payload.get("time_scale", 1.0))
+                                      world_payload.get("time_scale", 1.0),
+                                      ctx)
             outcome = choice.option
         else:
             eff = res

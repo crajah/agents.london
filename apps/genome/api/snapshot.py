@@ -48,6 +48,9 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "terrain": meta.get("terrain", []),
             "portals": meta.get("portals", []),
             "stock": meta.get("stock", {}),
+            "muster_points": meta.get("muster_points", []),
+            "constructions": meta.get("constructions", []),
+            "time_scale": meta.get("time_scale", 1.0),
             "piles": [{k: p.get(k) for k in
                        ("pile_uuid", "kind", "x", "y", "qty_at",
                         "measured_at", "rate", "cap")} for p in piles],

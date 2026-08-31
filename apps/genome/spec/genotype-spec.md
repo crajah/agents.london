@@ -134,6 +134,7 @@ them evolving straight to its maximum.
 | **Wanderlust** | 0–10000 | Propensity to travel far from the home world |
 | **Fecundity** | 0–10000 | Eagerness to breed when the opportunity arises |
 | **Selectivity** | 0–10000 | Minimum attractiveness it will accept in a mate |
+| **Teleport Affinity** | 0–10000 | Willingness to step through a portal at all |
 
 ### 3.3 Preference — how an agent judges others
 
@@ -548,6 +549,8 @@ judgement.
 | **Cooperativeness** | **Efficiency of contribution** to another user's construction |
 | **Amenability** | **Resistance to social skills** (`skills-spec.md` Rule 5.1) |
 | **Fecundity, Selectivity** | Breeding rate; the threshold attractiveness is compared against |
+| **Teleport Affinity** | **Gate on portal use**: below a floor the option to step through is never offered — some lines simply do not travel |
+| **Movement dispositions** | Prudence, Knowledge, Curiosity, Patience, Wanderlust, Loyalty, Cooperativeness and Courage together select each journey's **movement style** (`genome-spec.md` Rule 5.7) |
 | **Wisdom** | Mana, and spell class |
 | **Counsel, Occulmancy** | Chance of melee and of spell effect landing |
 | **Speed** | Movement rate across a map |

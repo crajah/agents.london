@@ -116,6 +116,21 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
         <div className="px-3 py-1.5 opacity-70">to {hit.data.to_world}</div>
         <Item onClick={() => onTravel(hit.data.to_world)}>View that world</Item>
       </>}
+      {hit.type === "muster" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          muster point {hit.data.idx + 1} of 5</div>
+        <div className="px-3 py-1.5 opacity-70">
+          agents deliver their load at the nearest flag</div>
+      </>}
+      {hit.type === "construction" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          {hit.data.kind === "ark" ? "the Ark" :
+            `${hit.data.name ?? "construction"} · tier ${hit.data.tier ?? 1}`}
+        </div>
+        <div className="px-3 py-1.5">
+          {Math.round((hit.data.progress ?? 0) * 100)}% built
+        </div>
+      </>}
     </div>);
 }
 

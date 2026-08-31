@@ -101,11 +101,30 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
                        for o in terrain):
                 portal_slots.append({"x": q[0], "y": q[1]})
                 break
+    muster = muster_points(r, terrain)
     return {"realm": f"world_{uuidlib.UUID(int=r.getrandbits(128)).hex[:12]}",
             "owner_user_id": owner_user_id, "kinds": kinds,
             "colours": [A100[kinds[0]], A100[kinds[1]]],
             "founding_centre": centre, "piles": piles, "terrain": terrain,
-            "portal_slots": portal_slots}
+            "portal_slots": portal_slots, "muster_points": muster}
+
+
+def muster_points(r: random.Random, terrain: list[dict]) -> list[dict]:
+    """Exactly five muster flags per world (user directive): the drop points
+    where agents deliver their load. Spaced, terrain-clear, reachable from the
+    world's centre so no flag is ever walled off."""
+    out: list[dict] = []
+    for q in _spaced_points(r, 15):
+        if len(out) == 5:
+            break
+        if not any((q[0] - o["x"]) ** 2 + (q[1] - o["y"]) ** 2
+                   < (o["r"] + pathmod.INFLATE) ** 2 for o in terrain)                 and pathmod.find_path(terrain, *HOME_XY, *q) is not None:
+            out.append({"x": q[0], "y": q[1]})
+    while len(out) < 5:                       # degenerate seeds still fill
+        q = (r.uniform(0.1, 0.9), r.uniform(0.1, 0.9))
+        if pathmod.find_path(terrain, *HOME_XY, *q) is not None:
+            out.append({"x": q[0], "y": q[1]})
+    return out
 
 
 def founder_genotype(world: dict, seed: int) -> dict:
