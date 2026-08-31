@@ -11,9 +11,9 @@ authoritative and this one records it for comparison.
 
 **Rule 1.1** — A **day is a real day** (`system-spec.md` Rule 2.1).
 
-**Rule 1.2** — Crossing a world edge to edge takes approximately **one hour**
-at base pace (revised 2026-08-31 from six hours: movement was imperceptible
-even time-scaled). The **Speed pool** (Agility + Dexterity) multiplies each
+**Rule 1.2** — Crossing a world edge to edge takes approximately **six
+minutes** at base pace (revised 2026-08-31, twice: six hours was
+imperceptible, one hour still crawled). The **Speed pool** (Agility + Dexterity) multiplies each
 agent's pace 0.7×–1.3×, so the walk itself is heritable. Client and server
 interpolate every journey from its record's own `(departed_at, arrives_at)`
 span — scaled and hastened journeys render at their true pace on both sides.

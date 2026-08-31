@@ -29,7 +29,7 @@ class TestForms(unittest.TestCase):
 
     def test_crossing_takes_one_hour(self):
         t = forms.arrival_time(0.0, 0.0, 1.0, 0.0, 0.0)
-        self.assertAlmostEqual(t, 3600, places=3)  # calibration Rule 1.2 (revised: one hour)
+        self.assertAlmostEqual(t, 360, places=3)  # calibration Rule 1.2 (revised: six minutes)
 
     def test_pile_regen_clamps_and_halts(self):
         p = forms.PileState(qty_at=10.0, measured_at=0.0, rate=0.01, cap=40.0)

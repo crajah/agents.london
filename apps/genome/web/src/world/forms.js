@@ -1,7 +1,7 @@
 // Client-side closed forms — MUST match genome_core/forms.py exactly
 // (interface-spec Rule 6.13: same forms both sides; the arrival event is
 // authoritative and any divergence is a bug in one of them).
-export const CROSSING_SECONDS = 3600;
+export const CROSSING_SECONDS = 360;
 export const SPEED = 1 / CROSSING_SECONDS;
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);

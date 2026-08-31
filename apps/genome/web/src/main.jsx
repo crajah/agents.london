@@ -237,11 +237,14 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
       </>}
       {hit.type === "construction" && hit.data.name !== "cache" && <>
         <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
-          {hit.data.kind === "ark" ? "the Ark" :
+          {hit.data.kind === "ark" && hit.data.wreck ? "wreck of the Ark" :
+            hit.data.kind === "ark" ? "the Ark" :
             `${hit.data.name ?? "construction"} · tier ${hit.data.tier ?? 1}`}
         </div>
         <div className="px-3 py-1.5">
-          {Math.round((hit.data.progress ?? 0) * 100)}% built
+          {hit.data.wreck
+            ? "spent — the next flood takes it"
+            : `${Math.round((hit.data.progress ?? 0) * 100)}% built`}
         </div>
       </>}
     </div>);

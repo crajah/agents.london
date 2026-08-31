@@ -148,6 +148,30 @@ export async function createWorldCanvas(el, opts = {}) {
         layers.constructions.addChild(g);
         continue;
       }
+      if (c.kind === "ark" && c.wreck) {
+        // a broken hull, listing: keel snapped in two, half the ribs gone,
+        // the rest leaning -- until the next flood takes it
+        const W = 90, H = 40;
+        g.ellipse(cx, cy, W * 0.7, 10).fill({ color: 0x000000, alpha: 0.2 });
+        g.moveTo(cx - W / 2, cy - H * 0.5)
+          .quadraticCurveTo(cx - W * 0.3, cy + 2, cx - W * 0.08, cy + 4)
+          .stroke({ width: 2, color: col, alpha: 0.35 });
+        g.moveTo(cx + W * 0.12, cy + 2)
+          .quadraticCurveTo(cx + W * 0.4, cy - 4, cx + W / 2, cy - H * 0.7)
+          .stroke({ width: 2, color: col, alpha: 0.35 });
+        const ribs = [[-0.38, 0.55, -0.25], [-0.26, 0.7, -0.15],
+                      [-0.12, 0.4, 0.1], [0.2, 0.5, 0.3], [0.34, 0.65, 0.2]];
+        for (const [fx, len, lean] of ribs) {
+          const bx = cx + fx * W;
+          g.moveTo(bx, cy - H * 0.1)
+            .lineTo(bx + lean * 20, cy - H * 0.1 - H * len)
+            .stroke({ width: 3, color: col, alpha: 0.4 });
+        }
+        g.moveTo(cx - W * 0.05, cy - 2).lineTo(cx + W * 0.09, cy + 6)
+          .stroke({ width: 2, color: col, alpha: 0.25 });   // the snap
+        layers.constructions.addChild(g);
+        continue;
+      }
       if (c.kind === "ark") {
         const W = 90, H = 40;
         g.ellipse(cx, cy, W * 0.7, 10).fill({ color: 0x000000, alpha: 0.25 });
