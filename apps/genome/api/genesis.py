@@ -202,15 +202,23 @@ async def ensure_commons(client: Any) -> str:
     return COMMONS
 
 
-def commons_rim_xy(realm: str) -> list[float]:
+def commons_rim_xy(realm: str, taken: list[dict] | None = None) -> list[float]:
     """A deterministic spot on the commons rim for a world's door — hashed
-    from the realm name so every reseed agrees."""
+    from the realm name, then stepped by the golden angle past any door
+    already standing within 0.07 (portals never overlap)."""
     import hashlib as _h
-    a = int(_h.sha256(realm.encode()).hexdigest()[:8], 16) / 0xffffffff
-    ang = a * 2 * 3.141592653589793
     import math as _m
-    return [round(0.5 + 0.40 * _m.cos(ang), 4),
-            round(0.5 + 0.40 * _m.sin(ang), 4)]
+    a = int(_h.sha256(realm.encode()).hexdigest()[:8], 16) / 0xffffffff
+    ang = a * 2 * _m.pi
+    golden = 2.399963229728653
+    for _ in range(64):
+        x = 0.5 + 0.40 * _m.cos(ang)
+        y = 0.5 + 0.40 * _m.sin(ang)
+        if all((x - q["x"]) ** 2 + (y - q["y"]) ** 2 >= 0.07 ** 2
+               for q in (taken or [])):
+            return [round(x, 4), round(y, 4)]
+        ang += golden
+    return [round(x, 4), round(y, 4)]
 
 
 async def link_to_commons(client: Any, realm: str) -> bool:
@@ -225,8 +233,9 @@ async def link_to_commons(client: Any, realm: str) -> bool:
                for p in meta.get("portals", [])):
         slots = meta.get("portal_slots") or [{"x": 0.15, "y": 0.15}]
         s0 = slots[0]
+        cmeta0 = await drain._world_payload(store, COMMONS)
         portal = {"x": s0["x"], "y": s0["y"], "to_world": COMMONS,
-                  "dest_xy": commons_rim_xy(realm),
+                  "dest_xy": commons_rim_xy(realm, cmeta0.get("portals", [])),
                   "dest_colours": COMMONS_COLOURS}
         await store.put_world(realm, {**meta, "portals":
                                       meta.get("portals", []) + [portal]})
@@ -234,7 +243,7 @@ async def link_to_commons(client: Any, realm: str) -> bool:
     cmeta = await drain._world_payload(store, COMMONS)
     if not any(p.get("to_world") == realm
                for p in cmeta.get("portals", [])):
-        rim = commons_rim_xy(realm)
+        rim = commons_rim_xy(realm, cmeta.get("portals", []))
         back = {"x": rim[0], "y": rim[1], "to_world": realm,
                 "dest_xy": [meta.get("portal_slots", [{"x": .15, "y": .15}])[0]["x"],
                             meta.get("portal_slots", [{"x": .15, "y": .15}])[0]["y"]],

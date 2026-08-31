@@ -213,6 +213,11 @@ collect up to your free hold. **No two caches may stand adjacent** (a
 minimum spacing applies). Caches make the market square a depot: a line can
 pre-position goods for its traders without the host ceiling ever applying.
 
+**Rule 6.2k** — **Teleport points never overlap.** Portal slots are mutually
+separated at generation (min 0.10), commons rim doors step past each other
+(min 0.07), and a link landing too close to a standing portal is displaced
+before it is written.
+
 **Rule 6.2g (revised 2026-08-31)** — **All teleport links are two-way.** The
 commons lists a visible outbound door for every linked world, placed on its
 rim; the per-agent "back the way it came" synthesis survives only as a

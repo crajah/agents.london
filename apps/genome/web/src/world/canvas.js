@@ -50,6 +50,9 @@ export async function createWorldCanvas(el, opts = {}) {
   }
 
   let snapshot = null;
+  const ELECTRIC_BLUE = 0x2ee6ff;
+  const PORTAL_PERIOD = 1.8;                 // seconds per collapse
+  const portalCores = [];
   let followUuid = null;
   const agents = new Map();   // uuid -> {a, body, tri, ring, route, pulse, pos}
   const piles = new Map();    // uuid -> {p, g, lastFill}
@@ -182,6 +185,7 @@ export async function createWorldCanvas(el, opts = {}) {
       layers.constructions.addChild(g);
     }
     clearLayer(layers.portals);
+    portalCores.length = 0;
     for (const pt of s.portals ?? []) {
       const g = new Graphics();
       const [cx, cy] = P([pt.x, pt.y]);
@@ -191,6 +195,20 @@ export async function createWorldCanvas(el, opts = {}) {
       g.arc(cx, cy, R, Math.PI / 2, 3 * Math.PI / 2)
         .stroke({ width: 6, color: pt.dest_colours?.[1] ?? "#ffffff" });
       layers.portals.addChild(g);
+      // the throat: an electric-blue disc collapsing endlessly inward
+      const core = new Graphics();
+      core.ellipse(0, 0, R - 8, (R - 8) * 0.5)
+        .fill({ color: ELECTRIC_BLUE, alpha: 0.9 });
+      core.ellipse(0, 0, R - 8, (R - 8) * 0.5)
+        .stroke({ width: 1.5, color: 0xffffff, alpha: 0.5 });
+      core.position.set(cx, cy);
+      layers.portals.addChild(core);
+      const glow = new Graphics();
+      glow.ellipse(0, 0, R - 4, (R - 4) * 0.5)
+        .fill({ color: ELECTRIC_BLUE, alpha: 0.18 });
+      glow.position.set(cx, cy);
+      layers.portals.addChild(glow);
+      portalCores.push({ core, glow, phase: (cx * 7919) % PORTAL_PERIOD });
     }
     // piles: persist, rebuild only membership
     const seenP = new Set();
@@ -257,6 +275,16 @@ export async function createWorldCanvas(el, opts = {}) {
             .fill({ color: lerpColour(kindColour[e.p.kind] ?? "#888888",
                                       fill), alpha: 0.85 });
       }
+    }
+    // portal throats every frame — transforms only: the disc shrinks to
+    // the centre and is reborn at the rim, matter forever falling in
+    for (const p of portalCores) {
+      const f = 1 - (((now + p.phase) % PORTAL_PERIOD) / PORTAL_PERIOD);
+      p.core.scale.set(f);
+      p.core.alpha = 0.25 + 0.75 * f;
+      const g = 1 - f;
+      p.glow.scale.set(0.6 + 0.4 * g);
+      p.glow.alpha = 0.10 + 0.20 * g;
     }
     // agents every frame — transforms only, zero allocation
     for (const e of agents.values()) {
