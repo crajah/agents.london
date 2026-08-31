@@ -17,7 +17,7 @@ from typing import Any
 logger = logging.getLogger("genome.notify")
 
 ALWAYS_IMPORTANT = {"invite_received", "link_created", "flood_countdown",
-                    "agent_perished", "berth_event"}
+                    "agent_perished", "berth_event", "construction_complete"}
 PIERCE_NONE = {"invite_received", "link_created"}
 DEFAULT_PREFS = {"world": "important", "agents": "important",
                  "platform": "all"}

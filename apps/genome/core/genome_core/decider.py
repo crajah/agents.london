@@ -27,6 +27,8 @@ OPTION_TEXT = {
     "mine_here": "Mine this pile.",
     "travel_to_pile": "Travel to another pile you know of.",
     "go_home_deposit": "Return home and deposit your cargo.",
+    "contribute_here": "Pour your cargo into the construction site here.",
+    "travel_to_site": "Carry your cargo to a construction site that needs it.",
     "explore_frontier": "Push into the unexplored region nearest the edge of what you know.",
     "survey_far": "Mount an expedition to the farthest unexplored region.",
     "wait": "Stay where you are for an hour.",

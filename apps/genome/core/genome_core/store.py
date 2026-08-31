@@ -54,7 +54,7 @@ async def ensure_world_realm(client: Any, world_realm: str) -> None:
     creation. post-graph performs all DDL. due_at is promoted so Phase 1's
     due-event query can filter in the database."""
     r = _req(world_realm, "world realm")
-    for table in (WORLD_META, PILES, PORTALS, PRESENCE):
+    for table in (WORLD_META, PILES, PORTALS, PRESENCE, "constructions"):
         await client.create_vertex_table(table, realm=r)
     await client.create_vertex_table(EVENTS, realm=r,
                                      promoted_keys=("due_at", "done_at"))

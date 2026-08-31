@@ -85,6 +85,8 @@ class Effects:
     mark_explored: tuple[tuple[int, int], ...] = ()   # grid cells now visited
     transfer: dict | None = None                 # {"to_world","portal_xy"} — the
     # caller signs the assertion and flips presence (genome-spec §6)
+    contribute: tuple[str, dict] | None = None   # site_key, offered cargo — the
+    # caller pours it in via construction.contribute, which says what stuck
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -249,7 +251,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         options.append("explore_frontier")          # Curiosity: the near unknown
     if far_cells(agent.explored, agent.x, agent.y) and agent.explored:
         options.append("survey_far")                # Wanderlust: the far unknown
-    room = any(units > 0 and stock.get(kind, 0.0) < USER_CEILING_PER_KIND
+    ceiling = USER_CEILING_PER_KIND + ctx.get("stock_ceiling_bonus", 0.0)
+    room = any(units > 0 and stock.get(kind, 0.0) < ceiling
                for kind, units in agent.cargo.items())
     if room and agent.realm == agent.home_realm:
         options.append("go_home_deposit")
@@ -261,6 +264,18 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                 (pt["x"] - agent.x) ** 2 + (pt["y"] - agent.y) ** 2 < 0.03 ** 2:
             near_portal = pt
             break
+    # construction sites are public fixtures; an agent carrying what an
+    # unfinished one needs may deliver straight from its hold (Rule 3.5)
+    sites = [s for s in ctx.get("sites", []) if not s.get("complete")]
+    near_site = next((s for s in sites
+                      if (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2
+                      < 0.03 ** 2), None)
+    from . import construction as _con
+    if near_site and _con.accepts(near_site, agent.cargo):
+        options.append("contribute_here")
+    if any(_con.accepts(s, agent.cargo) for s in sites
+           if s is not near_site):
+        options.append("travel_to_site")
     if near_portal:
         # Teleport Affinity (genotype disposition): some agents simply will
         # not step through. Below the floor the option is never offered —
@@ -281,7 +296,10 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  "reachable": reachable,
                  "frontier_count": len(frontier_cells(agent.explored))
                  if agent.explored else 0,
-                 "unexplored_count": GRID_K * GRID_K - len(agent.explored)})
+                 "unexplored_count": GRID_K * GRID_K - len(agent.explored),
+                 "site_here": near_site["key"] if near_site else None,
+                 "sites_wanting": [s["key"] for s in sites
+                                   if _con.accepts(s, agent.cargo)]})
 
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
@@ -326,7 +344,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "mine_here":
         pile = by_id[payload["pile_uuid"]]
         want = min(pile.qty, CARGO_CEILING - agent.cargo_total())
-        duration = want / MINE_RATE_UNITS_PER_SEC / max(1.0, time_scale)
+        rate = MINE_RATE_UNITS_PER_SEC * ctx.get("mine_rate_mult", 1.0)
+        duration = want / rate / max(1.0, time_scale)
         return Effects(mine_pile=(pile.pile_uuid, want),
                        schedule=("mining_done", now + duration, agent.agent_uuid,
                                  {"pile_uuid": pile.pile_uuid,
@@ -388,6 +407,30 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                       time_scale)
         return Effects(schedule=("decide", now + 3600.0, agent.agent_uuid, {}))
 
+    if choice.option == "contribute_here":
+        sites = {s["key"]: s for s in ctx.get("sites", [])}
+        key = choice.target or payload.get("site_here")
+        if key not in sites:
+            return Effects(schedule=("decide", now + 60.0,
+                                     agent.agent_uuid, {}))
+        return Effects(contribute=(key, dict(agent.cargo)),
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "travel_to_site":
+        from . import construction as _con
+        cand = [s for s in ctx.get("sites", [])
+                if not s.get("complete") and _con.accepts(s, agent.cargo)]
+        if not cand:
+            return Effects(schedule=("decide", now + 60.0,
+                                     agent.agent_uuid, {}))
+        s = min(cand, key=lambda q: (q["x"] - agent.x) ** 2
+                + (q["y"] - agent.y) ** 2)
+        tx, ty = standoff(agent.x, agent.y, s["x"], s["y"])
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale)
+
     if choice.option == "take_portal":
         return Effects(
             transfer={"to_world": payload.get("portal_to") or
@@ -414,13 +457,15 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
 
 def on_deposit_arrival(agent: AgentView, stock: dict[str, float],
-                       now: float) -> Effects:
+                       now: float,
+                       ceiling: float = USER_CEILING_PER_KIND) -> Effects:
     """Deposit at the birth world, partially accepted at the user ceiling
-    (genome-spec Rules 4.3, 4.15, 4.19). Remainder stays aboard."""
+    (genome-spec Rules 4.3, 4.15, 4.19) — raised by a standing Store
+    (calibration §5). Remainder stays aboard."""
     accepted: dict[str, float] = {}
     delta: dict[str, float] = {}
     for kind, units in agent.cargo.items():
-        room = USER_CEILING_PER_KIND - stock.get(kind, 0.0)
+        room = ceiling - stock.get(kind, 0.0)
         take = max(0.0, min(units, room))
         if take > 0:
             accepted[kind] = take
