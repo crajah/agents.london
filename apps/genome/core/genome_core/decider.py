@@ -99,7 +99,8 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
     usr_p = prompt.user_prompt(situation_text(req),
                                {k: OPTION_TEXT.get(k, k) for k in req.options})
     from .models import UNBUDGETED
-    req_body = {"model": model, "temperature": 1.0,
+    from .models import temperament
+    req_body = {"model": model, "temperature": temperament(req.agent_uuid),
                 "messages": [{"role": "system", "content": sys_p},
                              {"role": "user", "content": usr_p}]}
     if model not in UNBUDGETED:

@@ -98,7 +98,10 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
         return {"error": "not found"}
     payload = rows[0].payload
     g = payload.get("genotype") or {}
+    from genome_core.models import assign_models, temperament
     out = {"agent_uuid": agent_uuid, "name": payload.get("name"),
+           "models": assign_models(agent_uuid),
+           "temperament": round(temperament(agent_uuid), 2),
            "colour_pair": payload.get("colour_pair"),
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
