@@ -86,7 +86,8 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
                 "pile_uuid": str(uuidlib.UUID(int=r.getrandbits(128))),
                 "kind": kind, "x": x, "y": y, "cap": cap * scale,
                 "measured_at": 0.0,
-                "qty_at": cap * scale * r.uniform(0.4, 1.0),
+                "qty_at": (q0 := cap * scale * r.uniform(0.4, 1.0)),
+                "qty_origin": q0,          # the flood reverts to this (4.4)
                 "rate": r.uniform(0.5, 2.0) / 3600.0,   # units/sec (Rule 4.6)
             })
     centre = {k: r.uniform(*RANGES[k]) for k in RANGES}

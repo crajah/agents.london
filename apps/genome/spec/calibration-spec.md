@@ -183,3 +183,7 @@ First effect wirings (the rest land with their subsystems):
 | :--- | :--- |
 | Store | User stock ceiling +25 per kind in this world (Rule 4.15 relaxed) |
 | Toolhouse | Collection rate ×1.5 in this world (Rule 4.5) |
+
+Flood reversion note: worlds founded before the flood slice recorded no
+original pile quantities; their piles revert to **70% of capacity**
+(PROVISIONAL). Worlds founded after carry `qty_origin` and revert exactly.

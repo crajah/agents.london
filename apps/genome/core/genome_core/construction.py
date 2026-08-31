@@ -95,7 +95,8 @@ async def sites_in(client: Any, realm: str) -> list:
 
 async def completed_names(client: Any, realm: str) -> set[str]:
     return {v.payload["name"] for v in await sites_in(client, realm)
-            if v.payload.get("complete")}
+            if v.payload.get("complete") and not v.payload.get("destroyed")
+            and not v.payload.get("spent")}
 
 
 async def found_site(client: Any, realm: str, user_id: str, name: str,
@@ -111,7 +112,8 @@ async def found_site(client: Any, realm: str, user_id: str, name: str,
     if missing:
         return {"error": f"requires completed: {', '.join(missing)}"}
     for v in await sites_in(client, realm):
-        if v.payload["name"] == name and not v.payload.get("complete"):
+        if v.payload["name"] == name and not v.payload.get("complete") \
+                and not v.payload.get("destroyed"):
             return {"error": f"a {name} is already under way here"}
     site = {
         "key": f"site-{uuidlib.uuid4().hex[:10]}",
@@ -191,11 +193,57 @@ async def contribute(client: Any, realm: str, site_key: str,
         # the material is all there; only hands are missing (Rule 3.3)
         pass
     if complete:
+        extra = {}
+        if site["name"] == "ark":
+            extra["berths"] = allocate_berths(contributors)   # Rule 3.7e:
+            # the pool is per-user and UNASSIGNED; agents contest below
+            await client.upsert_vertex(TABLE, realm=realm,
+                                       vertex_id=int(rows[0].id),
+                                       space="default",
+                                       payload={**site, "delivered": delivered,
+                                                "contributors": contributors,
+                                                "complete": True,
+                                                "completed_at": time.time(),
+                                                **extra})
         for uid in contributors:
             await notify.emit(client, uid, "world", "construction_complete",
                               f"The {site['name']} is complete. "
-                              f"{len(contributors)} users raised it.")
+                              f"{len(contributors)} users raised it."
+                              + (f" {extra['berths'].get(uid, 0)} berths fall "
+                                 f"to your claim." if extra else ""))
     return {"taken": take, "complete": complete}
+
+
+async def board(client: Any, realm: str, ark_key: str, user_id: str,
+                agent_uuid: str) -> dict:
+    """An agent AT the Ark claims one of its owner's berths and steps aboard
+    (Rules 3.7e, 4.10a). First-come within a user's own agents — the contest
+    Rule 3.7e wants, settled by presence."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": ark_key}, limit=1)
+    if not rows or not rows[0].payload.get("complete") \
+            or rows[0].payload.get("spent"):
+        return {"error": "no boardable ark here"}
+    site = dict(rows[0].payload)
+    pool = dict(site.get("berths", {}))
+    if pool.get(user_id, 0) <= 0:
+        return {"error": "your claim holds no berth"}
+    pool[user_id] -= 1
+    boarded = dict(site.get("boarded", {}))
+    boarded[agent_uuid] = user_id
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**site, "berths": pool,
+                                        "boarded": boarded})
+    arows = await client.find_vertices("agents", realm="genome_agents",
+                                       filters={"key": agent_uuid}, limit=1)
+    if arows:
+        await client.upsert_vertex("agents", realm="genome_agents",
+                                   vertex_id=int(arows[0].id), space="default",
+                                   payload={**arows[0].payload,
+                                            "aboard_ark": ark_key,
+                                            "berth": True})
+    return {"ok": True, "berths_left": pool[user_id]}
 
 
 def progress(site: dict) -> float:
@@ -206,6 +254,28 @@ def progress(site: dict) -> float:
     got = sum(min(site.get("delivered", {}).get(k, 0.0), u)
               for k, u in needs.items())
     return got / total
+
+
+ARK_SLOTS = 12                            # Rule 4.3b
+
+
+def allocate_berths(contributors: dict[str, float],
+                    slots: int = ARK_SLOTS) -> dict[str, int]:
+    """Rule 3.7: a proportional claim, allocated mechanically — largest
+    remainder, ties to the larger contribution then the earlier key so the
+    ledger is deterministic. Slice two carries agents only; constructions
+    and stock join the manifest with Rule 4.3's exchange rate later."""
+    total = sum(contributors.values())
+    if total <= 0:
+        return {}
+    quotas = {u: slots * c / total for u, c in contributors.items()}
+    out = {u: int(q) for u, q in quotas.items()}
+    left = slots - sum(out.values())
+    order = sorted(quotas, key=lambda u: (-(quotas[u] - out[u]),
+                                          -contributors[u], u))
+    for u in order[:left]:
+        out[u] += 1
+    return {u: n for u, n in out.items() if n > 0}
 
 
 async def world_effects(client: Any, realm: str) -> dict:

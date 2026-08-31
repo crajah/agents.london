@@ -313,7 +313,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] 18 constructions, five branches, contributor counts 1/2/3/4/5 (`construction-spec.md` §2) — tree + resolved cost table (calibration §5), sites founded on the map, cargo contributed from the hold, completion notified; live-proven in genome_demo2 (library, 1 user)
 - [x] Contributor counted once per **user** (Rule 3.4) — plus a reservation guard: 5 units of room held back per still-missing user, so a rich early contributor cannot strand a site filled-but-short-of-hands; claims (3.7) land with berths
 - [x] First effects live (calibration §5): Store lifts the stock ceiling, Toolhouse the collection rate
-- [ ] Berth claims proportional to contribution (3.7), atomic transfer, boarding deadline
+- [x] Berth claims proportional to contribution (3.7) — 12 slots, largest remainder, minted at Ark completion; unassigned per user (3.7e); boarding at the Ark consumes one (4.10a); death returns it to the pool (3.7g)
+- [x] Flood clock per world (4.7–4.9): undisclosed 15–30 day draw (÷ time_scale), 2-day countdown visible in snapshot + banner + notification; execution drowns everyone unboarded (visitors included), resets piles/stock/constructions, keeps the partial hull (4.4a), spends a voyaging Ark (4.4b), redraws the clock. Live-proven in genome_demo3: 1 drowned+regenerated bare, 1 survived aboard, Ark spent
+- [ ] Berth exchange between co-located agents (3.7a/b); unclaimed-berth scramble at the water (3.7f); manifest slots for constructions and stock (4.3b); multi-world voyage (4.3c)
 - [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
 - [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)
 - [ ] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a)
