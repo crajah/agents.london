@@ -234,7 +234,7 @@ export function triggerGoogleOIDC(onSuccess, onError) {
 }
 
 function _googleAuthCodePopup(clientId, onSuccess, onError) {
-  const redirectUri = window.location.origin;
+  const redirectUri = window.location.origin + (import.meta.env.BASE_URL || '/');  // subpath-aware: the popup must return INTO the app, not onto the landing page
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -266,7 +266,7 @@ export async function triggerMicrosoftOIDC(onSuccess, onError) {
 
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
-  const redirectUri = window.location.origin;
+  const redirectUri = window.location.origin + (import.meta.env.BASE_URL || '/');  // subpath-aware: the popup must return INTO the app, not onto the landing page
 
   const url = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
   url.searchParams.set('client_id', clientId);
