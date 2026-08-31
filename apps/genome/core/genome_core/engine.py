@@ -365,9 +365,12 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
     # few seconds -- observed live, one agent burning a call per tick shuttling
     # between piles at her feet. Arrival, unloading and looking around take
     # time; the floor is that time.
-    scale = max(1.0, time_scale) * max(0.1, pace)
+    # movement runs at REAL pace everywhere -- a crossing under a minute is
+    # the working speed of the simulation; time_scale no longer compresses
+    # journeys (it would read as teleportation), only the dwell floor
+    scale = max(0.1, pace)
     arrives = now + max((route.arrives_at - now) / scale,
-                        120.0 / max(1.0, time_scale))
+                        30.0 / max(1.0, time_scale))
     return Effects(
         movement={"waypoints": list(route.waypoints), "departed_at": now,
                   "arrives_at": arrives},
