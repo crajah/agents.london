@@ -403,6 +403,11 @@ function App() {
               <strong>{inspect.name ?? inspect.agent_uuid}</strong>
               <button onClick={() => setInspect(null)} className="opacity-60">✕</button>
             </div>
+            {inspect.models && (
+              <div className="text-xs opacity-60 mb-2">
+                mind: {inspect.models.economy}
+                {" · temperament "}{inspect.temperament}
+              </div>)}
             <div className="flex gap-1 mb-3">
               {(inspect.colour_pair ?? []).map(c =>
                 <span key={c} className="w-5 h-5 rounded-full inline-block"

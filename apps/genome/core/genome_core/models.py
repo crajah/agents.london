@@ -17,8 +17,15 @@ import random
 # assignment with genuine variety.
 POOLS: dict[str, list[str]] = {
     "economy": ["MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"],
-    "deliberative": ["DeepSeek-V3.2"],
+    "deliberative": ["MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"],
 }
+
+
+def temperament(agent_uuid: str) -> float:
+    """Per-agent sampling temperature, 0.7-1.3, dealt like the model: fixed
+    for life, varied across the population -- two agents with the same model
+    still won't think alike (user: 'mix things up')."""
+    return 0.7 + 0.6 * random.Random(f"temp:{agent_uuid}").random()
 
 # flat-rate models: NO token cap at all -- the request omits max_tokens and
 # the model reasons as long as it needs (user decision; llama swapped for
