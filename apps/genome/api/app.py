@@ -20,6 +20,7 @@ from post_graph import AsyncPostGraph
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "core"))
 from genome_core import store  # ensure_agents_realm only; NOT GenomeStore
+import contacts
 import snapshot
 import auth as auth_mod
 import genesis
@@ -166,6 +167,46 @@ async def set_prefs(payload: dict, request: __import__("fastapi").Request):
             payload={**rows[0].payload,
                      "notification_prefs": payload.get("prefs", {})})
     return {"ok": True}
+
+
+@app.get("/contacts/import/{provider}/start", tags=["Social"])
+async def contacts_start(provider: str, request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid or provider not in contacts.CONTACT_SCOPES:
+        return {"error": "login first"}
+    state = auth_mod.session_cookie(uid)       # HMAC-signed; verified on return
+    return __import__("fastapi").responses.RedirectResponse(
+        contacts.import_url(provider, state))
+
+
+@app.get("/contacts/import/{provider}/callback", tags=["Social"])
+async def contacts_callback(provider: str, code: str, state: str):
+    uid = auth_mod.verify_cookie(state)
+    if not uid:
+        return {"error": "bad state"}
+    result = await contacts.run_import(app.state.pg, uid, provider, code)
+    dest = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
+    return __import__("fastapi").responses.RedirectResponse(
+        f"{dest}/?imported={result['proposed']}&matched={result['matched']}")
+
+
+@app.get("/proposals", tags=["Social"])
+async def proposals(request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid:
+        return {"incoming": [], "outgoing": []}
+    return await contacts.list_proposals(app.state.pg, uid)
+
+
+@app.post("/proposals/respond", tags=["Social"])
+async def proposals_respond(payload: dict,
+                            request: __import__("fastapi").Request):
+    uid = _uid(request)
+    if not uid:
+        return {"error": "login first"}
+    return await contacts.respond(app.state.pg, uid,
+                                  payload.get("key", ""),
+                                  bool(payload.get("accept")))
 
 
 @app.get("/me", tags=["Auth"])

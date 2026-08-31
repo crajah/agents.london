@@ -49,6 +49,14 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
     pending_subjects = {v.payload.get("subject")
                         for v in await store._c.get_vertices("events", realm=realm)
                         if v.payload.get("done_at") is None}
+    # an agent whose question sits in the decision queue is NOT idle -- without
+    # this, heal scheduled a fresh decide every tick while the decider worked,
+    # and the event table grew a 279-deep backlog of stale questions
+    pending_subjects |= {v.payload.get("agent_uuid")
+                        for v in await store._c.get_vertices("decision_queue",
+                                                             realm="genome_agents")
+                        if v.payload.get("done_at") is None
+                        and v.payload.get("world_realm") == realm}
     healed = 0
     for v in await store.agents_in(realm):
         a = v.payload["key"]

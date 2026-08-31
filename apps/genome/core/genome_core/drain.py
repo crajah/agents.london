@@ -267,8 +267,24 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                        agent_payload, pl, now)
 
     if pl["kind"] == "deposit_arrival":
-        eff = engine.on_deposit_arrival(agent, stock, now)
-        outcome = "deposit"
+        # Rule 4.3a: the load drops AT a flag. A decision applied from the
+        # queue can re-route a walker mid-deposit-journey (observed live at
+        # 60x), leaving this event to fire wherever the detour ended -- so
+        # verify the ground before opening the bags, and walk again if astray.
+        import math as _math
+        muster = world_payload.get("muster_points", [])
+        if muster and min(_math.hypot(agent.x - m["x"], agent.y - m["y"])
+                          for m in muster) > 0.06:
+            ctx = await engine_ctx(store, world_realm, world_payload,
+                                   agent_payload, agent, pile_views, now)
+            eff = engine.apply_choice(engine.Choice("go_home_deposit"),
+                                      agent, pile_views, now, {}, terrain,
+                                      world_payload.get("time_scale", 1.0),
+                                      ctx)
+            outcome = "deposit:rerouted"
+        else:
+            eff = engine.on_deposit_arrival(agent, stock, now)
+            outcome = "deposit"
     else:
         ctx = (await engine_ctx(store, world_realm, world_payload,
                                 agent_payload, agent, pile_views, now)
