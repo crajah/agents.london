@@ -10,11 +10,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# calibration-spec.md Rule 1.2 (revised twice): ~six MINUTES to cross a
-# world at base pace. Six hours was imperceptible, one hour still crawled
-# (user: "extremely slow... at least 10x"); at 360s a journey is something
-# you watch happen, not something you check back on.
-CROSSING_SECONDS = 360.0
+# calibration-spec.md Rule 1.2 (final form): a world is crossed in UNDER A
+# MINUTE -- 40s at base pace, so even the slowest genotype (0.7x) makes it
+# in ~57s. This is the working speed of the whole simulation; movement is
+# no longer multiplied by a world's demo time_scale (at this pace it would
+# read as teleportation), which now governs only mining, dwell and clocks.
+CROSSING_SECONDS = 40.0
 SPEED = 1.0 / CROSSING_SECONDS  # map units per second
 
 

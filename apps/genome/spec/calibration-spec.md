@@ -11,9 +11,12 @@ authoritative and this one records it for comparison.
 
 **Rule 1.1** — A **day is a real day** (`system-spec.md` Rule 2.1).
 
-**Rule 1.2** — Crossing a world edge to edge takes approximately **six
-minutes** at base pace (revised 2026-08-31, twice: six hours was
-imperceptible, one hour still crawled). The **Speed pool** (Agility + Dexterity) multiplies each
+**Rule 1.2** — An agent crosses a world edge to edge in **under a minute**:
+40 seconds at base pace, ~57s for the slowest genotype, ~31s for the
+quickest. This is the working speed of the simulation, identical in every
+world — `time_scale` no longer compresses journeys (it would read as
+teleportation), only mining, dwell and the flood calendar. (Revised
+2026-08-31 in three steps from the original six hours.) The **Speed pool** (Agility + Dexterity) multiplies each
 agent's pace 0.7×–1.3×, so the walk itself is heritable. Client and server
 interpolate every journey from its record's own `(departed_at, arrives_at)`
 span — scaled and hastened journeys render at their true pace on both sides.
