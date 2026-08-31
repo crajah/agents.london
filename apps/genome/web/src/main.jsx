@@ -43,6 +43,61 @@ function Bell() {
     </span>);
 }
 
+function Connections() {
+  const [open, setOpen] = useState(false);
+  const [props, setProps] = useState({ incoming: [], outgoing: [] });
+  const load = () =>
+    fetch(`${API}/proposals`, { credentials: "include" })
+      .then(r => r.json()).then(setProps).catch(() => {});
+  useEffect(() => { load(); const t = setInterval(load, 30000);
+    return () => clearInterval(t); }, []);
+  const respond = async (key, accept) => {
+    await fetch(`${API}/proposals/respond`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, accept }) });
+    load();
+  };
+  const n = props.incoming.length;
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="text-sm opacity-80">
+        ⇄ {n > 0 && <span className="text-amber-400">{n}</span>}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-30 w-80 bg-neutral-800 border
+                        border-neutral-600 rounded shadow-lg text-sm p-3">
+          <div className="font-semibold mb-2">Connections</div>
+          <div className="flex gap-3 mb-3">
+            <a className="underline opacity-80"
+               href={`${API}/contacts/import/google/start`}>
+              Import Google contacts</a>
+            <a className="underline opacity-80"
+               href={`${API}/contacts/import/microsoft/start`}>
+              Import Microsoft</a>
+          </div>
+          {props.incoming.length === 0 && props.outgoing.length === 0 &&
+            <div className="opacity-60">No open proposals. Importing scans
+              your address book, keeps only matches with existing users, and
+              proposes links — addresses of non-users are never stored.</div>}
+          {props.incoming.map(p => (
+            <div key={p.key} className="flex items-center gap-2 py-1.5
+                                        border-t border-neutral-700">
+              <span className="flex-1">A user who has your address proposes
+                linking worlds.</span>
+              <button className="px-2 py-0.5 bg-emerald-700 rounded"
+                      onClick={() => respond(p.key, true)}>Link</button>
+              <button className="px-2 py-0.5 bg-neutral-700 rounded"
+                      onClick={() => respond(p.key, false)}>Decline</button>
+            </div>))}
+          {props.outgoing.map(p => (
+            <div key={p.key} className="py-1.5 border-t border-neutral-700
+                                        opacity-60">
+              Proposal sent — awaiting their confirmation.</div>))}
+        </div>)}
+    </div>);
+}
+
 function Ticker({ realm }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
@@ -200,6 +255,7 @@ function App() {
           <a className="text-sm underline opacity-80"
              href={`${API}/auth/microsoft/login`}>Microsoft</a>
         </>}
+        {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
         {me?.authenticated &&
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
