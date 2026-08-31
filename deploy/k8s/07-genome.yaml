@@ -22,9 +22,11 @@ spec:
             - name: POSTGRES_HOST
               value: postgres-service
             - name: GENOME_REDIRECT_BASE
-              value: https://genome.agents.london/api
+              value: https://agents.london/genome-api
             - name: GENOME_WEB_BASE
-              value: https://genome.agents.london
+              value: https://agents.london/genome
+            - name: GENOME_PATH_PREFIX
+              value: /genome-api
             - name: GENOME_SESSION_KEY
               valueFrom:
                 secretKeyRef:

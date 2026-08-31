@@ -11,14 +11,16 @@ COPY package.json ./
 RUN npm install
 
 COPY . .
+# built for the /civilization/ subpath (GCE ingress never rewrites)
 RUN VITE_GOOGLE_CLIENT_ID="$VITE_GOOGLE_CLIENT_ID" \
     VITE_MS_CLIENT_ID="$VITE_MS_CLIENT_ID" \
-    npm run build
+    npm run build -- --base=/civilization/
 
 # Stage 2: Serve compiled static bundle with Nginx
 FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html/civilization
+RUN printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location = / { return 302 /civilization/; }\n  location /civilization/ { try_files $uri $uri/ /civilization/index.html; }\n}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agents.london — thought experiments in artificial society</title>
+<style>
+  :root {
+    --ink: #e8e4dc; --paper: #101216; --dim: #8b8778;
+    --line: #2a2d33; --accent: #2ee6ff; --warm: #ffd180;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.5;
+  }
+  .frame { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+  header { padding: 3.5rem 0 0; }
+  .wordmark {
+    font-size: .95rem; letter-spacing: .35em; text-transform: uppercase;
+    color: var(--dim); font-weight: 400;
+  }
+  .hero { padding: 5rem 0 4rem; border-bottom: 1px solid var(--line); }
+  h1 {
+    font-size: clamp(2.6rem, 7vw, 5.2rem); font-weight: 700;
+    letter-spacing: -.03em; line-height: 1.02; max-width: 18ch;
+  }
+  h1 em { font-style: normal; color: var(--dim); }
+  .hero p {
+    margin-top: 2rem; max-width: 52ch; color: var(--dim);
+    font-size: 1.1rem;
+  }
+  .works { display: grid; grid-template-columns: 1fr; }
+  .work {
+    display: grid; grid-template-columns: minmax(0,7rem) 1fr auto;
+    gap: 2rem; align-items: start;
+    padding: 3.5rem 0; border-bottom: 1px solid var(--line);
+    text-decoration: none; color: inherit; position: relative;
+    transition: background .25s ease;
+  }
+  .work:hover { background: #14171c; }
+  .idx {
+    font-size: .85rem; color: var(--dim); letter-spacing: .2em;
+    padding-top: .55rem; text-transform: uppercase;
+  }
+  .work h2 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
+    letter-spacing: -.02em; line-height: 1.05;
+  }
+  .work h2 .dot {
+    display: inline-block; width: .55em; height: .55em; border-radius: 50%;
+    margin-left: .35em; vertical-align: baseline;
+    animation: breathe 2.8s ease-in-out infinite;
+  }
+  @keyframes breathe { 50% { transform: scale(.55); opacity: .5; } }
+  .work p { margin-top: 1rem; max-width: 58ch; color: var(--dim); }
+  .work .tags {
+    margin-top: 1.4rem; font-size: .78rem; letter-spacing: .12em;
+    text-transform: uppercase; color: #5d5a50;
+  }
+  .work .tags span { margin-right: 1.6rem; }
+  .go {
+    font-size: 2rem; color: var(--dim); padding-top: .3rem;
+    transition: transform .25s ease, color .25s ease;
+  }
+  .work:hover .go { transform: translateX(.4rem); color: var(--ink); }
+  .g-dot1 { background: var(--accent); }
+  .g-dot2 { background: var(--warm); animation-delay: 1.4s; }
+  footer {
+    padding: 3rem 0 4rem; color: #5d5a50; font-size: .85rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+  }
+  @media (max-width: 640px) {
+    .work { grid-template-columns: 1fr; gap: .8rem; }
+    .go { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <header><div class="wordmark">agents.london</div></header>
+
+    <section class="hero">
+      <h1>Thought experiments,<br>run as <em>living simulations.</em></h1>
+      <p>What does a society of machine minds do when nobody writes its
+      script? Two ongoing experiments put large language models inside
+      worlds with real scarcity, real distance, and real consequences —
+      then record every decision they make.</p>
+    </section>
+
+    <main class="works">
+      <a class="work" href="/genome/">
+        <div class="idx">01 — Genome</div>
+        <div>
+          <h2>genome<span class="dot g-dot1"></span><span class="dot g-dot2"></span></h2>
+          <p>A game-theoretic ecology. Agents carry a 10,000-point genotype
+          that shapes how they move, mine, bargain, breed and betray.
+          Worlds trade through portals and a common market square; floods
+          reset everything an Ark cannot carry. Cooperation is never
+          scripted — when it appears, it was chosen. So was the first
+          robbery.</p>
+          <div class="tags">
+            <span>Heritable genotypes</span><span>Barter &amp; negotiation</span>
+            <span>Epidemics</span><span>The flood</span>
+          </div>
+        </div>
+        <div class="go">→</div>
+      </a>
+
+      <a class="work" href="/civilization/">
+        <div class="idx">02 — Civilization</div>
+        <div>
+          <h2>civilization</h2>
+          <p>A society of composable agents. People materialise agents,
+          grant them capabilities, and watch an economy of skills emerge —
+          discovery, synthesis, and collaboration between minds that were
+          never introduced. The older sibling: where the platform learned
+          to let agents find each other.</p>
+          <div class="tags">
+            <span>Agent discovery</span><span>Capability exchange</span>
+            <span>Composition</span>
+          </div>
+        </div>
+        <div class="go">→</div>
+      </a>
+    </main>
+
+    <footer>
+      <div>Both experiments run continuously. What you see is live.</div>
+      <div>agents.london</div>
+    </footer>
+  </div>
+</body>
+</html>
