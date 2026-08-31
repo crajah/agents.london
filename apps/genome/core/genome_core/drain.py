@@ -61,7 +61,8 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
                                       f"{payload.get('name', agent_uuid)} "
                                       f"{e}; an antigen is retained.")
     view = engine.AgentView(
-        agent_uuid, home_realm, world_realm, x, y, cargo,
+        agent_uuid, payload.get("home_realm") or home_realm, world_realm,
+        x, y, cargo,
         frozenset(payload.get("known_piles", [])),
         frozenset(tuple(c) for c in payload.get("explored", [])))
     return view, payload

@@ -236,3 +236,26 @@ First live observations after the movement directive:
   (agent, situation), every one a would-be LLM call. One pending question per
   (agent, situation) is now enforced at enqueue; 194 stale items were voided
   rather than answered.
+
+## The commons pays off: stranger trade and a travelling epidemic
+
+Both long-running watchers resolved within minutes of the commons realm
+finally being swept (a discovery bug had left the market square untended).
+
+- **Cold-start trade between strangers** (system-spec's central promise):
+  demo-agent-2 (home genome_demo) and agent-0c624cb262 (home
+  world_e08c1a9a50d5) — two agents with no shared history, from worlds with
+  no portal between them — met at the centre of the commons, both chose
+  offer_trade unprompted, and the 1-for-1 exchange resolved. The trade graph
+  nobody chose now includes a market square where anyone can reach anyone.
+- **The epidemic crossed worlds the same hour.** Patient zero carried
+  strain-ae3ef33426's line into the commons; at the meeting,
+  agent-0c624cb262 caught it — the first cross-world transmission, through
+  the very encounter that produced the first stranger trade. Commerce and
+  contagion arrived together, which is the pathogen-spec's whole argument.
+- Found along the way: the tick worker was handing every agent the current
+  world as its home, letting visitors deposit into foreign stock (Rule 4.3
+  violation, observed as commons stock that should not exist) — the record's
+  own home_realm now always wins; and parallel decision-processing could
+  split an encounter's pair-state between two first-writers — pair events
+  now serialize on the sorted pair key.

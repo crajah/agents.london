@@ -459,6 +459,11 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                 key=lambda c: (cell_centre(c)[0] - agent.x) ** 2
                 + (cell_centre(c)[1] - agent.y) ** 2)]
         for tx, ty in cand[:8]:
+            if ctx.get("is_commons"):
+                # a market GATHERS: wandering in the commons pulls toward
+                # the square's centre, where the meetings are (6.2f's note)
+                tx = tx * 0.4 + 0.5 * 0.6
+                ty = ty * 0.4 + 0.5 * 0.6
             tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
             if pathmod.find_path(terrain, agent.x, agent.y, tx, ty) is not None:
                 return _route_effects(agent, tx, ty, now, terrain,

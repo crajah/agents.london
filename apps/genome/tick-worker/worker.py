@@ -154,7 +154,16 @@ async def tick_once(store: GenomeStore, realm: str, decider,
     # are per-agent, never cross-agent
     groups: dict[str, list] = {}
     for ev in await store.due_events(realm, drain._iso(now)):
-        groups.setdefault(ev.payload.get("subject"), []).append(ev)
+        key = ev.payload.get("subject")
+        if ev.payload.get("kind") in ("encounter_answer", "mating_answer"):
+            # pair events must serialize with their COUNTERPART, not just
+            # their own agent -- two first-writers raced and split the pair
+            other = (ev.payload.get("payload", {}).get("other", {})
+                     .get("agent_uuid")) or \
+                (ev.payload.get("payload", {}).get("proposer", {})
+                 .get("agent_uuid")) or ""
+            key = "pair:" + "|".join(sorted((key or "", other)))
+        groups.setdefault(key, []).append(ev)
     sem = asyncio.Semaphore(8)
 
     async def _drain_agent(evs):
@@ -199,8 +208,11 @@ async def main() -> None:
                     for v in await client.get_vertices("agents",
                                                        realm="genome_agents"):
                         wr = v.payload.get("world_realm")
-                        if wr and v.payload.get("key", "").startswith("user:") \
-                                and wr not in realms:
+                        # user worlds AND the commons: the market square has
+                        # its own events and encounters -- it went unswept
+                        # for a day because discovery only knew "user:" rows
+                        if wr and v.payload.get("key", "").startswith(
+                                ("user:", "commons:")) and wr not in realms:
                             realms.append(wr)
                 except Exception:
                     logger.exception("realm discovery failed")
