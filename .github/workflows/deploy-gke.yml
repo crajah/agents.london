@@ -62,6 +62,18 @@ jobs:
             dockerfile: apps/civilization/backend/Dockerfile
           - name: agent-london-frontend
             context: apps/civilization/frontend
+          - name: genome-api
+            # apps/genome context: the image copies core/ beside api/.
+            context: apps/genome
+            dockerfile: apps/genome/api/Dockerfile
+          - name: genome-tick-worker
+            context: apps/genome
+            dockerfile: apps/genome/tick-worker/Dockerfile
+          - name: genome-decision-worker
+            context: apps/genome
+            dockerfile: apps/genome/decision-worker/Dockerfile
+          - name: genome-web
+            context: apps/genome/web
 
     steps:
       - name: Checkout Repository
@@ -105,6 +117,9 @@ jobs:
           BUILD_ARGS=""
           if [ "${IMAGE_NAME}" = "agent-london-frontend" ]; then
             BUILD_ARGS="--build-arg VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }} --build-arg VITE_MS_CLIENT_ID=${{ secrets.VITE_MS_CLIENT_ID }}"
+          fi
+          if [ "${IMAGE_NAME}" = "genome-web" ]; then
+            BUILD_ARGS="--build-arg VITE_GENOME_API=https://genome.agents.london/api"
           fi
 
           docker buildx build \
@@ -156,6 +171,12 @@ jobs:
             manifest: deploy/k8s/05-ingress.yaml
             type: ingress
             target: agents-london-ingress
+          - name: genome
+            # one manifest, four deployments; rollout is verified on the API,
+            # the workers converge behind it
+            manifest: deploy/k8s/07-genome.yaml
+            type: deployment
+            target: genome-api
 
     steps:
       - name: Checkout Repository
