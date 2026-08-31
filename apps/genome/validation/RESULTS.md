@@ -218,3 +218,21 @@ disposition that orders two actions may not order five.
 advance, so nothing an agent does changes what it faces. Genuine co-evolution —
 two live agents adapting to each other — is untested, and is where reputation,
 signalling and the Red Queen dynamics of §12 would actually appear.
+
+## Movement dynamics land (Rules 5.6/5.7, 4.3a)
+
+First live observations after the movement directive:
+
+- **Styles are genotype-visible immediately.** Within minutes of deploy the
+  demo worlds showed agents exploring in distinct gaits — one brownian, two
+  perimeter-huggers — the style stamped on each `explored` event. The walk is
+  now a readable phenotype.
+- **Deposits pick the near flag.** A laden agent (demo-agent-5) choosing
+  deposit routed to the nearest of five muster flags — 0.020 from its centre,
+  exactly the standoff ring — with the second-nearest 0.295 away. The choice
+  of flag is geography, not habit.
+- **Queue discipline matters at 60×.** The demo time-scale let the tick loop
+  lap the decision worker: 167 pending questions, fourfold duplicates per
+  (agent, situation), every one a would-be LLM call. One pending question per
+  (agent, situation) is now enforced at enqueue; 194 stale items were voided
+  rather than answered.
