@@ -168,7 +168,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Own-agent ring (6.9d)
 
 ### 3.5 Navigation — J3, J4
-- [ ] **Follow an agent**, view accompanying it through a teleport (`interface-spec.md` Rule 5.3)
+- [x] **Follow an agent**, view accompanying it through a teleport (`interface-spec.md` Rule 5.3)
 - [ ] Portal selection from the map opens the destination world (5.3)
 - [ ] **Traverse onward** — a viewed world's portals are selectable, so the connected component walks (5.4)
 - [ ] Jump to an agent's home world from its inspector (5.3)
@@ -380,6 +380,17 @@ Contact import makes this non-optional rather than a courtesy.
 - [x] **Production-prompt re-screen done**: 11/14 pass outright, several strengthened (Cooperativeness 0.25→0.50); two harness biases found and encoded (`validation/RESULTS.md`)
 - [ ] **Genotype schema versioning**: adding a budgeted locus post-launch changes every agent's expressed values; migrations must state the dilution and re-baseline
 - [ ] **Cross-document reference lint**: rule numbers collide across documents (two Rule 6.9a's exist); every cross-doc citation must be doc-qualified
+
+### UI audit (user report 2026-08-31: glitches, no context menus, treacle)
+Diagnosed, in order of harm:
+- [x] **Per-frame allocation churn**: routes layer rebuilt with removeChildren()+new Graphics EVERY frame (60/s); removeChildren does not destroy in Pixi v8 → GPU geometry leak → GC stalls → "treacle". Piles (5 ellipses each) and agents fully cleared+redrawn per frame.
+  Fix: persistent display objects per entity; redraw only on data change; positions updated by transform, not re-tessellation; destroy({children:true}) on swap.
+- [x] **No context menu on anything**: agents have left-click inspect only; piles and portals have no interaction at all.
+  Fix: right-click menu for agent (Inspect / Follow), pile (live qty/cap/rate panel), portal (destination info / view destination); hit-testing via the iso inverse for all three kinds.
+- [x] **Portal left-click instantly yanks the view** — surprising; move traversal into the menu.
+- [x] **Commons blob**: agents parked at identical coords render as one stack; add a deterministic sub-contact-radius display spread (visual only, never in data).
+- [x] **Snapshot cadence 15s** makes the world feel stale between polls → 5s, cheap locally.
+- [x] **Follow an agent** (interface Rule 5.3 route #1) has no UI.
 
 ## Testing strategy
 
