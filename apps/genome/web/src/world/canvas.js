@@ -104,10 +104,33 @@ export async function createWorldCanvas(el, opts = {}) {
         .fill({ color: 0x3a3f45 });
       layers.terrain.addChild(g);
     }
+    // the marketplace stall — a two-tone canopy over the listing board
+    if (s.market) {
+      const g = new Graphics();
+      const [cx, cy] = P([s.market.x, s.market.y]);
+      g.ellipse(cx, cy, 20, 10).fill({ color: 0x000000, alpha: 0.25 });
+      g.poly([cx - 16, cy - 2, cx + 16, cy - 2, cx + 20, cy - 14,
+              cx - 20, cy - 14]).fill({ color: mcap1 ?? 0xd8c090 });
+      g.poly([cx - 20, cy - 14, cx + 20, cy - 14, cx + 14, cy - 24,
+              cx - 14, cy - 24]).fill({ color: 0xd85c3c });
+      g.poly([cx - 14, cy - 24, cx, cy - 30, cx + 14, cy - 24])
+        .fill({ color: 0xf0e0b0 });
+      g.moveTo(cx - 16, cy - 2).lineTo(cx - 16, cy + 6)
+        .stroke({ width: 2, color: 0x8a6f4d });
+      g.moveTo(cx + 16, cy - 2).lineTo(cx + 16, cy + 6)
+        .stroke({ width: 2, color: 0x8a6f4d });
+      const n = (s.market_open ?? []).length;
+      if (n > 0)
+        for (let k = 0; k < Math.min(n, 5); k++)
+          g.rect(cx - 12 + k * 6, cy - 12, 4, 6)
+            .fill({ color: 0xffffff, alpha: 0.85 });
+      layers.muster.addChild(g);
+    }
     // muster flags — five per world, striped in the world's colour pair;
     // the drop points where agents deliver their load
     clearLayer(layers.muster);
     const mc1 = s.colours?.[0] ?? "#cccccc", mc2 = s.colours?.[1] ?? "#888888";
+    const mcap1 = 0xd8c090;
     for (const m of s.muster_points ?? []) {
       const g = new Graphics();
       const [cx, cy] = P([m.x, m.y]);
@@ -361,6 +384,14 @@ export async function createWorldCanvas(el, opts = {}) {
     for (const pt of snapshot?.portals ?? []) {
       const d = Math.hypot(pt.x - q[0], pt.y - q[1]);
       if (d < bestD) { bestD = d; best = { type: "portal", data: pt }; }
+    }
+    if (snapshot?.market) {
+      const d = Math.hypot(snapshot.market.x - q[0],
+                           snapshot.market.y - q[1]);
+      if (d < bestD) { bestD = d;
+        best = { type: "market",
+                 data: { ...snapshot.market,
+                         listings: snapshot.market_open ?? [] } }; }
     }
     (snapshot?.muster_points ?? []).forEach((m, i) => {
       const d = Math.hypot(m.x - q[0], m.y - q[1]);

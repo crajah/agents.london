@@ -277,3 +277,19 @@ Negotiation went live and behaviour differentiated immediately:
   "decide quickly; a short answer is a good answer" — brought MiniMax from
   90s+ timeouts to 1.6s with identical answer quality. Verbosity control
   belongs in the prompt, not the token cap.
+
+## The marketplace opens — and the first acquisition was a robbery
+
+The board went live (spec 4.20–4.23: escrowed listings, hand-to-hand
+completion). While staging a three-way barter circle, the first emergent
+result arrived before the first listing: demo-agent-3, instructed only to
+"acquire kind 15", found the holder at the commons and TOOK it -- combat,
+victory, the whole hold looted under Rule 9.3c. Nothing suggested violence;
+the objective said what, the agent chose how. The robbed agent then walked
+to the market and tried to list the goods it no longer had; escrow honesty
+refused it ("you hold 0.0 of kind 15 -- no goods, no listing").
+
+Re-endowed, the same agent posted the market's first real listing: six
+units of kind 15 asking six of kind 9, goods escrowed, lister waiting at
+the stall. The two-fill middleman chain (pay 4 for 9, pay 9 for 15) is
+staged and grinding through the decision queue.

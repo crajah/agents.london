@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid as uuidlib
 
-from . import combat, construction, engine, forms, identity, \
+from . import combat, construction, engine, forms, identity, market, \
     negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
 from . import worldgen
@@ -115,6 +115,10 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "sites": sites, "flood_in_s": flood_in,
             "boardable_ark": boardable,
             "is_commons": bool(world_payload.get("is_commons")),
+            "market": world_payload.get("market"),
+            "listings": market.summary(await market.board(store._c,
+                                                          world_realm),
+                                       agent.agent_uuid),
             "colour_pair": agent_payload.get("colour_pair"),
             "caches": [s for s in sites if s.get("name") == "cache"],
             **effects}
@@ -293,6 +297,17 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.cache_op:
         await apply_cache_op(store, world_realm, agent, agent_payload,
                              eff, now)
+    if eff.market_turn:
+        board_now = market.summary(await market.board(store._c, world_realm),
+                                   agent.agent_uuid)
+        req2 = engine.DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="market",
+            options=("list", "fill", "collect", "withdraw", "leave"),
+            context={"board": board_now, "my_cargo": agent.cargo,
+                     "cargo_total": agent.cargo_total(),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
+        await enqueue_decision(store, world_realm, req2, {}, now)
     if eff.board:
         await construction.board(store._c, world_realm, eff.board,
                                  agent_payload.get("owner_user_id", ""),
@@ -458,6 +473,17 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.cache_op:
         await apply_cache_op(store, world_realm, agent, agent_payload,
                              eff, now)
+    if eff.market_turn:
+        board_now = market.summary(await market.board(store._c, world_realm),
+                                   agent.agent_uuid)
+        req2 = engine.DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="market",
+            options=("list", "fill", "collect", "withdraw", "leave"),
+            context={"board": board_now, "my_cargo": agent.cargo,
+                     "cargo_total": agent.cargo_total(),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
+        await enqueue_decision(store, world_realm, req2, {}, now)
     if eff.board:
         await construction.board(store._c, world_realm, eff.board,
                                  agent_payload.get("owner_user_id", ""),
@@ -761,6 +787,53 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                              _iso(now + 60.0), "decide", u, {})
     await store.complete_event(world_realm, pl["key"], _iso(now))
     return outcome
+
+
+async def apply_market_turn(store: GenomeStore, world_realm: str,
+                            me: str, action: str, listing: str | None,
+                            give: dict | None, want: dict | None,
+                            now: float) -> str:
+    """Board actions, atomic against the live hold (genome-spec 4.20-4.23)."""
+    view, pl = await load_agent(store, world_realm, me, world_realm, now)
+    cargo = dict(view.cargo)
+    if action == "list":
+        res = await market.post(store._c, world_realm, me,
+                                pl.get("owner_user_id", ""), give or {},
+                                want or {}, cargo)
+    elif action == "fill":
+        # hand-to-hand (Rule 4.22): the lister must stand at the stall too
+        lrow = await market._row(store._c, world_realm, listing or "")
+        lister_present, l_view, l_pl = False, None, None
+        if lrow is not None:
+            lister = lrow.payload.get("lister")
+            wp = await _world_payload(store, world_realm)
+            mkt = wp.get("market") or {"x": 0.5, "y": 0.5}
+            l_view, l_pl = await load_agent(store, world_realm, lister,
+                                            world_realm, now)
+            lister_present = (
+                (l_view.x - mkt["x"]) ** 2 + (l_view.y - mkt["y"]) ** 2
+                <= 0.06 ** 2)
+        res = await market.fill(store._c, world_realm, listing or "", me,
+                                cargo, lister_present,
+                                l_view.cargo if l_view else None)
+        if res.get("ok") and l_view is not None:
+            await store.set_movement(l_view.agent_uuid,
+                {"waypoints": [[l_view.x, l_view.y]], "departed_at": now,
+                 "arrives_at": now, "cargo": res["lister_cargo_after"]})
+    elif action == "collect":
+        res = await market.collect(store._c, world_realm, listing or "", me,
+                                   cargo)
+    elif action == "withdraw":
+        res = await market.withdraw(store._c, world_realm, listing or "", me,
+                                    cargo)
+    else:
+        return "market:leave"
+    if not res.get("ok"):
+        return f"market:{action}_refused({res.get('error', '?')[:40]})"
+    await store.set_movement(me, {"waypoints": [[view.x, view.y]],
+                                  "departed_at": now, "arrives_at": now,
+                                  "cargo": res["cargo_after"]})
+    return f"market:{action}"
 
 
 async def apply_negotiation_turn(store: GenomeStore, world_realm: str,

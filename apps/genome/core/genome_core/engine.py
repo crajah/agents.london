@@ -94,6 +94,8 @@ class Effects:
     # claims a berth via construction.board (Rules 3.7e/4.10a)
     cache_op: tuple[str, str | None] | None = None   # ("build"|"stash"|
     # "collect", cache_key) — commons larders; the caller applies
+    market_turn: bool = False                    # at the board with business:
+    # the caller queues a structured market decision (genome-spec §4.5)
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -321,6 +323,26 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         if _c2.cache_cost(agent.cargo) is not None and \
                 _c2.cache_spot_clear_payloads(caches, agent.x, agent.y):
             options.append("build_cache")
+    # the marketplace (Rule 4.20): at the board with business — or business
+    # worth walking to. Listings are world-public; ACTING needs presence.
+    mkt = ctx.get("market")
+    if mkt:
+        at_market = (mkt["x"] - agent.x) ** 2 + (mkt["y"] - agent.y) ** 2 \
+            < REACH ** 2
+        lst = ctx.get("listings", [])       # market.summary() shape
+        can_fill = any(
+            not l.get("mine") and l.get("want")
+            and all(agent.cargo.get(k, 0.0) + 1e-9 >= u
+                    for k, u in l["want"].items())
+            for l in lst)
+        my_open = any(l.get("mine") for l in lst)
+        if at_market and (agent.cargo_total() > 0 or can_fill or my_open):
+            options.append("trade_at_market")
+        elif not at_market and (can_fill or my_open or
+                                (agent.cargo_total() >= 2 and lst)):
+            # my_open included: the board summons its listers -- a trade
+            # completes hand-to-hand, so an absent lister closes nothing
+            options.append("go_to_market")
     # the water is coming (Rule 4.8): a boardable Ark changes everything
     ark = ctx.get("boardable_ark")
     if ark:
@@ -352,6 +374,11 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  "flood_in_s": ctx.get("flood_in_s"),
                  "ark_key": ark["key"] if ark else None,
                  "cache_here": near_cache["key"] if near_cache else None,
+                 "market_board": [
+                     {"key": l["key"], "give": l.get("give"),
+                      "want": l.get("want"), "mine": l.get("mine")}
+                     for l in ctx.get("listings", [])
+                     if l.get("status", "open") == "open"][:8],
                  "sites_wanting": [s["key"] for s in sites
                                    if _con.accepts(s, agent.cargo)]})
 
@@ -541,6 +568,21 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         return Effects(cache_op=(op, key),
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
+
+    if choice.option == "trade_at_market":
+        return Effects(market_turn=True,
+                       schedule=("decide", now + 90.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "go_to_market":
+        mkt = ctx.get("market")
+        if not mkt:
+            return Effects(schedule=("decide", now + 60.0,
+                                     agent.agent_uuid, {}))
+        tx, ty = standoff(agent.x, agent.y, mkt["x"], mkt["y"])
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale, pace)
 
     if choice.option == "take_portal":
         return Effects(
