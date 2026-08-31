@@ -1,0 +1,133 @@
+# genome — four services, one world-engine. Applied as a unit; images are
+# retagged by the pipeline like every other manifest here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genome-api
+  namespace: default
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: genome-api } }
+  template:
+    metadata: { labels: { app: genome-api } }
+    spec:
+      containers:
+        - name: genome-api
+          image: gcr.io/crajah-dev/genome-api:latest
+          ports: [{ containerPort: 8800 }]
+          envFrom:
+            - secretRef: { name: postgres-secrets }
+            - secretRef: { name: oidc-auth-secret }
+          env:
+            - name: POSTGRES_HOST
+              value: postgres-service
+            - name: GENOME_REDIRECT_BASE
+              value: https://genome.agents.london/api
+            - name: GENOME_WEB_BASE
+              value: https://genome.agents.london
+            - name: GENOME_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: GENOME_SESSION_KEY
+                  optional: true   # falls back to dev key until provisioned
+          readinessProbe:
+            httpGet: { path: /health, port: 8800 }
+            initialDelaySeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: genome-api-service
+  namespace: default
+spec:
+  selector: { app: genome-api }
+  ports: [{ port: 80, targetPort: 8800 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genome-web
+  namespace: default
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: genome-web } }
+  template:
+    metadata: { labels: { app: genome-web } }
+    spec:
+      containers:
+        - name: genome-web
+          image: gcr.io/crajah-dev/genome-web:latest
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: genome-web-service
+  namespace: default
+spec:
+  selector: { app: genome-web }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genome-tick-worker
+  namespace: default
+spec:
+  replicas: 1                     # single drainer until leases land (BUILD 1.2)
+  strategy: { type: Recreate }    # two drainers double-tick a world
+  selector: { matchLabels: { app: genome-tick-worker } }
+  template:
+    metadata: { labels: { app: genome-tick-worker } }
+    spec:
+      containers:
+        - name: genome-tick-worker
+          image: gcr.io/crajah-dev/genome-tick-worker:latest
+          envFrom:
+            - secretRef: { name: postgres-secrets }
+          env:
+            - name: POSTGRES_HOST
+              value: postgres-service
+            - name: GENOME_REALMS
+              value: genome_demo,genome_demo2,genome_demo3
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genome-decision-worker
+  namespace: default
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: genome-decision-worker } }
+  template:
+    metadata: { labels: { app: genome-decision-worker } }
+    spec:
+      containers:
+        - name: genome-decision-worker
+          image: gcr.io/crajah-dev/genome-decision-worker:latest
+          envFrom:
+            - secretRef: { name: postgres-secrets }
+          env:
+            - name: POSTGRES_HOST
+              value: postgres-service
+            - name: GENOME_REALMS
+              value: genome_demo,genome_demo2,genome_demo3
+            - name: GENOME_ROUTER_URL
+              value: http://litellm-service
+            - name: GENOME_ROUTER_KEY
+              valueFrom:
+                secretKeyRef: { name: litellm-api-keys, key: GLOBAL_API_KEY }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: 500m, memory: 384Mi }
