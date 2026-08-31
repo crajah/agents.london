@@ -250,6 +250,112 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
     </div>);
 }
 
+function AgentModal({ inspect, onClose }) {
+  const [chat, setChat] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [chatErr, setChatErr] = useState(null);
+  const load = () =>
+    fetch(`${API}/agents/${inspect.agent_uuid}/chat`)
+      .then(r => r.json()).then(setChat).catch(() => {});
+  useEffect(() => { load(); }, [inspect.agent_uuid]);
+  const send = async () => {
+    if (!draft.trim()) return;
+    const r = await fetch(`${API}/agents/${inspect.agent_uuid}/chat`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: draft }) });
+    const d = await r.json();
+    if (d.error) setChatErr(d.error);
+    else { setChatErr(null); setDraft(""); load(); }
+  };
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center"
+         onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="relative z-50 w-[42rem] max-h-[85vh] flex flex-col
+                      bg-neutral-900 border border-neutral-600 rounded-lg
+                      shadow-2xl text-sm"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b
+                        border-neutral-700">
+          {(inspect.colour_pair ?? []).map(c =>
+            <span key={c} className="w-4 h-4 rounded-full inline-block"
+                  style={{ background: c }} />)}
+          <strong className="text-base">
+            {inspect.name ?? inspect.agent_uuid}</strong>
+          {inspect.infected &&
+            <span className="text-red-400 text-xs">infected</span>}
+          <span className="text-xs opacity-50">
+            {inspect.models?.economy} · T={inspect.temperament}</span>
+          <span className="flex-1" />
+          <button onClick={onClose} className="opacity-60 text-lg">✕</button>
+        </div>
+        <div className="flex-1 min-h-0 flex">
+          <div className="w-1/2 overflow-y-auto p-4 border-r
+                          border-neutral-800">
+            {inspect.dispositions && <>
+              <h4 className="opacity-70 mb-1">Dispositions</h4>
+              {Object.entries(inspect.dispositions).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <span className="w-28 truncate">{k}</span>
+                  <div className="flex-1 h-1.5 bg-neutral-700 rounded">
+                    <div className="h-1.5 rounded bg-neutral-300"
+                         style={{ width: `${(v / 10000) * 100}%` }} />
+                  </div>
+                  <span className="w-10 text-right opacity-60">
+                    {Math.round(v)}</span>
+                </div>))}
+              <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
+              {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
+                <div key={k} className="flex justify-between">
+                  <span>{k}</span>
+                  <span className="opacity-60">{v.toFixed(3)}</span>
+                </div>))}
+            </>}
+            {inspect.decisions?.length > 0 && <>
+              <h4 className="opacity-70 mt-3 mb-1">Recent decisions</h4>
+              {inspect.decisions.map((d, i) => (
+                <div key={i}
+                     className="mb-1.5 pb-1.5 border-b border-neutral-800">
+                  <div className="font-medium">{d.choice}</div>
+                  <div className="opacity-50 text-xs">
+                    of {(d.options ?? []).join(", ")} · {d.model}</div>
+                </div>))}
+            </>}
+          </div>
+          <div className="w-1/2 flex flex-col">
+            <div className="flex-1 overflow-y-auto p-4">
+              <h4 className="opacity-70 mb-2">Instructions</h4>
+              {chat.length === 0 &&
+                <div className="opacity-50">Nothing said yet. An instruction
+                  becomes this agent's top objective — obeyed to the limit of
+                  its Amenability, and marked as YOUR words wherever it is
+                  repeated.</div>}
+              {chat.map((m, i) => (
+                <div key={i} className="mb-2">
+                  <div className="text-xs opacity-40">owner instruction</div>
+                  <div className="bg-neutral-800 rounded px-2 py-1">
+                    {m.text}</div>
+                </div>))}
+              {chatErr &&
+                <div className="text-amber-400 text-xs mt-2">{chatErr}</div>}
+            </div>
+            <div className="p-3 border-t border-neutral-700 flex gap-2">
+              <input className="flex-1 bg-neutral-800 px-2 py-1.5 rounded"
+                     placeholder="tell it what matters…"
+                     value={draft}
+                     onChange={e => setDraft(e.target.value)}
+                     onKeyDown={e => e.key === "Enter" && send()} />
+              <button onClick={send}
+                      className="px-3 py-1.5 bg-emerald-700 rounded">
+                instruct</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>);
+}
+
 function App() {
   const ref = useRef(null);
   const [realm, setRealm] = useState(
@@ -386,11 +492,20 @@ function App() {
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}
           onInspect={async (uuid) => {
-            const [r, rd] = await Promise.all([
-              fetch(`${API}/agents/${uuid}`),
-              fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
-            setInspect({ ...(await r.json()), decisions: await rd.json() });
             setMenu(null);
+            // open at once with what we know; details stream in — a failed
+            // fetch degrades the panel, never swallows the click
+            setInspect({ agent_uuid: uuid });
+            try {
+              const [r, rd] = await Promise.all([
+                fetch(`${API}/agents/${uuid}`),
+                fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
+              const base = r.ok ? await r.json() : { agent_uuid: uuid };
+              const dec = rd.ok ? await rd.json() : [];
+              setInspect({ ...base, decisions: dec });
+            } catch (e) {
+              setInspect(cur => ({ ...cur, error: String(e) }));
+            }
           }}
           onFollow={(uuid) => { canvasApi.current?.follow(uuid); setMenu(null); }}
           onTravel={(toWorld) => {
@@ -398,50 +513,7 @@ function App() {
             setInspect(null); setMenu(null); setRealm(toWorld);
           }} />}
         {inspect && (
-          <aside className="w-80 overflow-y-auto border-l border-neutral-700 p-3 text-sm">
-            <div className="flex justify-between items-center mb-2">
-              <strong>{inspect.name ?? inspect.agent_uuid}</strong>
-              <button onClick={() => setInspect(null)} className="opacity-60">✕</button>
-            </div>
-            {inspect.models && (
-              <div className="text-xs opacity-60 mb-2">
-                mind: {inspect.models.economy}
-                {" · temperament "}{inspect.temperament}
-              </div>)}
-            <div className="flex gap-1 mb-3">
-              {(inspect.colour_pair ?? []).map(c =>
-                <span key={c} className="w-5 h-5 rounded-full inline-block"
-                      style={{ background: c }} />)}
-              {inspect.infected && <span className="text-red-400 ml-2">infected</span>}
-            </div>
-            {inspect.dispositions && <>
-              <h4 className="opacity-70 mt-2 mb-1">Dispositions</h4>
-              {Object.entries(inspect.dispositions).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2">
-                  <span className="w-28 truncate">{k}</span>
-                  <div className="flex-1 h-1.5 bg-neutral-700 rounded">
-                    <div className="h-1.5 rounded bg-neutral-300"
-                         style={{ width: `${(v / 10000) * 100}%` }} />
-                  </div>
-                  <span className="w-10 text-right opacity-60">{Math.round(v)}</span>
-                </div>))}
-              <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
-              {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
-                <div key={k} className="flex justify-between">
-                  <span>{k}</span><span className="opacity-60">{v.toFixed(3)}</span>
-                </div>))}
-            </>}
-            {inspect.decisions?.length > 0 && <>
-              <h4 className="opacity-70 mt-3 mb-1">Recent decisions</h4>
-              {inspect.decisions.map((d, i) => (
-                <div key={i} className="mb-1.5 pb-1.5 border-b border-neutral-800">
-                  <div className="font-medium">{d.choice}</div>
-                  <div className="opacity-50 text-xs">
-                    of {(d.options ?? []).join(", ")} · {d.model}
-                  </div>
-                </div>))}
-            </>}
-          </aside>)}
+          <AgentModal inspect={inspect} onClose={() => setInspect(null)} />)}
       </div>
     </div>
   );

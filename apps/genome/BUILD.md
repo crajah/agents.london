@@ -320,7 +320,11 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] Two-way teleport links (6.2g revised): the commons lists an outbound rim door for every linked world; backfilled — 10 doors live
 - [x] Commons caches (user directive): four different kinds × 1 unit builds a colour-gated larder; no adjacency; stash/collect budgeted by free hold; commons has no muster points and founds nothing from the tree
 - [x] Notifications made truly async (emit_bg): the simulation never awaits its own postman
-- [ ] Berth exchange between co-located agents (3.7a/b); unclaimed-berth scramble at the water (3.7f); manifest slots for constructions and stock (4.3b); multi-world voyage (4.3c)
+- [x] Berth exchange (3.7a/b): offer_berth appears at encounters during a countdown for holders; acceptance is not attacking the offering hand; the boarded ledger and both agents update atomically
+- [x] Unclaimed-berth scramble (3.7f): at the water, pool berths fall to berthless agents AT the hull, nearest first — presence settles what argument did not
+- [x] Manifest slots for constructions (4.3b): carrying a building costs its contributor count in the owner's unassigned berths (your people or your works); manifested constructions survive the reset when the ark sails (4.3a)
+- [x] 4.3c note: survivors emerge where the ark rests — the host's world — which is current behaviour by construction (single-world voyages); stock manifest slots still open
+- [x] Phase 7 opening move: agent inspector is a modal with an INSTRUCTION chat — owner words become the top objective (10.1a) and persist in the chats table; strangers 403 until Phase 7 assertions land
 - [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
 - [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)
 - [ ] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a)

@@ -146,6 +146,51 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
         await drain.regenerate(store, realm, view, pl, now, cause="flood")
         drowned += 1
 
+    if ark and any(n > 0 for n in ark.get("berths", {}).values()):
+        # the scramble (Rule 3.7f): unclaimed berths fall to whoever stands
+        # at the hull, nearest first, whoever they belong to
+        from . import forms as _forms
+        standers = []
+        for a in keys:
+            rows = await client.find_vertices("agents",
+                                              realm="genome_agents",
+                                              filters={"key": a}, limit=1)
+            if not rows or rows[0].payload.get("berth"):
+                continue
+            mv = await store.latest_movement(a)
+            if mv is None or "waypoints" not in mv.payload:
+                continue
+            mp = mv.payload
+            x, y = _forms.route_position(
+                _forms.Route(tuple(tuple(q) for q in mp["waypoints"]),
+                             mp["departed_at"], mp.get("arrives_at")), now)
+            d2 = (x - ark["x"]) ** 2 + (y - ark["y"]) ** 2
+            if d2 <= ARK_RADIUS ** 2:
+                standers.append((d2, a, rows[0]))
+        pool = dict(ark.get("berths", {}))
+        boarded = dict(ark.get("boarded", {}))
+        for _, a, row in sorted(standers, key=lambda q: (q[0], q[1])):
+            donor = next((u for u, n in pool.items() if n > 0), None)
+            if donor is None:
+                break
+            pool[donor] -= 1
+            boarded[a] = donor
+            await client.upsert_vertex("agents", realm="genome_agents",
+                                       vertex_id=int(row.id), space="default",
+                                       payload={**row.payload,
+                                                "aboard_ark": ark["key"],
+                                                "berth": True})
+        srows = await client.find_vertices(construction.TABLE, realm=realm,
+                                           filters={"key": ark["key"]},
+                                           limit=1)
+        if srows:
+            await client.upsert_vertex(construction.TABLE, realm=realm,
+                                       vertex_id=int(srows[0].id),
+                                       space="default",
+                                       payload={**srows[0].payload,
+                                                "berths": pool,
+                                                "boarded": boarded})
+            ark = {**ark, "berths": pool, "boarded": boarded}
     await _aio.gather(*(_judge(a) for a in keys))
     # the world reverts to its nascent state (Rule 4.4)
     for v in await store.piles_in(realm):
@@ -168,6 +213,13 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
                     vertex_id=int(v.id), space="default",
                     payload={**s, "spent": True, "wreck_at": now})
             # otherwise the hull -- partial or unused -- persists (4.4a/4.4c)
+            continue
+        if s.get("manifested") and ark and saved:
+            # carried in the hold (Rule 4.3a): re-established intact in the
+            # nascent world, its manifest flag spent with the voyage
+            await client.upsert_vertex(construction.TABLE, realm=realm,
+                vertex_id=int(v.id), space="default",
+                payload={**s, "manifested": False})
             continue
         await client.upsert_vertex(construction.TABLE, realm=realm,
             vertex_id=int(v.id), space="default",
