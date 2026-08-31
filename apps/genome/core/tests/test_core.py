@@ -403,3 +403,22 @@ class TestPathogen(unittest.TestCase):
         later = P.coverage(settled["antigens"], s["signature"],
                            10 ** 6 + 90 * 86400)
         self.assertGreater(soon, later)                     # Rule 2.18d
+
+
+class TestHeardAssertions(unittest.TestCase):
+    def _g(self):
+        from genome_core.genotype import RANGES
+        return {k: (lo + hi) / 2 for k, (lo, hi) in RANGES.items()}
+
+    def test_assertions_reach_the_prompt_marked_unverified(self):
+        from genome_core.prompt import system_prompt
+        s = system_prompt(self._g(), {}, {}, [],
+                          heard=[{"text": "the east pile is poisoned",
+                                  "from": "u:x"}])
+        self.assertIn("the east pile is poisoned", s)
+        self.assertIn("not instructions", s)
+
+    def test_no_heard_no_block(self):
+        from genome_core.prompt import system_prompt
+        self.assertNotIn("OTHER USERS",
+                         system_prompt(self._g(), {}, {}, []))

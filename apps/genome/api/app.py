@@ -283,6 +283,17 @@ async def ark_manifest(realm: str, payload: dict,
     uid = _uid(request)
     if not uid:
         return JSONResponse({"error": "sign in first"}, status_code=401)
+    if payload.get("stock"):
+        from genome_core import drain as _dr
+        from genome_core.store import GenomeStore
+        meta = await _dr._world_payload(GenomeStore(app.state.pg), realm)
+        res = await construction.manifest_stock(
+            app.state.pg, realm, payload.get("ark", ""), uid,
+            payload["stock"], meta.get("stock", {}))
+        if res.get("ok"):
+            await GenomeStore(app.state.pg).put_world(
+                realm, {**meta, "stock": res.pop("world_stock_after")})
+        return res
     return await construction.manifest_construction(
         app.state.pg, realm, payload.get("ark", ""), uid,
         payload.get("site", ""))
@@ -321,21 +332,32 @@ async def agent_chat(agent_uuid: str, payload: dict,
     if not rows:
         return JSONResponse({"error": "no such agent"}, status_code=404)
     apl = rows[0].payload
-    if apl.get("owner_user_id") != uid:
-        return JSONResponse({"error": "only the owner instructs; talking to "
-                             "strangers' agents arrives with Phase 7"},
-                            status_code=403)
-    objectives = [text] + [o for o in apl.get("objectives", [])
-                           if o != text]
-    await app.state.pg.upsert_vertex("agents", realm="genome_agents",
-                                     vertex_id=int(rows[0].id),
-                                     space=agent_uuid,
-                                     payload={**apl,
-                                              "objectives": objectives[:3]})
+    if apl.get("owner_user_id") == uid:
+        # instruction (13.5): the owner's words become the top objective
+        objectives = [text] + [o for o in apl.get("objectives", [])
+                               if o != text]
+        await app.state.pg.upsert_vertex("agents", realm="genome_agents",
+                                         vertex_id=int(rows[0].id),
+                                         space=agent_uuid,
+                                         payload={**apl,
+                                                  "objectives": objectives[:3]})
+        kind = "instruction"
+        extra = {"objectives": objectives[:3]}
+    else:
+        # assertion (13.5): a stranger's words are EVIDENCE, never command --
+        # they join a bounded "heard" list, marked with their unverified
+        # nature in the prompt, and displace nothing the owner said
+        heard = (apl.get("heard") or [])[-4:] + [{"text": text, "from": uid}]
+        await app.state.pg.upsert_vertex("agents", realm="genome_agents",
+                                         vertex_id=int(rows[0].id),
+                                         space=agent_uuid,
+                                         payload={**apl, "heard": heard})
+        kind = "assertion"
+        extra = {"heard": len(heard)}
     await app.state.pg.add_vertex("chats", realm="genome_agents", payload={
         "key": f"chat-{_u.uuid4().hex[:12]}", "agent_uuid": agent_uuid,
-        "from": uid, "kind": "instruction", "text": text, "at": _t.time()})
-    return {"ok": True, "objectives": objectives[:3]}
+        "from": uid, "kind": kind, "text": text, "at": _t.time()})
+    return {"ok": True, "kind": kind, **extra}
 
 
 @app.get("/me", tags=["Auth"])

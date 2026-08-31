@@ -53,7 +53,8 @@ async def work_one(store: GenomeStore, client, item) -> str:
         eff = pathogen.phenotype(agent_payload, now) \
             if agent_payload.get("infections") else g
         choice, model = llm_decider(req, eff, seed=int(now),
-                                    objectives=agent_payload.get("objectives"))
+                                    objectives=agent_payload.get("objectives"),
+                                    heard=agent_payload.get("heard"))
     else:
         choice, model = engine.stub_decider(req, int(now)), "stub"
     outcome = await drain.apply_decided(

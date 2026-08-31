@@ -263,6 +263,47 @@ async def manifest_construction(client: Any, realm: str, ark_key: str,
             "berths_left": pool[user_id]}
 
 
+async def manifest_stock(client: Any, realm: str, ark_key: str,
+                         user_id: str, stock: dict[str, float],
+                         world_stock: dict[str, float]) -> dict:
+    """Rule 4.3b's third cargo class: deposited stock rides at ONE SLOT PER
+    UNIT, paid in the user's unassigned berths. Only stock actually standing
+    in this world's store can be loaded, and loading removes it from the
+    store -- it is in the hold now."""
+    import math as _m
+    want = {k: float(u) for k, u in (stock or {}).items() if float(u) > 0}
+    if not want:
+        return {"error": "nothing to load"}
+    for k, u in want.items():
+        if world_stock.get(k, 0.0) + 1e-9 < u:
+            return {"error": f"the store holds {world_stock.get(k, 0.0):.1f} "
+                    f"of kind {k}, not {u:.1f}"}
+    price = _m.ceil(sum(want.values()))
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": ark_key}, limit=1)
+    if not rows or not rows[0].payload.get("complete") \
+            or rows[0].payload.get("spent"):
+        return {"error": "no ark to load here"}
+    ark = dict(rows[0].payload)
+    pool = dict(ark.get("berths", {}))
+    if pool.get(user_id, 0) < price:
+        return {"error": f"{price} slots needed; your claim holds "
+                f"{pool.get(user_id, 0)} berths"}
+    pool[user_id] -= price
+    hold = dict(ark.get("stock_manifest", {}))
+    for k, u in want.items():
+        hold[k] = hold.get(k, 0.0) + u
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**ark, "berths": pool,
+                                        "stock_manifest": hold})
+    remaining = {k: world_stock.get(k, 0.0) - want.get(k, 0.0)
+                 for k in world_stock}
+    return {"ok": True, "slots_paid": price, "hold": hold,
+            "world_stock_after": {k: v for k, v in remaining.items()
+                                  if v > 1e-9}}
+
+
 async def board(client: Any, realm: str, ark_key: str, user_id: str,
                 agent_uuid: str) -> dict:
     """An agent AT the Ark claims one of its owner's berths and steps aboard

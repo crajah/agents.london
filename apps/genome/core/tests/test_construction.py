@@ -135,3 +135,42 @@ class TestReservation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStockManifest(unittest.TestCase):
+    def _fake(self, ark):
+        class Row:
+            def __init__(s2, payload): s2.payload, s2.id = payload, 1
+        class FC:
+            def __init__(s2): s2.ark = ark
+            async def find_vertices(s2, *a, **k): return [Row(s2.ark)]
+            async def upsert_vertex(s2, *a, **k): s2.ark = k["payload"]
+        return FC()
+
+    def test_stock_rides_at_one_slot_per_unit(self):
+        import asyncio
+        fc = self._fake({"key": "a", "name": "ark", "complete": True,
+                         "berths": {"u:a": 5}, "stock_manifest": {}})
+        r = asyncio.run(C.manifest_stock(fc, "w", "a", "u:a",
+                                         {"3": 2.0, "7": 1.5},
+                                         {"3": 10.0, "7": 5.0}))
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["slots_paid"], 4)          # ceil(3.5)
+        self.assertEqual(fc.ark["berths"]["u:a"], 1)
+        self.assertEqual(r["world_stock_after"], {"3": 8.0, "7": 3.5})
+
+    def test_cannot_load_what_the_store_lacks(self):
+        import asyncio
+        fc = self._fake({"key": "a", "name": "ark", "complete": True,
+                         "berths": {"u:a": 12}})
+        r = asyncio.run(C.manifest_stock(fc, "w", "a", "u:a",
+                                         {"3": 9.0}, {"3": 2.0}))
+        self.assertIn("error", r)
+
+    def test_slots_gate(self):
+        import asyncio
+        fc = self._fake({"key": "a", "name": "ark", "complete": True,
+                         "berths": {"u:a": 2}})
+        r = asyncio.run(C.manifest_stock(fc, "w", "a", "u:a",
+                                         {"3": 5.0}, {"3": 9.0}))
+        self.assertIn("error", r)

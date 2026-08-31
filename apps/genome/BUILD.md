@@ -323,6 +323,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] Berth exchange (3.7a/b): offer_berth appears at encounters during a countdown for holders; acceptance is not attacking the offering hand; the boarded ledger and both agents update atomically
 - [x] Unclaimed-berth scramble (3.7f): at the water, pool berths fall to berthless agents AT the hull, nearest first — presence settles what argument did not
 - [x] Manifest slots for constructions (4.3b): carrying a building costs its contributor count in the owner's unassigned berths (your people or your works); manifested constructions survive the reset when the ark sails (4.3a)
+- [x] Stock manifest slots (4.3b complete): deposited stock rides at one slot per unit (ceil), paid in unassigned berths, removed from the store into the hold; carried stock becomes the nascent world's opening store when the ark sails
+- [x] Phase 7 assertions: a stranger's chat message joins the agent's bounded "heard" list, reaches the prompt marked as unverified claims, and displaces nothing the owner said; instruction vs assertion marked at send time in the UI (interface-spec 3.3)
 - [x] 4.3c note: survivors emerge where the ark rests — the host's world — which is current behaviour by construction (single-world voyages); stock manifest slots still open
 - [x] Phase 7 opening move: agent inspector is a modal with an INSTRUCTION chat — owner words become the top objective (10.1a) and persist in the chats table; strangers 403 until Phase 7 assertions land
 - [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
