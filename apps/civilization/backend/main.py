@@ -454,7 +454,14 @@ async def verify_microsoft_oauth_token(req: VerifyMicrosoftTokenRequest):
                 "redirect_uri": req.redirect_uri or "http://localhost:3000",
                 "scope": "openid email profile"
             }
-            # PKCE public client — use code_verifier instead of client_secret
+            # The code is redeemed SERVER-side (no browser Origin header),
+            # so the redirect URI must be registered under the WEB platform
+            # and this app must authenticate as a confidential client --
+            # AADSTS90023 rejects SPA-platform codes redeemed off-origin.
+            # PKCE's code_verifier still rides along; the two compose.
+            ms_secret = os.getenv("MS_CLIENT_SECRET", "")
+            if ms_secret:
+                payload["client_secret"] = ms_secret
             if req.code_verifier:
                 payload["code_verifier"] = req.code_verifier
             resp = await client.post(token_url, data=payload)
