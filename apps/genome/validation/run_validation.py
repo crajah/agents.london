@@ -195,12 +195,20 @@ def build_messages(scenario_locus, vary_locus, level, flip, style="raw", jitter_
         '{"choice": "<option key>"}. No explanation.')
     user = (sc["situation"] + "\n\nYour options:\n"
             + "\n".join(f'  "{k}" - {t}' for k, t in opts)
+            + '\n\nDecide quickly; a short answer is a good answer.'
             + '\n\nRespond with {"choice": "<key>"} and nothing else.')
     return [{"role":"system","content":system},{"role":"user","content":user}], hi_k, lo_k
 
-def call(model, messages, temperature=1.0, timeout=90):
-    body = json.dumps({"model":model,"messages":messages,"temperature":temperature,
-                       "max_tokens":24}).encode()
+# flat-rate reasoning models: no cap (24 tokens vanish into thinking and
+# the content arrives empty); the brevity line in the prompt does the
+# length control instead -- the lesson the bargaining table taught.
+UNCAPPED = {"MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"}
+
+def call(model, messages, temperature=1.0, timeout=120):
+    body_d = {"model":model,"messages":messages,"temperature":temperature}
+    if model not in UNCAPPED:
+        body_d["max_tokens"] = 24
+    body = json.dumps(body_d).encode()
     req = urllib.request.Request(BASE + "/v1/chat/completions", data=body,
             headers={"Content-Type":"application/json","Authorization":"Bearer "+KEY})
     with urllib.request.urlopen(req, timeout=timeout) as r:

@@ -366,9 +366,10 @@ comprehensible. This is the phase most easily forgotten and most felt.
 
 Contact import makes this non-optional rather than a courtesy.
 
-- [ ] Export everything a user owns: world, agents, genotypes, decisions, chats
-- [ ] Delete an account: agents, keys, chats, opinions, corpus and **imported contact material**
-- [ ] **Tombstone the world** rather than removing it (`genome-spec.md` Rule 3.6); neighbours' portals stay valid
+- [x] Export everything a user owns (GET /me/export): world meta, every owned agent with genotype and full decision record, chats, notifications, proposals — one document, live-proven
+- [x] Delete an account (POST /me/delete, confirm:true): agents replaced by dated stubs (uuids survive so counterparties' opinions never dangle; the person does not), chats/notifications/proposals purged, session ended
+- [x] **Tombstone the world** (Rule 3.6): ownerless, paused, still on the map — neighbours' portals stay valid, proven by the realm answering post-delete with zero inhabitants
+- [ ] Imported contact material: nothing to purge by construction — non-users were never stored (proven at import time); revocation of OAuth grants remains portal-side
 - [ ] Deletion must not orphan other users' data — a connection is mutual, so removal is two-sided
 - [ ] Non-user contacts were never stored (`system-spec.md` Rule 9.3); prove it with a test
 - [ ] Revoke OAuth grants; revoke and re-key user-supplied model credentials (`execution-spec.md` Rule 9.3)

@@ -566,6 +566,114 @@ async def admin_resume(realm: str, request: __import__("fastapi").Request):
     return {"ok": True, "resumed": realm}
 
 
+@app.get("/me/export", tags=["Account"])
+async def my_export(request: __import__("fastapi").Request):
+    """Phase 12: everything a user owns, one document -- world, agents with
+    genotypes, decision records, chats, notifications, proposals."""
+    from fastapi.responses import JSONResponse
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    store = GenomeStore(app.state.pg)
+    realm = await genesis.user_world_realm(app.state.pg, uid)
+    out = {"user": uid, "world_realm": realm,
+           "world": await _dr._world_payload(store, realm) if realm else None,
+           "agents": [], "chats": [], "notifications": [], "proposals": []}
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        pl = v.payload
+        if pl.get("owner_user_id") != uid or "genotype" not in pl:
+            continue
+        decisions = await snapshot.agent_decisions(app.state.pg,
+                                                    pl["key"], limit=5000)
+        out["agents"].append({**pl, "decisions": decisions})
+    for table, key in (("chats", "chats"), ("notifications", "notifications"),
+                       ("link_proposals", "proposals")):
+        try:
+            rows = await app.state.pg.get_vertices(table,
+                                                   realm="genome_agents")
+        except Exception:
+            continue
+        for v in rows:
+            pl = v.payload
+            owns = (pl.get("from") == uid or pl.get("user_id") == uid
+                    or pl.get("from_user") == uid or pl.get("to_user") == uid)
+            if owns:
+                out[key].append(pl)
+    return out
+
+
+@app.post("/me/delete", tags=["Account"])
+async def my_delete(payload: dict, request: __import__("fastapi").Request):
+    """Phase 12: the account ends; the world is TOMBSTONED, never removed
+    (Rule 3.6) -- neighbours' portals stay valid, the realm stays on the
+    map, nothing of the person remains in it. Requires confirm:true."""
+    from fastapi.responses import JSONResponse
+    import time as _t
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    if payload.get("confirm") is not True:
+        return JSONResponse({"error": "send {\"confirm\": true} -- this "
+                             "removes your agents, words and identity"},
+                            status_code=400)
+    store = GenomeStore(app.state.pg)
+    realm = await genesis.user_world_realm(app.state.pg, uid)
+    now = _t.time()
+    purged = {"agents": 0, "chats": 0, "notifications": 0, "proposals": 0}
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        pl = v.payload
+        key = pl.get("key", "")
+        if pl.get("owner_user_id") == uid and "genotype" in pl:
+            # the agent record is REPLACED by a stub: uuid survives so
+            # counterparties' opinions/ledgers don't dangle, the person
+            # (genotype, cert, chats-derived objectives) does not
+            await app.state.pg.upsert_vertex(
+                "agents", realm="genome_agents", vertex_id=int(v.id),
+                space=key,
+                payload={"key": key, "deleted": True, "deleted_at": now})
+            if realm:
+                try:
+                    await store.set_presence(realm, key, False)
+                except Exception:
+                    pass
+            purged["agents"] += 1
+        elif key == f"user:{uid}":
+            await app.state.pg.upsert_vertex(
+                "agents", realm="genome_agents", vertex_id=int(v.id),
+                space="default",
+                payload={"key": key, "deleted": True, "deleted_at": now})
+    for table, cnt in (("chats", "chats"), ("notifications", "notifications"),
+                       ("link_proposals", "proposals")):
+        try:
+            rows = await app.state.pg.get_vertices(table,
+                                                   realm="genome_agents")
+        except Exception:
+            continue
+        for v in rows:
+            pl = v.payload
+            owns = (pl.get("from") == uid or pl.get("user_id") == uid
+                    or pl.get("from_user") == uid or pl.get("to_user") == uid)
+            if owns:
+                await app.state.pg.upsert_vertex(
+                    table, realm="genome_agents", vertex_id=int(v.id),
+                    space="default",
+                    payload={"key": pl.get("key"), "deleted": True})
+                purged[cnt] += 1
+    if realm:
+        meta = await _dr._world_payload(store, realm)
+        await store.put_world(realm, {
+            **meta, "tombstoned": True, "tombstoned_at": now,
+            "owner_user_id": None, "paused": True})
+    resp = __import__("fastapi").responses.JSONResponse(
+        {"ok": True, "tombstoned": realm, **purged})
+    resp.delete_cookie("genome_session")
+    return resp
+
+
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
     uid = auth_mod.verify_cookie(
