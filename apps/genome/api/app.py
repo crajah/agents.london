@@ -454,6 +454,118 @@ async def agent_chat(agent_uuid: str, payload: dict,
     return {"ok": True, "kind": kind, **extra}
 
 
+# ---------------------------------------------------------------------------
+# Admin — Phase 13. Guarded by GENOME_ADMIN_TOKEN; absent token disables the
+# surface entirely (fail closed).
+# ---------------------------------------------------------------------------
+
+def _admin_ok(request) -> bool:
+    tok = os.getenv("GENOME_ADMIN_TOKEN", "")
+    return bool(tok) and request.headers.get("x-admin-token") == tok
+
+
+@app.get("/admin/worlds", tags=["Admin"])
+async def admin_worlds(request: __import__("fastapi").Request):
+    """One row per realm: population, queue depths, oldest due age, clock,
+    board -- and the stalled flag (system-spec Rule 8.2: a world where
+    nothing happens must be distinguishable from one where nothing was
+    due)."""
+    from fastapi.responses import JSONResponse
+    import time as _t
+    from genome_core import drain as _dr, flood as _fl, market as _mkt
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    store = GenomeStore(app.state.pg)
+    now = _t.time()
+    realms = ["genome_commons_0"]
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        wr = v.payload.get("world_realm")
+        if wr and v.payload.get("key", "").startswith(("user:", "commons:")) \
+                and wr not in realms:
+            realms.append(wr)
+    for extra in ("genome_demo", "genome_demo2", "genome_demo3"):
+        if extra not in realms:
+            realms.append(extra)
+    import asyncio as _aio
+
+    async def _row(realm):
+        meta = await _dr._world_payload(store, realm)
+        if not meta:
+            return None
+        try:
+            events = await app.state.pg.get_vertices("events", realm=realm)
+        except Exception:
+            events = []
+        pending = [v.payload for v in events
+                   if v.payload.get("done_at") is None]
+        due = [p for p in pending if float(p.get("due_at", 0)) <= now]
+        oldest_due_age = max((now - float(p["due_at"]) for p in due),
+                             default=0.0)
+        agents = [v.payload["key"] for v in await store.agents_in(realm)
+                  if not v.payload["key"].startswith("user:")]
+        listings = [l for l in await _mkt.board(app.state.pg, realm)
+                    if l.get("status") == "open"]
+        return {
+            "realm": realm,
+            "paused": bool(meta.get("paused")),
+            "agents": len(agents),
+            "events_pending": len(pending),
+            "events_due": len(due),
+            "oldest_due_age_s": round(oldest_due_age, 1),
+            "stalled": oldest_due_age > 300 and not meta.get("paused"),
+            "flood_countdown_s": _fl.countdown_visible(meta, now),
+            "flood_count": meta.get("flood_count", 0),
+            "open_listings": len(listings),
+            "time_scale": meta.get("time_scale", 1.0),
+        }
+
+    out = [r for r in await _aio.gather(*(_row(r) for r in realms)) if r]
+    # decision throughput, last hour, from the queue ledger
+    mix: dict[str, int] = {}
+    done_hour = 0
+    try:
+        for v in await app.state.pg.get_vertices("decision_queue",
+                                                 realm="genome_agents"):
+            d = v.payload.get("done_at")
+            if d and float(d) > now - 3600:
+                done_hour += 1
+    except Exception:
+        pass
+    return {"worlds": out, "decisions_last_hour": done_hour}
+
+
+@app.post("/admin/worlds/{realm}/pause", tags=["Admin"])
+async def admin_pause(realm: str, request: __import__("fastapi").Request):
+    from fastapi.responses import JSONResponse
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    store = GenomeStore(app.state.pg)
+    meta = await _dr._world_payload(store, realm)
+    if not meta:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    await store.put_world(realm, {**meta, "paused": True})
+    return {"ok": True, "paused": realm}
+
+
+@app.post("/admin/worlds/{realm}/resume", tags=["Admin"])
+async def admin_resume(realm: str, request: __import__("fastapi").Request):
+    from fastapi.responses import JSONResponse
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    store = GenomeStore(app.state.pg)
+    meta = await _dr._world_payload(store, realm)
+    if not meta:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    meta.pop("paused", None)
+    await store.put_world(realm, meta)
+    return {"ok": True, "resumed": realm}
+
+
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
     uid = auth_mod.verify_cookie(

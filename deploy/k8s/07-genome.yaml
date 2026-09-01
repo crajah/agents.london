@@ -27,6 +27,12 @@ spec:
               value: https://agents.london/genome
             - name: GENOME_PATH_PREFIX
               value: /genome-api
+            - name: GENOME_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: oidc-auth-secret
+                  key: GENOME_ADMIN_TOKEN
+                  optional: true   # absent key disables /admin (fail closed)
             - name: GENOME_SESSION_KEY
               valueFrom:
                 secretKeyRef:

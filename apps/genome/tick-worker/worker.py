@@ -142,6 +142,9 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
+    meta = await drain._world_payload(store, realm)
+    if meta.get("paused"):
+        return 0                            # Phase 13: a paused world rests
     happened = await _flood.tick(store, realm, now)
     if happened:
         logger.info("%s: %s", realm, happened)
