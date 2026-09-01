@@ -136,7 +136,8 @@ function AdminPanel({ onClose }) {
           <table className="w-full text-xs">
             <thead><tr className="opacity-50 text-left">
               <th className="py-1">world</th><th>agents</th><th>due</th>
-              <th>oldest due</th><th>flood</th><th>board</th><th></th>
+              <th>oldest due</th><th>flood</th><th>board</th>
+              <th>store</th><th></th>
             </tr></thead>
             <tbody>
               {worlds.worlds.map(w => (
@@ -154,7 +155,20 @@ function AdminPanel({ onClose }) {
                     ? `${Math.round(w.flood_countdown_s / 60)}m!`
                     : `#${w.flood_count}`}</td>
                   <td>{w.open_listings}</td>
-                  <td>
+                  <td className="max-w-[9rem] truncate"
+                      title={Object.entries(w.stock ?? {})
+                        .map(([k, v]) => `kind ${k}: ${v}`).join("\n")}>
+                    {Object.entries(w.stock ?? {})
+                      .map(([k, v]) => `${k}:${v}`).join(" ") || "—"}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <button className="underline opacity-70 mr-2"
+                            title="Drop a free agent in now"
+                            onClick={() => act(w.realm, "spawn")}>+agent</button>
+                    <button className="underline opacity-70 mr-2"
+                            title="Introduce a fresh strain: one random
+resident becomes patient zero"
+                            onClick={() => act(w.realm, "infect")}>+plague</button>
                     <button className="underline opacity-70"
                             onClick={() => act(w.realm,
                               w.paused ? "resume" : "pause")}>
@@ -665,6 +679,20 @@ function App() {
         {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
+        {me?.authenticated && me.world_realm && realm === me.world_realm &&
+          <button title="Materialise a further agent: 2 units from each of
+four distinct kinds in your store (Rule 2.1). The four-kind wall is the
+whole game -- the commons market is how the far kinds arrive."
+                  className="text-xs px-2 py-1 rounded bg-indigo-800
+                             hover:bg-indigo-700"
+                  onClick={async () => {
+                    const r = await fetch(`${API}/me/materialize`, {
+                      method: "POST", credentials: "include" });
+                    const d = await r.json();
+                    alert(d.ok
+                      ? `A new agent takes shape: ${d.agent}`
+                      : d.error);
+                  }}>materialise agent</button>}
         {me?.authenticated && me.world_realm && realm !== me.world_realm &&
           <button title="Return to your home world"
                   className="text-lg"

@@ -517,6 +517,8 @@ async def admin_worlds(request: __import__("fastapi").Request):
             "flood_countdown_s": _fl.countdown_visible(meta, now),
             "flood_count": meta.get("flood_count", 0),
             "open_listings": len(listings),
+            "stock": {k: round(v, 1)
+                      for k, v in (meta.get("stock") or {}).items()},
             "time_scale": meta.get("time_scale", 1.0),
         }
 
@@ -556,6 +558,57 @@ async def admin_put_config(payload: dict,
     return await spawnpool.set_config(app.state.pg, payload or {})
 
 
+@app.post("/admin/worlds/{realm}/spawn", tags=["Admin"])
+async def admin_spawn(realm: str, request: __import__("fastapi").Request):
+    """Drop one free citizen into a specific world, immediately -- the
+    interval and cap are the scheduler's manners, not the operator's."""
+    from fastapi.responses import JSONResponse
+    import time as _t
+    from genome_core import drain as _dr, spawnpool
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    store = GenomeStore(app.state.pg)
+    meta = await _dr._world_payload(store, realm)
+    if not meta:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    a = await spawnpool.spawn_free_agent(store, realm, meta, _t.time())
+    return {"ok": bool(a), "agent": a}
+
+
+@app.post("/admin/worlds/{realm}/infect", tags=["Admin"])
+async def admin_infect(realm: str, request: __import__("fastapi").Request):
+    """Introduce a fresh strain: one random present agent becomes patient
+    zero, by the same infect() the teleport rolls use."""
+    from fastapi.responses import JSONResponse
+    import random as _r
+    import time as _t
+    from genome_core import pathogen
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    store = GenomeStore(app.state.pg)
+    agents = [v.payload["key"] for v in await store.agents_in(realm)
+              if not v.payload["key"].startswith("user:")]
+    if not agents:
+        return JSONResponse({"error": "nobody there to infect"},
+                            status_code=400)
+    victim = _r.choice(agents)
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": victim}, limit=1)
+    pl = rows[0].payload
+    if not pl.get("genotype"):
+        return JSONResponse({"error": "chosen agent has no genotype"},
+                            status_code=400)
+    now = _t.time()
+    strain = pathogen.new_strain(f"admin:{realm}:{now}")
+    infected = pathogen.infect(pl, strain, now)
+    await store.put_agent(victim, infected)
+    return {"ok": True, "patient_zero": victim,
+            "strain": strain["strain_uuid"],
+            "contagion": round(strain["contagion"], 2)}
+
+
 @app.post("/admin/worlds/{realm}/pause", tags=["Admin"])
 async def admin_pause(realm: str, request: __import__("fastapi").Request):
     from fastapi.responses import JSONResponse
@@ -585,6 +638,51 @@ async def admin_resume(realm: str, request: __import__("fastapi").Request):
     meta.pop("paused", None)
     await store.put_world(realm, meta)
     return {"ok": True, "resumed": realm}
+
+
+@app.post("/me/materialize", tags=["Account"])
+async def my_materialize(request: __import__("fastapi").Request):
+    """Rule 2.1: a further agent costs 8 units of deposited stock drawn
+    from FOUR DISTINCT KINDS (2 each) -- the four-kind wall (Rule 2.3) made
+    into a button. The first agent came free at genesis (7.1); the rest
+    are earned through trade."""
+    from fastapi.responses import JSONResponse
+    import time as _t
+    from genome_core import drain as _dr, spawnpool
+    from genome_core.store import GenomeStore
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    store = GenomeStore(app.state.pg)
+    realm = await genesis.user_world_realm(app.state.pg, uid)
+    if not realm:
+        return JSONResponse({"error": "no world yet"}, status_code=400)
+    meta = await _dr._world_payload(store, realm)
+    stock = dict(meta.get("stock") or {})
+    rich = sorted((k for k, v in stock.items() if v >= 2.0),
+                  key=lambda k: -stock[k])
+    if len(rich) < 4:
+        return JSONResponse(
+            {"error": f"materialisation needs 2 units in each of FOUR "
+             f"kinds; your store has {len(rich)} kind(s) that deep. "
+             f"The commons market is how the far kinds arrive."},
+            status_code=400)
+    for k in rich[:4]:
+        stock[k] -= 2.0
+        if stock[k] <= 1e-9:
+            del stock[k]
+    now = _t.time()
+    a = await spawnpool.spawn_free_agent(store, realm, meta, now)
+    if not a:
+        return JSONResponse({"error": "materialisation failed"},
+                            status_code=500)
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": a}, limit=1)
+    await store.put_agent(a, {**rows[0].payload, "owner_user_id": uid,
+                              "spawned_free": False, "materialized": True})
+    await store.put_world(realm, {**meta, "stock": stock})
+    return {"ok": True, "agent": a, "spent": {k: 2.0 for k in rich[:4]},
+            "stock_after": stock}
 
 
 @app.get("/me/export", tags=["Account"])
