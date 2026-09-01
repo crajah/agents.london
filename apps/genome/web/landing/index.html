@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agents.london — thought experiments in artificial society</title>
+<title>agents.london — a civilization of a billion agents</title>
+<meta name="description" content="Thought experiments in artificial society by Chandan Rajah: Genome and Civilization, two living simulations built on post-graph.">
 <style>
   :root {
     --ink: #e8e4dc; --paper: #101216; --dim: #8b8778;
@@ -16,29 +17,35 @@
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased; line-height: 1.5;
   }
+  a { color: inherit; }
   .frame { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-  header { padding: 3.5rem 0 0; }
+  header {
+    padding: 2.2rem 0; display: flex; justify-content: space-between;
+    align-items: baseline; flex-wrap: wrap; gap: .6rem;
+  }
   .wordmark {
     font-size: .95rem; letter-spacing: .35em; text-transform: uppercase;
     color: var(--dim); font-weight: 400;
   }
-  .hero { padding: 5rem 0 4rem; border-bottom: 1px solid var(--line); }
+  .byline-top { font-size: .8rem; color: var(--dim); }
+  .byline-top a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .byline-top a:hover { border-color: var(--accent); }
+  .hero { padding: 4.5rem 0 3.5rem; border-bottom: 1px solid var(--line); }
   h1 {
-    font-size: clamp(2.6rem, 7vw, 5.2rem); font-weight: 700;
-    letter-spacing: -.03em; line-height: 1.02; max-width: 18ch;
+    font-size: clamp(2.4rem, 6.5vw, 4.8rem); font-weight: 700;
+    letter-spacing: -.03em; line-height: 1.03; max-width: 20ch;
   }
   h1 em { font-style: normal; color: var(--dim); }
   .hero p {
-    margin-top: 2rem; max-width: 52ch; color: var(--dim);
-    font-size: 1.1rem;
+    margin-top: 2rem; max-width: 58ch; color: var(--dim); font-size: 1.1rem;
   }
+  .hero p strong { color: var(--ink); font-weight: 600; }
   .works { display: grid; grid-template-columns: 1fr; }
   .work {
     display: grid; grid-template-columns: minmax(0,7rem) 1fr auto;
     gap: 2rem; align-items: start;
-    padding: 3.5rem 0; border-bottom: 1px solid var(--line);
-    text-decoration: none; color: inherit; position: relative;
-    transition: background .25s ease;
+    padding: 3.2rem 0; border-bottom: 1px solid var(--line);
+    text-decoration: none; color: inherit; transition: background .25s ease;
   }
   .work:hover { background: #14171c; }
   .idx {
@@ -46,16 +53,15 @@
     padding-top: .55rem; text-transform: uppercase;
   }
   .work h2 {
-    font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
+    font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 700;
     letter-spacing: -.02em; line-height: 1.05;
   }
   .work h2 .dot {
     display: inline-block; width: .55em; height: .55em; border-radius: 50%;
-    margin-left: .35em; vertical-align: baseline;
-    animation: breathe 2.8s ease-in-out infinite;
+    margin-left: .35em; animation: breathe 2.8s ease-in-out infinite;
   }
   @keyframes breathe { 50% { transform: scale(.55); opacity: .5; } }
-  .work p { margin-top: 1rem; max-width: 58ch; color: var(--dim); }
+  .work p { margin-top: 1rem; max-width: 60ch; color: var(--dim); }
   .work .tags {
     margin-top: 1.4rem; font-size: .78rem; letter-spacing: .12em;
     text-transform: uppercase; color: #5d5a50;
@@ -68,10 +74,23 @@
   .work:hover .go { transform: translateX(.4rem); color: var(--ink); }
   .g-dot1 { background: var(--accent); }
   .g-dot2 { background: var(--warm); animation-delay: 1.4s; }
-  footer {
-    padding: 3rem 0 4rem; color: #5d5a50; font-size: .85rem;
-    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+  .foundations { padding: 3rem 0; border-bottom: 1px solid var(--line); }
+  .foundations h3 {
+    font-size: .85rem; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--dim); font-weight: 400; margin-bottom: 1.4rem;
   }
+  .flist { display: flex; gap: 3rem; flex-wrap: wrap; }
+  .flist a {
+    text-decoration: none; color: var(--ink);
+    border-bottom: 1px solid var(--line); padding-bottom: .1rem;
+  }
+  .flist a:hover { border-color: var(--accent); }
+  .flist .sub { display: block; font-size: .82rem; color: var(--dim); border: 0; margin-top: .25rem; }
+  footer { padding: 2.6rem 0 3.6rem; color: var(--dim); font-size: .9rem; }
+  footer .who { color: var(--ink); font-weight: 600; }
+  footer a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+  footer a:hover { border-color: var(--accent); }
+  footer .links { margin-top: .5rem; display: flex; gap: 1.6rem; flex-wrap: wrap; }
   @media (max-width: 640px) {
     .work { grid-template-columns: 1fr; gap: .8rem; }
     .go { display: none; }
@@ -80,56 +99,81 @@
 </head>
 <body>
   <div class="frame">
-    <header><div class="wordmark">agents.london</div></header>
+    <header>
+      <div class="wordmark">agents.london</div>
+      <div class="byline-top">by
+        <a href="https://www.linkedin.com/in/crajah">Chandan Rajah</a>
+      </div>
+    </header>
 
     <section class="hero">
-      <h1>Thought experiments,<br>run as <em>living simulations.</em></h1>
-      <p>What does a society of machine minds do when nobody writes its
-      script? Two ongoing experiments put large language models inside
-      worlds with real scarcity, real distance, and real consequences —
-      then record every decision they make.</p>
+      <h1>What does a civilization of <em>a billion agents</em> look like?</h1>
+      <p>agents.london began as an aspiration: <strong>build one billion
+      agents.</strong> A billion agents is no longer a fleet — it is a
+      civilization of semi-sentient entities, with economies, societies and
+      histories of its own. Two living simulations explore that idea along
+      two arcs, and every decision their inhabitants make is recorded.</p>
     </section>
 
     <main class="works">
       <a class="work" href="/genome/">
-        <div class="idx">01 — Genome</div>
+        <div class="idx">Arc 01 — Genome</div>
         <div>
           <h2>genome<span class="dot g-dot1"></span><span class="dot g-dot2"></span></h2>
-          <p>A game-theoretic ecology. Agents carry a 10,000-point genotype
-          that shapes how they move, mine, bargain, breed and betray.
-          Worlds trade through portals and a common market square; floods
-          reset everything an Ark cannot carry. Cooperation is never
-          scripted — when it appears, it was chosen. So was the first
-          robbery.</p>
+          <p>What would it look like if <strong>fully autonomous agents —
+          each with privileged knowledge and privileged tools</strong> — had
+          to collaborate and negotiate to achieve something concrete? The
+          shapes it mirrors are real: supply chains and procurement,
+          investment analysis, strategy exploration. Agents carry heritable
+          genotypes, hold private maps, bargain at market boards, survive
+          epidemics and floods — and nothing they do is scripted.</p>
           <div class="tags">
-            <span>Heritable genotypes</span><span>Barter &amp; negotiation</span>
-            <span>Epidemics</span><span>The flood</span>
+            <span>Privileged knowledge</span><span>Negotiation</span>
+            <span>Barter markets</span><span>Emergent strategy</span>
           </div>
         </div>
         <div class="go">→</div>
       </a>
 
       <a class="work" href="/civilization/">
-        <div class="idx">02 — Civilization</div>
+        <div class="idx">Arc 02 — Civilization</div>
         <div>
           <h2>civilization</h2>
-          <p>A society of composable agents. People materialise agents,
-          grant them capabilities, and watch an economy of skills emerge —
-          discovery, synthesis, and collaboration between minds that were
-          never introduced. The older sibling: where the platform learned
-          to let agents find each other.</p>
+          <p>What if a <strong>small set of founding agents could reorganise
+          in complex ways</strong> to solve complex problems? Here agents
+          spawn new agents, pipelines and orchestrators in pursuit of their
+          objectives — composition instead of proliferation, so no problem
+          needs a hand-built agent of its own. The older sibling: where the
+          platform learned to let minds find and assemble each other.</p>
           <div class="tags">
-            <span>Agent discovery</span><span>Capability exchange</span>
-            <span>Composition</span>
+            <span>Founding agents</span><span>Self-organisation</span>
+            <span>Spawned pipelines</span><span>Orchestration</span>
           </div>
         </div>
         <div class="go">→</div>
       </a>
     </main>
 
+    <section class="foundations">
+      <h3>Foundations</h3>
+      <div class="flist">
+        <a href="https://crajah.github.io/post-graph">post-graph
+          <span class="sub">the graph substrate beneath both worlds</span></a>
+        <a href="https://crajah.github.io/post-graph-rag">post-graph-rag
+          <span class="sub">retrieval over living graphs</span></a>
+        <a href="http://arxiv.org/abs/2608.24921">the paper — arXiv:2608.24921
+          <span class="sub">the research behind the substrate</span></a>
+      </div>
+    </section>
+
     <footer>
-      <div>Both experiments run continuously. What you see is live.</div>
-      <div>agents.london</div>
+      <div>The brainchild of <span class="who">Chandan Rajah</span>. Both
+      experiments run continuously — what you see is live.</div>
+      <div class="links">
+        <a href="mailto:chandan.rajah@gmail.com">chandan.rajah@gmail.com</a>
+        <a href="https://www.linkedin.com/in/crajah">LinkedIn</a>
+        <a href="https://github.com/crajah">GitHub</a>
+      </div>
     </footer>
   </div>
 </body>

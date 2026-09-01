@@ -75,6 +75,24 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
     if (onCloseMobile) onCloseMobile();
   };
 
+  const credit = (
+    <Box sx={{ px: 2, py: 1.5, mt: 'auto',
+               borderTop: '1px solid rgba(255,255,255,0.08)',
+               fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+      by{' '}
+      <a href="https://www.linkedin.com/in/crajah" target="_blank"
+         rel="noreferrer" style={{ color: 'rgba(255,255,255,0.75)' }}>
+        Chandan Rajah</a>
+      {' · '}
+      <a href="https://github.com/crajah" target="_blank" rel="noreferrer"
+         style={{ color: 'rgba(255,255,255,0.75)' }}>GitHub</a>
+      {' · on '}
+      <a href="https://crajah.github.io/post-graph" target="_blank"
+         rel="noreferrer" style={{ color: 'rgba(255,255,255,0.75)' }}>
+        post-graph</a>
+    </Box>
+  );
+
   const sidebarContent = (
     <Box sx={{ width: 280, p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
       {/* Navigation List */}
@@ -185,6 +203,7 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
       {/* Desktop Inline Sidebar */}
       <Box sx={{ display: { xs: 'none', lg: 'flex' }, flexShrink: 0 }}>
         {sidebarContent}
+        {credit}
       </Box>
 
       {/* Mobile Drawer Sidebar */}
@@ -204,6 +223,7 @@ export default function Sidebar({ currentTab, setCurrentTab, state, mobileOpen, 
         }}
       >
         {sidebarContent}
+        {credit}
       </Drawer>
     </>
   );

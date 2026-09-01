@@ -480,7 +480,14 @@ function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-900 text-neutral-200">
       <header className="px-4 py-2 flex gap-3 items-center border-b border-neutral-700">
-        <strong>genome</strong>
+        <a href="/" className="no-underline text-inherit"><strong>genome</strong></a>
+        <span className="text-xs opacity-50 hidden sm:inline">
+          by <a className="underline" target="_blank" rel="noreferrer"
+                href="https://www.linkedin.com/in/crajah">Chandan Rajah</a>
+          {" · on "}
+          <a className="underline" target="_blank" rel="noreferrer"
+             href="https://crajah.github.io/post-graph">post-graph</a>
+        </span>
         <input className="bg-neutral-800 px-2 py-1 rounded text-sm w-72"
                placeholder="world realm…" defaultValue={realm}
                onKeyDown={e => e.key === "Enter" && setRealm(e.target.value)} />
