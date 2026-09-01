@@ -6,7 +6,7 @@ metadata:
   name: genome-api
   namespace: default
 spec:
-  replicas: 1
+  replicas: 2
   selector: { matchLabels: { app: genome-api } }
   template:
     metadata: { labels: { app: genome-api } }
@@ -61,7 +61,7 @@ metadata:
   name: genome-web
   namespace: default
 spec:
-  replicas: 1
+  replicas: 2
   selector: { matchLabels: { app: genome-web } }
   template:
     metadata: { labels: { app: genome-web } }
@@ -83,14 +83,29 @@ spec:
   selector: { app: genome-web }
   ports: [{ port: 80, targetPort: 80 }]
 ---
+# a headless service exists only to give the StatefulSet stable ordinals
+apiVersion: v1
+kind: Service
+metadata:
+  name: genome-tick-worker-hs
+  namespace: default
+spec:
+  clusterIP: None
+  selector: { app: genome-tick-worker }
+  ports: [{ port: 9999 }]
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: genome-tick-worker
   namespace: default
 spec:
-  replicas: 1                     # single drainer until leases land (BUILD 1.2)
-  strategy: { type: Recreate }    # two drainers double-tick a world
+  # replica k owns realms where crc32(realm) % SHARD_COUNT == k: static
+  # sharding, no coordination -- worlds are independent by construction.
+  # Scaling out = raise replicas AND SHARD_COUNT together.
+  replicas: 2
+  serviceName: genome-tick-worker-hs
+  podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-tick-worker } }
   template:
     metadata: { labels: { app: genome-tick-worker } }
@@ -105,20 +120,38 @@ spec:
               value: postgres-service
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
+            - name: SHARD_COUNT
+              value: "2"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
           resources:
             # parallel realm-draining holds many result sets in flight;
             # 384Mi OOMKilled within seconds of the first busy cycle
             requests: { cpu: 100m, memory: 512Mi }
             limits: { cpu: 500m, memory: 1Gi }
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: genome-decision-worker-hs
+  namespace: default
+spec:
+  clusterIP: None
+  selector: { app: genome-decision-worker }
+  ports: [{ port: 9999 }]
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: genome-decision-worker
   namespace: default
 spec:
-  replicas: 1
-  strategy: { type: Recreate }
+  # replica k owns agents where crc32(uuid) % SHARD_COUNT == k -- no two
+  # replicas ever answer for the same agent.
+  replicas: 2
+  serviceName: genome-decision-worker-hs
+  podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-decision-worker } }
   template:
     metadata: { labels: { app: genome-decision-worker } }
@@ -131,6 +164,11 @@ spec:
           env:
             - name: POSTGRES_HOST
               value: postgres-service
+            - name: SHARD_COUNT
+              value: "2"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
             - name: GENOME_ROUTER_URL

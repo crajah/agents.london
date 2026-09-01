@@ -33,6 +33,27 @@ from genome_core.store import GenomeStore
 logger = logging.getLogger("genome.tick")
 
 REALMS = [r for r in os.getenv("GENOME_REALMS", "").split(",") if r]
+
+# Horizontal sharding: replica k of N owns realms where crc32(realm) % N == k.
+# Worlds are independent (realm-per-world), so static sharding needs no
+# coordination; the ordinal comes from the StatefulSet pod name.
+import zlib
+
+
+def _shard_index() -> int:
+    if os.getenv("SHARD_INDEX"):
+        return int(os.environ["SHARD_INDEX"])
+    name = os.getenv("POD_NAME", "")
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
+
+
+SHARD_COUNT = max(1, int(os.getenv("SHARD_COUNT", "1")))
+SHARD_INDEX = _shard_index() % SHARD_COUNT
+
+
+def mine(realm: str) -> bool:
+    return zlib.crc32(realm.encode()) % SHARD_COUNT == SHARD_INDEX
 TICK_SECONDS = float(os.getenv("GENOME_TICK_SECONDS", "5"))
 USE_LLM = os.getenv("GENOME_USE_LLM", "1") == "1"
 INLINE = os.getenv("GENOME_INLINE_DECIDER", "0") == "1"   # tests only:
@@ -230,7 +251,8 @@ async def main() -> None:
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
-    logger.info("tick worker up: realms=%s llm=%s", REALMS, USE_LLM)
+    logger.info("tick worker up: shard %d/%d, seed realms=%s llm=%s",
+                SHARD_INDEX, SHARD_COUNT, REALMS, USE_LLM)
     cycle = 0
     realms = list(REALMS)
     try:
@@ -262,7 +284,7 @@ async def main() -> None:
                         logger.info("%s: drained %d", realm, n)
                 except Exception:
                     logger.exception("tick failed for %s", realm)
-            await asyncio.gather(*(_tick(r) for r in realms))
+            await asyncio.gather(*(_tick(r) for r in realms if mine(r)))
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)

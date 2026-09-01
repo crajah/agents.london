@@ -28,6 +28,29 @@ from genome_core.store import GenomeStore, AGENTS_REALM
 logger = logging.getLogger("genome.decision")
 
 POLL_SECONDS = float(os.getenv("GENOME_DECISION_POLL", "3"))
+
+import zlib
+
+
+def _shard_index() -> int:
+    if os.getenv("SHARD_INDEX"):
+        return int(os.environ["SHARD_INDEX"])
+    name = os.getenv("POD_NAME", "")
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
+
+
+SHARD_COUNT = max(1, int(os.getenv("SHARD_COUNT", "1")))
+SHARD_INDEX = _shard_index() % SHARD_COUNT
+
+
+def mine(agent_uuid: str) -> bool:
+    """Replica k of N owns agents where crc32(uuid) % N == k -- no two
+    replicas ever answer for the same agent, so no claim protocol and no
+    races. Negotiation turns alternate agents but are strictly sequential
+    (the next turn is scheduled only after this one applies), so cross-shard
+    hand-offs are safe."""
+    return zlib.crc32(agent_uuid.encode()) % SHARD_COUNT == SHARD_INDEX
 USE_LLM = os.getenv("GENOME_USE_LLM", "1") == "1"
 
 
@@ -121,7 +144,8 @@ async def main() -> None:
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
-    logger.info("decision worker up: llm=%s", USE_LLM)
+    logger.info("decision worker up: shard %d/%d llm=%s",
+                SHARD_INDEX, SHARD_COUNT, USE_LLM)
     try:
         prune_at = 0.0
         while not stop.is_set():
@@ -129,8 +153,10 @@ async def main() -> None:
                 rows = await client.get_vertices("decision_queue",
                                                  realm=AGENTS_REALM)
                 items = [v for v in rows
-                         if v.payload.get("done_at") is None]
-                if time.time() > prune_at:      # hourly ledger hygiene
+                         if v.payload.get("done_at") is None
+                         and mine(v.payload.get("agent_uuid", ""))]
+                if SHARD_INDEX == 0 and time.time() > prune_at:
+                    # hourly ledger hygiene; one shard sweeps for all
                     prune_at = time.time() + 3600
                     cutoff = time.time() - 86400
                     n = 0
