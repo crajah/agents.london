@@ -104,6 +104,8 @@ export async function createWorldCanvas(el, opts = {}) {
         .fill({ color: 0x3a3f45 });
       layers.terrain.addChild(g);
     }
+    const mc1 = s.colours?.[0] ?? "#cccccc", mc2 = s.colours?.[1] ?? "#888888";
+    const mcap1 = 0xd8c090;
     // the marketplace stall — a two-tone canopy over the listing board
     if (s.market) {
       const g = new Graphics();
@@ -129,8 +131,6 @@ export async function createWorldCanvas(el, opts = {}) {
     // muster flags — five per world, striped in the world's colour pair;
     // the drop points where agents deliver their load
     clearLayer(layers.muster);
-    const mc1 = s.colours?.[0] ?? "#cccccc", mc2 = s.colours?.[1] ?? "#888888";
-    const mcap1 = 0xd8c090;
     for (const m of s.muster_points ?? []) {
       const g = new Graphics();
       const [cx, cy] = P([m.x, m.y]);

@@ -9,13 +9,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "pixi.js": "^8.6.6",
     "pixi-viewport": "^6.0.3",
+    "pixi.js": "^8.6.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.62.1",
     "vite": "^6.0.0",
     "vitest": "^2.1.0"
   }
