@@ -442,8 +442,11 @@ function AgentModal({ inspect, onClose }) {
             {inspect.dispositions && <>
               <h4 className="opacity-70 mb-1">Dispositions</h4>
               {Object.entries(inspect.dispositions).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2">
-                  <span className="w-28 truncate">{k}</span>
+                <div key={k} className="flex items-center gap-2"
+                     title={inspect.locus_help?.[k] ?? k}>
+                  <span className="w-28 truncate cursor-help
+                                   underline decoration-dotted
+                                   decoration-neutral-600">{k}</span>
                   <div className="flex-1 h-1.5 bg-neutral-700 rounded">
                     <div className="h-1.5 rounded bg-neutral-300"
                          style={{ width: `${(v / 10000) * 100}%` }} />
@@ -453,8 +456,9 @@ function AgentModal({ inspect, onClose }) {
                 </div>))}
               <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
               {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
-                <div key={k} className="flex justify-between">
-                  <span>{k}</span>
+                <div key={k} className="flex justify-between"
+                     title={inspect.locus_help?.[k] ?? k}>
+                  <span className="cursor-help">{k}</span>
                   <span className="opacity-60">{v.toFixed(3)}</span>
                 </div>))}
             </>}
@@ -484,6 +488,25 @@ function AgentModal({ inspect, onClose }) {
                              ? "way off" : "close")
                           : "unknowable"})</span>
                     </div>))}
+                </div>))}
+            </>}
+            {(inspect.infections?.length > 0 ||
+              inspect.infection_history?.length > 0 ||
+              inspect.antigens?.length > 0) && <>
+              <h4 className="opacity-70 mt-3 mb-1">Health record</h4>
+              {inspect.infections?.map((i, k) => (
+                <div key={"inf" + k} className="text-red-400 text-xs">
+                  ● infected — {i.strain_uuid ?? "unknown strain"}
+                  {i.detected ? " (detected)" : " (undetected)"}
+                </div>))}
+              {inspect.infection_history?.map((h, k) => (
+                <div key={"his" + k} className="opacity-50 text-xs">
+                  ○ survived {h.strain_uuid ?? "a strain"}
+                </div>))}
+              {inspect.antigens?.map((a, k) => (
+                <div key={"ant" + k} className="text-emerald-500/80 text-xs">
+                  ◆ antigen{a.strain_uuid ? ` vs ${a.strain_uuid}` : ""}
+                  {" · potency "}{Math.round((a.potency ?? 0) * 100)}%
                 </div>))}
             </>}
             {inspect.decisions?.length > 0 && <>
@@ -642,6 +665,13 @@ function App() {
         {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
+        {me?.authenticated && me.world_realm && realm !== me.world_realm &&
+          <button title="Return to your home world"
+                  className="text-lg"
+                  onClick={() => {
+                    history.pushState({}, "", `?world=${me.world_realm}`);
+                    setRealm(me.world_realm);
+                  }}>⌂</button>}
         {me?.authenticated && me.verified === false &&
           <span className="text-xs px-2 py-0.5 rounded bg-amber-900
                            text-amber-200"

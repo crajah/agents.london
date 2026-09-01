@@ -97,7 +97,8 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     reimplements genotype arithmetic."""
     import sys, pathlib as _pl
     sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1] / "core"))
-    from genome_core.genotype import faculties, expressed, DISPOSITIONS
+    from genome_core.genotype import faculties, expressed, DISPOSITIONS, \
+        DESCRIPTIONS
     rows = await client.find_vertices("agents", realm=AGENTS_REALM,
                                       filters={"key": agent_uuid}, limit=1)
     if not rows:
@@ -116,6 +117,22 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
         out["dispositions"] = {d: g[d] for d in DISPOSITIONS if d in g}
         out["faculties"] = faculties(g)
         out["expressed"] = expressed(g)
+    out["locus_help"] = DESCRIPTIONS
+    import time as _t
+    now = _t.time()
+    out["infections"] = [
+        {"strain_uuid": (i.get("strain") or {}).get("strain_uuid"),
+         "caught_at": i.get("caught_at"),
+         "detected": bool(i.get("detected_at") and
+                          i["detected_at"] <= now)}
+        for i in (payload.get("infections") or [])]
+    out["infection_history"] = payload.get("infection_history") or []
+    out["antigens"] = [
+        {"strain_uuid": a.get("strain_uuid"),
+         "made_at": a.get("made_at"),
+         "potency": max(0.0, 1.0 - a.get("decay_rate", 0.0)
+                        * (now - a.get("made_at", now)))}
+        for a in (payload.get("antigens") or [])]
     return out
 
 

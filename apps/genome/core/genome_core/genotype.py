@@ -190,3 +190,45 @@ def breeding_cost_met(cargo_a: dict, cargo_b: dict) -> dict | None:
         if need > 0:
             spend["b"][k] = need
     return spend
+
+# One line per locus for human surfaces (the inspector's hover text).
+# Spec-faithful compressions of genotype-spec.md; adding a locus here is
+# part of adding it at all.
+DESCRIPTIONS: dict[str, str] = {
+    "Aggression": "Readiness to attack for what it wants",
+    "Agility": "Evading blows; part of Speed and Counsel",
+    "Amenability": "How faithfully the owner's top objective is served",
+    "Attrition": "How much of a victor's maximum stamina each win burns away",
+    "Charisma": "Persuasive presence in social dealings",
+    "Cooperativeness": "Sharing knowledge and effort with others",
+    "Courage": "Standing ground against stronger opponents",
+    "Credulity": "How readily unverified claims are believed",
+    "Curiosity": "Pull toward the near unknown; map revealed on arrival",
+    "Depletion Rate": "How fast stamina drains under exertion",
+    "Dexterity": "Fine handling; feeds Attack, Counsel and Speed",
+    "Fecundity": "Breeding rate once a mate is accepted",
+    "Gender": "Reproductive gate; expressed at consummation, never visible",
+    "Honesty": "Ceiling on misrepresenting its own attractiveness",
+    "Immune Vigilance": "How quickly an infection is detected (at a standing stamina cost)",
+    "Infection Propensity": "How readily contact becomes infection",
+    "Infection Resistance": "Innate dampening of a strain's expression",
+    "Intelligence": "Force of reasoning; feeds Attack and Mana",
+    "Knowledge": "Retained learning; feeds Stamina and the lawnmower's patience",
+    "Longevity": "Natural lifespan (20-90 days mapped across the range)",
+    "Loyalty": "How long counterparty history resists decay; discretion in relaying",
+    "Maturation": "How fast a young agent reaches full capability",
+    "Mutability": "Mutation step size in offspring",
+    "Patience": "Horizon of projected consequence when deliberating",
+    "Prudence": "Caution; drives systematic sweeps and edge-hugging",
+    "Range": "How far afield it will operate from home",
+    "Reciprocity": "Returning favours and remembering debts",
+    "Selectivity": "Minimum attractiveness accepted in a mate",
+    "Sight": "Radius revealed around it on arrival",
+    "Synthesis Speed": "How fast an antigen is made once infection is detected",
+    "Teleport Affinity": "Willingness to step through a portal at all",
+    "Vindictiveness": "How long wrongs are held against the wrongdoer",
+    "Wanderlust": "Pull toward the far unknown and other worlds",
+    "Wisdom": "Mana pool and spell class",
+    "reMana": "Mana recovery rate",
+    "reStamina": "Stamina recovery rate",
+}

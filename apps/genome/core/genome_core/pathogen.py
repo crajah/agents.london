@@ -104,6 +104,7 @@ def settle(agent_payload: dict, now: float) -> tuple[dict, list[str]]:
     g = agent_payload["genotype"]
     r = random.Random(f"settle:{agent_payload.get('identity', '')}:{int(now)}")
     still, antigens, events = [], list(agent_payload.get("antigens", [])), []
+    history = list(agent_payload.get("infection_history", []))
     for rec in infections:
         strain = rec["strain"]
         cov = coverage(antigens, strain["signature"], now)
@@ -112,11 +113,16 @@ def settle(agent_payload: dict, now: float) -> tuple[dict, list[str]]:
                 "vector": [max(0.0, min(1.0, s + r.uniform(-0.08, 0.08)))
                            for s in strain["signature"]],
                 "made_at": now,
+                "strain_uuid": strain.get("strain_uuid"),
                 "decay_rate": r.uniform(0.3, 1.2) / (30 * 86400.0)})
+            history.append({"strain_uuid": strain.get("strain_uuid"),
+                            "caught_at": rec.get("caught_at"),
+                            "recovered_at": now})
             events.append(f"recovered from {strain['strain_uuid']}")
         else:
             still.append(rec)
-    return {**agent_payload, "infections": still, "antigens": antigens}, events
+    return {**agent_payload, "infections": still, "antigens": antigens,
+            "infection_history": history[-20:]}, events
 
 
 def phenotype(agent_payload: dict, now: float) -> dict:
