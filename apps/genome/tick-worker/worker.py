@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from post_graph import AsyncPostGraph
 from genome_core import drain
 from genome_core import flood as _flood
+from genome_core import spawnpool as _spawn
 from genome_core import drain as _d
 from genome_core.decider import make_decider
 from genome_core.store import GenomeStore
@@ -145,6 +146,14 @@ async def tick_once(store: GenomeStore, realm: str, decider,
     meta = await drain._world_payload(store, realm)
     if meta.get("paused"):
         return 0                            # Phase 13: a paused world rests
+    if do_heal:
+        try:
+            cfg = await _spawn.get_config(store._c)
+            born = await _spawn.maybe_spawn(store, realm, meta, cfg, now)
+            if born:
+                logger.info("%s: free agent %s joins the world", realm, born)
+        except Exception:
+            logger.exception("free spawn failed for %s", realm)
     happened = await _flood.tick(store, realm, now)
     if happened:
         logger.info("%s: %s", realm, happened)

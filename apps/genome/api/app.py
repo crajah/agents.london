@@ -535,6 +535,27 @@ async def admin_worlds(request: __import__("fastapi").Request):
     return {"worlds": out, "decisions_last_hour": done_hour}
 
 
+@app.get("/admin/config", tags=["Admin"])
+async def admin_get_config(request: __import__("fastapi").Request):
+    from fastapi.responses import JSONResponse
+    from genome_core import spawnpool
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    return await spawnpool.get_config(app.state.pg)
+
+
+@app.put("/admin/config", tags=["Admin"])
+async def admin_put_config(payload: dict,
+                           request: __import__("fastapi").Request):
+    """Simulation-wide levers: free-agent spawning on/off, its cadence and
+    the per-world cap. Applied by every worker within one heal cycle."""
+    from fastapi.responses import JSONResponse
+    from genome_core import spawnpool
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    return await spawnpool.set_config(app.state.pg, payload or {})
+
+
 @app.post("/admin/worlds/{realm}/pause", tags=["Admin"])
 async def admin_pause(realm: str, request: __import__("fastapi").Request):
     from fastapi.responses import JSONResponse

@@ -43,6 +43,131 @@ function Bell() {
     </span>);
 }
 
+function AdminPanel({ onClose }) {
+  const [token, setToken] = useState(
+    localStorage.getItem("genome_admin_token") || "");
+  const [worlds, setWorlds] = useState(null);
+  const [cfg, setCfg] = useState(null);
+  const [err, setErr] = useState(null);
+  const hdrs = { "x-admin-token": token, "Content-Type": "application/json" };
+  const load = async () => {
+    setErr(null);
+    try {
+      const [rw, rc] = await Promise.all([
+        fetch(`${API}/admin/worlds`, { headers: hdrs }),
+        fetch(`${API}/admin/config`, { headers: hdrs })]);
+      if (!rw.ok) throw new Error("token rejected");
+      localStorage.setItem("genome_admin_token", token);
+      setWorlds(await rw.json());
+      setCfg(await rc.json());
+    } catch (e) { setErr(String(e.message || e)); setWorlds(null); }
+  };
+  const saveCfg = async (patch) => {
+    const next = { ...cfg, ...patch };
+    setCfg(next);
+    await fetch(`${API}/admin/config`, {
+      method: "PUT", headers: hdrs, body: JSON.stringify(next) });
+  };
+  const act = async (realm, verb) => {
+    await fetch(`${API}/admin/worlds/${realm}/${verb}`,
+                { method: "POST", headers: hdrs });
+    load();
+  };
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center"
+         onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="relative z-50 w-[46rem] max-h-[85vh] overflow-y-auto
+                      bg-neutral-900 border border-neutral-600 rounded-lg
+                      shadow-2xl text-sm p-4"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <strong className="text-base">Simulation admin</strong>
+          <span className="flex-1" />
+          <button onClick={onClose} className="opacity-60 text-lg">✕</button>
+        </div>
+        <div className="flex gap-2 mb-4">
+          <input type="password" value={token}
+                 onChange={e => setToken(e.target.value)}
+                 placeholder="admin token"
+                 className="flex-1 bg-neutral-800 px-2 py-1.5 rounded" />
+          <button onClick={load}
+                  className="px-3 py-1.5 bg-emerald-700 rounded">connect</button>
+        </div>
+        {err && <div className="text-amber-400 mb-3">{err}</div>}
+        {cfg && (
+          <div className="mb-4 p-3 bg-neutral-800/60 rounded">
+            <div className="font-semibold mb-2">Free agents
+              <span className="opacity-50 font-normal"> — ownerless
+              citizens seeded into every world to thicken the society</span>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!cfg.free_agent_spawn}
+                       onChange={e =>
+                         saveCfg({ free_agent_spawn: e.target.checked })} />
+                spawn enabled
+              </label>
+              <label className="flex items-center gap-2">
+                every
+                <input type="number" min="30"
+                       value={cfg.spawn_interval_s}
+                       onChange={e => saveCfg({ spawn_interval_s:
+                         Number(e.target.value) })}
+                       className="w-24 bg-neutral-800 border
+                                  border-neutral-600 px-2 py-0.5 rounded" />
+                seconds / world
+              </label>
+              <label className="flex items-center gap-2">
+                cap
+                <input type="number" min="1"
+                       value={cfg.spawn_cap_per_world}
+                       onChange={e => saveCfg({ spawn_cap_per_world:
+                         Number(e.target.value) })}
+                       className="w-16 bg-neutral-800 border
+                                  border-neutral-600 px-2 py-0.5 rounded" />
+                agents / world
+              </label>
+            </div>
+          </div>)}
+        {worlds && <>
+          <div className="opacity-60 mb-1">
+            {worlds.decisions_last_hour} decisions in the last hour</div>
+          <table className="w-full text-xs">
+            <thead><tr className="opacity-50 text-left">
+              <th className="py-1">world</th><th>agents</th><th>due</th>
+              <th>oldest due</th><th>flood</th><th>board</th><th></th>
+            </tr></thead>
+            <tbody>
+              {worlds.worlds.map(w => (
+                <tr key={w.realm}
+                    className={"border-t border-neutral-800 " +
+                      (w.stalled ? "text-amber-400" : "")}>
+                  <td className="py-1">
+                    <a className="underline"
+                       href={`?world=${w.realm}`}>{w.realm}</a>
+                    {w.paused && " ⏸"}{w.stalled && " ⚠stalled"}</td>
+                  <td>{w.agents}</td>
+                  <td>{w.events_due}/{w.events_pending}</td>
+                  <td>{w.oldest_due_age_s}s</td>
+                  <td>{w.flood_countdown_s != null
+                    ? `${Math.round(w.flood_countdown_s / 60)}m!`
+                    : `#${w.flood_count}`}</td>
+                  <td>{w.open_listings}</td>
+                  <td>
+                    <button className="underline opacity-70"
+                            onClick={() => act(w.realm,
+                              w.paused ? "resume" : "pause")}>
+                      {w.paused ? "resume" : "pause"}</button>
+                  </td>
+                </tr>))}
+            </tbody>
+          </table>
+        </>}
+      </div>
+    </div>);
+}
+
 function Settings() {
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState(null);
@@ -426,6 +551,7 @@ function App() {
   const [live, setLive] = useState(true);
   const [flood, setFlood] = useState(null);
   const [digest, setDigest] = useState(null);
+  const [adminOpen, setAdminOpen] = useState(false);
   useEffect(() => {
     if (!me?.authenticated) return;
     const last = Number(localStorage.getItem("genome_last_seen") || 0);
@@ -511,6 +637,8 @@ function App() {
           <a className="text-sm underline opacity-80"
              href={`${API}/auth/microsoft/login`}>Microsoft</a>
         </>}
+        <button className="text-sm opacity-60" title="Simulation admin"
+                onClick={() => setAdminOpen(true)}>⌘</button>
         {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
         {me?.authenticated && <Bell />}
@@ -523,6 +651,7 @@ function App() {
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
       </header>
       <div className="flex-1 flex min-h-0 relative">
+        {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
         {digest && (
           <div className="absolute top-10 right-3 z-30 w-80 bg-neutral-800
                           border border-neutral-600 rounded-lg shadow-xl
