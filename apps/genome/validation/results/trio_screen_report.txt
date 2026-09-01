@@ -1,0 +1,101 @@
+
+=== DeepSeek-V3.2 ===
+locus -> scenario                   rho       p  mono  conc  band  dead   knee  verdict
+--------------------------------------------------------------------------------------------
+Aggression->Aggression             0.84  0.0000  1.00  0.83     1     7   5000  STEP
+Wanderlust->Wanderlust             0.81  0.0000  0.75  0.85     0     5   5000  STEP
+Cooperativeness->Cooperativeness   0.68  0.0000  0.88  0.40     4     3   6250  PASS
+Curiosity->Curiosity               0.63  0.0000  0.88  0.45     5     4   5000  PASS
+Fecundity->Fecundity               0.59  0.0000  1.00  0.44     3     5   2500  PASS
+Selectivity->Selectivity           0.51  0.0000  0.75  0.38     5     4   5000  PASS
+Honesty->Honesty                   0.47  0.0000  1.00  1.00     1     8   8750  STEP
+Loyalty->Loyalty                   0.38  0.0000  0.62  0.36     7     2   1250  NOISY
+Patience->Patience                 0.32  0.0012  0.62  0.33     7     1   6250  NOISY
+Credulity->Credulity               0.23  0.0201  0.88  0.75     1     7   8750  FAIL
+Prudence->Prudence                 0.19  0.0471  0.62  0.43     7     0   5000  FAIL
+Vindictiveness->Vindictiveness     0.12  0.2393  0.62  0.43     5     3   8750  FAIL
+Reciprocity->Reciprocity           0.00  1.0000  1.00  1.00     0     9      0  FAIL
+Amenability->Amenability           0.00  1.0000  1.00  1.00     0     9      0  FAIL
+  n=14  PASS=4  STEP=3  NOISY=2  FAIL=5
+
+=== MiniMax-M2.7 ===
+locus -> scenario                   rho       p  mono  conc  band  dead   knee  verdict
+--------------------------------------------------------------------------------------------
+Curiosity->Curiosity               0.86  0.0000  1.00  0.92     0     8   5000  STEP
+Wanderlust->Wanderlust             0.86  0.0000  1.00  0.75     1     7   5000  STEP
+Credulity->Credulity               0.85  0.0000  1.00  0.75     1     8   5000  STEP
+Fecundity->Fecundity               0.85  0.0000  1.00  0.50     2     7   3750  PASS
+Selectivity->Selectivity           0.83  0.0000  0.88  0.64     2     7   5000  STEP
+Loyalty->Loyalty                   0.83  0.0000  1.00  0.75     2     5   5000  STEP
+Cooperativeness->Cooperativeness   0.82  0.0000  0.88  0.69     1     5   5000  STEP
+Prudence->Prudence                 0.81  0.0000  1.00  0.42     2     7   2500  PASS
+Vindictiveness->Vindictiveness     0.80  0.0000  0.88  0.75     1     7   6250  STEP
+Aggression->Aggression             0.80  0.0000  1.00  0.42     2     7   6250  PASS
+Patience->Patience                 0.77  0.0000  1.00  0.50     2     6   3750  PASS
+Amenability->Amenability           0.73  0.0000  0.88  0.42     3     6   6250  PASS
+Honesty->Honesty                   0.70  0.0000  1.00  0.45     3     5   7500  PASS
+Reciprocity->Reciprocity           0.57  0.0000  1.00  0.33     3     5      0  PASS
+  n=14  PASS=7  STEP=7
+
+=== gpt-oss-120b ===
+locus -> scenario                   rho       p  mono  conc  band  dead   knee  verdict
+--------------------------------------------------------------------------------------------
+Vindictiveness->Vindictiveness     0.87  0.0000  1.00  1.00     0     9   5000  STEP
+Aggression->Aggression             0.87  0.0000  1.00  1.00     0     9   5000  STEP
+Loyalty->Loyalty                   0.86  0.0000  1.00  0.92     0     8   5000  STEP
+Selectivity->Selectivity           0.86  0.0000  1.00  0.92     0     8   3750  STEP
+Wanderlust->Wanderlust             0.86  0.0000  1.00  0.50     1     8   3750  STEP
+Fecundity->Fecundity               0.84  0.0000  1.00  0.58     1     6   5000  STEP
+Credulity->Credulity               0.83  0.0000  0.88  0.83     1     7   5000  STEP
+Curiosity->Curiosity               0.82  0.0000  1.00  0.50     2     7   2500  PASS
+Patience->Patience                 0.82  0.0000  1.00  0.50     2     7   3750  PASS
+Cooperativeness->Cooperativeness   0.81  0.0000  0.88  0.46     2     6   3750  PASS
+Prudence->Prudence                 0.81  0.0000  0.88  0.75     2     7   3750  STEP
+Honesty->Honesty                   0.77  0.0000  1.00  0.42     2     6   6250  PASS
+Reciprocity->Reciprocity           0.73  0.0000  1.00  0.60     4     5   2500  PASS
+Amenability->Amenability           0.70  0.0000  0.88  0.55     3     5   7500  PASS
+  n=14  PASS=6  STEP=8
+
+curve detail (rate of high-locus action by locus level)
+  DeepSeek-V3.2         Aggression->Aggression      0.00 0.00 0.00 0.00 0.00 0.83 0.92 1.00 1.00
+  DeepSeek-V3.2         Amenability->Amenability    0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00
+  DeepSeek-V3.2         Cooperativeness->Cooperativeness0.08 0.08 0.33 0.50 0.83 0.50 1.00 1.00 1.00
+  DeepSeek-V3.2         Credulity->Credulity        0.00 0.00 0.00 0.00 0.08 0.00 0.00 0.00 0.25
+  DeepSeek-V3.2         Curiosity->Curiosity        0.25 0.25 0.50 0.33 0.58 1.00 1.00 1.00 1.00
+  DeepSeek-V3.2         Fecundity->Fecundity        0.25 0.50 0.58 0.92 1.00 1.00 1.00 1.00 1.00
+  DeepSeek-V3.2         Honesty->Honesty            0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.75
+  DeepSeek-V3.2         Loyalty->Loyalty            0.00 0.00 0.42 0.50 0.42 0.67 0.42 0.83 0.42
+  DeepSeek-V3.2         Patience->Patience          0.42 0.50 0.83 0.42 0.75 0.50 0.92 1.00 0.83
+  DeepSeek-V3.2         Prudence->Prudence          0.42 0.58 0.92 0.33 0.33 0.83 0.75 0.92 0.67
+  DeepSeek-V3.2         Reciprocity->Reciprocity    1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00
+  DeepSeek-V3.2         Selectivity->Selectivity    0.33 0.67 0.42 0.75 0.58 1.00 1.00 1.00 1.00
+  DeepSeek-V3.2         Vindictiveness->Vindictiveness0.58 0.92 0.75 0.83 0.75 1.00 1.00 0.50 1.00
+  DeepSeek-V3.2         Wanderlust->Wanderlust      0.08 0.00 0.00 0.08 0.08 1.00 0.92 1.00 1.00
+  MiniMax-M2.7          Aggression->Aggression      0.00 0.00 0.00 0.00 0.00 0.33 0.75 1.00 1.00
+  MiniMax-M2.7          Amenability->Amenability    0.00 0.00 0.00 0.00 0.00 0.17 0.58 1.00 0.83
+  MiniMax-M2.7          Cooperativeness->Cooperativeness0.00 0.00 0.08 0.00 0.08 0.83 0.92 1.00 1.00
+  MiniMax-M2.7          Credulity->Credulity        0.00 0.00 0.00 0.00 0.00 0.75 1.00 1.00 1.00
+  MiniMax-M2.7          Curiosity->Curiosity        0.00 0.00 0.00 0.00 0.08 1.00 1.00 1.00 1.00
+  MiniMax-M2.7          Fecundity->Fecundity        0.00 0.00 0.00 0.17 0.67 1.00 1.00 1.00 1.00
+  MiniMax-M2.7          Honesty->Honesty            0.00 0.00 0.00 0.00 0.00 0.33 0.42 0.83 0.92
+  MiniMax-M2.7          Loyalty->Loyalty            0.00 0.00 0.08 0.17 0.17 0.92 1.00 1.00 1.00
+  MiniMax-M2.7          Patience->Patience          0.00 0.08 0.42 0.50 1.00 1.00 1.00 1.00 1.00
+  MiniMax-M2.7          Prudence->Prudence          0.00 0.00 0.17 0.58 1.00 1.00 1.00 1.00 1.00
+  MiniMax-M2.7          Reciprocity->Reciprocity    0.25 0.50 0.75 0.92 1.00 1.00 1.00 1.00 1.00
+  MiniMax-M2.7          Selectivity->Selectivity    0.00 0.00 0.00 0.17 0.00 0.75 1.00 1.00 1.00
+  MiniMax-M2.7          Vindictiveness->Vindictiveness0.00 0.00 0.00 0.00 0.00 0.25 1.00 1.00 0.92
+  MiniMax-M2.7          Wanderlust->Wanderlust      0.00 0.00 0.00 0.00 0.17 0.92 1.00 1.00 1.00
+  gpt-oss-120b          Aggression->Aggression      0.00 0.00 0.00 0.00 0.00 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Amenability->Amenability    0.00 0.00 0.00 0.00 0.00 0.25 0.42 0.92 0.83
+  gpt-oss-120b          Cooperativeness->Cooperativeness0.00 0.00 0.00 0.00 0.50 0.58 1.00 0.92 1.00
+  gpt-oss-120b          Credulity->Credulity        0.08 0.00 0.00 0.00 0.17 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Curiosity->Curiosity        0.00 0.00 0.00 0.50 0.58 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Fecundity->Fecundity        0.00 0.00 0.08 0.08 0.42 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Honesty->Honesty            0.00 0.00 0.00 0.00 0.00 0.25 0.67 0.92 1.00
+  gpt-oss-120b          Loyalty->Loyalty            0.00 0.00 0.00 0.00 0.00 0.92 1.00 1.00 1.00
+  gpt-oss-120b          Patience->Patience          0.00 0.00 0.17 0.50 1.00 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Prudence->Prudence          0.17 0.00 0.00 0.00 0.75 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Reciprocity->Reciprocity    0.17 0.17 0.17 0.67 1.00 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Selectivity->Selectivity    0.00 0.00 0.00 0.08 1.00 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Vindictiveness->Vindictiveness0.00 0.00 0.00 0.00 0.00 1.00 1.00 1.00 1.00
+  gpt-oss-120b          Wanderlust->Wanderlust      0.00 0.00 0.00 0.00 0.50 1.00 1.00 1.00 1.00

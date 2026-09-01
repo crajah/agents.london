@@ -422,3 +422,46 @@ class TestHeardAssertions(unittest.TestCase):
         from genome_core.prompt import system_prompt
         self.assertNotIn("OTHER USERS",
                          system_prompt(self._g(), {}, {}, []))
+
+
+class TestFailClosedScoping(unittest.TestCase):
+    """Phase 0.3: a read that reaches storage without its realm is an error,
+    never an empty result -- an unscoped read is a cross-world leak."""
+
+    def test_empty_realm_raises(self):
+        from genome_core.store import UnscopedError, _req
+        for bad in ("", None):
+            with self.assertRaises(UnscopedError):
+                _req(bad, "world realm")
+
+    def test_scoped_value_passes_through(self):
+        from genome_core.store import _req
+        self.assertEqual(_req("genome_demo2", "world realm"), "genome_demo2")
+
+
+class TestCostRegression(unittest.TestCase):
+    """execution-spec Rule 8.3: an agentic loop must not silently multiply
+    spend. Mechanical events NEVER produce a decision request (= never a
+    model call); only arrival and decide may."""
+
+    def _view(self):
+        from genome_core.engine import AgentView
+        return AgentView("a", "w", "w", 0.5, 0.5, {"3": 2.0},
+                         frozenset(), frozenset({(1, 1)}))
+
+    def test_mechanical_events_never_ask_a_model(self):
+        from genome_core import engine
+        eff = engine.on_event("mining_done", self._view(), [], 100.0,
+                              {"take": 1.0, "pile_kind": 3,
+                               "pile_uuid": "p"}, {}, [])
+        self.assertIsInstance(eff, engine.Effects)
+        eff2 = engine.on_event("explored", self._view(), [], 100.0, {},
+                               {}, [])
+        self.assertIsInstance(eff2, engine.Effects)
+
+    def test_decide_asks_exactly_once(self):
+        from genome_core import engine
+        req = engine.on_event("decide", self._view(), [], 100.0, {}, {}, [])
+        self.assertIsInstance(req, engine.DecisionRequest)
+        # one request, one situation, no hidden second call in the shape
+        self.assertTrue(req.options)

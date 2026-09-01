@@ -293,3 +293,24 @@ Re-endowed, the same agent posted the market's first real listing: six
 units of kind 15 asking six of kind 9, goods escrowed, lister waiting at
 the stall. The two-fill middleman chain (pay 4 for 9, pay 9 for 15) is
 staged and grinding through the decision queue.
+
+## The trio passes the screen — two of them spectacularly
+
+The Rule 10.6 disposition-expression screen ran against the production
+pool (4,536 trials: 14 loci × 9 levels × 12 reps × 3 models; full tables
+in `results/trio_screen_report.txt`):
+
+| Model | Loci moving behaviour | Weakest locus |
+| :-- | :-- | :-- |
+| **MiniMax-M2.7** | **14/14** (ρ 0.57–0.86, all p<0.001) | Reciprocity 0.57 — still passes |
+| **gpt-oss-120b** | **14/14** (ρ 0.70–0.87) | Amenability 0.70 |
+| **DeepSeek-V3.2** | **9/14** | Reciprocity and Amenability FLAT (ρ=0.00 — the same choice at every level); Vindictiveness, Prudence, Credulity fail |
+
+MiniMax and gpt-oss clear the bar the pool has ever demanded — better
+than flash-lite's historical 11/14. DeepSeek is admitted with a recorded
+caveat: five loci do not move it, so a DeepSeek-minded agent's Reciprocity
+and Amenability are effectively decorative. This makes MODEL a component
+of phenotype — the same genotype behaves differently by which mind runs
+it — and every genotype-behaviour analysis must condition on model. Many
+loci show STEP rather than smooth response (a knee near 5000): dispositions
+read as thresholds, consistent with the earlier flash-lite finding.

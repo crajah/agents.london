@@ -124,7 +124,7 @@ The bet the whole design rests on. Prove it before building on it.
 - [ ] Tier selection per decision class (Rule 5.1, `genome-spec.md` Rule 12.16)
 - [ ] Per-agent model assignment at creation, one per tier (Rule 10.1)
 - [ ] Not heritable (10.2); survives regeneration (10.3); withdrawn model re-rolls (10.4)
-- [ ] Port `validation/run_validation.py` as the **pool screen**; admit at ≥1.5× (Rules 10.6, 10.7)
+- [x] Pool screen re-run for the production trio (Rules 10.6/10.7): MiniMax 14/14, gpt-oss 14/14, DeepSeek 9/14 admitted-with-caveat (Reciprocity/Amenability flat) — 4,536 trials, tables in validation/results/
 
 ### 2.3 Genotype and prompt
 - [ ] Loci, normalisation, allocation budget (`genotype-spec.md` §3.10)
