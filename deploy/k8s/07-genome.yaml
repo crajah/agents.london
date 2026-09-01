@@ -100,8 +100,10 @@ spec:
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
           resources:
-            requests: { cpu: 100m, memory: 192Mi }
-            limits: { cpu: 500m, memory: 384Mi }
+            # parallel realm-draining holds many result sets in flight;
+            # 384Mi OOMKilled within seconds of the first busy cycle
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: 500m, memory: 1Gi }
 ---
 apiVersion: apps/v1
 kind: Deployment
