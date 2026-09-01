@@ -140,6 +140,28 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
     return hits
 
 
+PRUNE_AGE_S = 86400.0
+
+
+async def prune_done(store: GenomeStore, realm: str, now: float) -> int:
+    """Operational hygiene: done events older than a day leave the table.
+    The queue polls load whole tables; without pruning, memory grows with
+    history and the workers OOM on schedule (observed twice). The decision
+    RECORD lives in the decisions table and is never touched (Rule 6.1)."""
+    gone = 0
+    try:
+        for v in await store._c.get_vertices("events", realm=realm):
+            pl = v.payload
+            done = pl.get("done_at")
+            if done and float(done) < now - PRUNE_AGE_S:
+                await store._c.delete_vertex("events", realm=realm,
+                                             vertex_id=str(v.id))
+                gone += 1
+    except Exception:
+        logger.exception("prune failed for %s", realm)
+    return gone
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -147,6 +169,9 @@ async def tick_once(store: GenomeStore, realm: str, decider,
     if meta.get("paused"):
         return 0                            # Phase 13: a paused world rests
     if do_heal:
+        pruned = await prune_done(store, realm, now)
+        if pruned:
+            logger.info("%s: pruned %d done events", realm, pruned)
         try:
             cfg = await _spawn.get_config(store._c)
             born = await _spawn.maybe_spawn(store, realm, meta, cfg, now)

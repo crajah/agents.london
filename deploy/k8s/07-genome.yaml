@@ -139,5 +139,5 @@ spec:
               valueFrom:
                 secretKeyRef: { name: litellm-api-keys, key: GLOBAL_API_KEY }
           resources:
-            requests: { cpu: 100m, memory: 192Mi }
-            limits: { cpu: 500m, memory: 384Mi }
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: 500m, memory: 1Gi }

@@ -149,7 +149,9 @@ def founder_genotype(world: dict, seed: int) -> dict:
     r = random.Random(f"founder:{world['realm']}:{seed}")
     g = {}
     for k, (lo, hi) in RANGES.items():
-        c = world["founding_centre"][k]
+        c = world["founding_centre"].get(k)
+        if c is None:                     # locus younger than the world
+            c = r.uniform(*RANGES[k])
         w = (hi - lo) * 0.25
         g[k] = min(hi, max(lo, r.uniform(c - w, c + w)))
     return g

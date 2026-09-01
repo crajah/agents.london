@@ -123,11 +123,26 @@ async def main() -> None:
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
     logger.info("decision worker up: llm=%s", USE_LLM)
     try:
+        prune_at = 0.0
         while not stop.is_set():
             try:
-                items = [v for v in await client.get_vertices(
-                            "decision_queue", realm=AGENTS_REALM)
+                rows = await client.get_vertices("decision_queue",
+                                                 realm=AGENTS_REALM)
+                items = [v for v in rows
                          if v.payload.get("done_at") is None]
+                if time.time() > prune_at:      # hourly ledger hygiene
+                    prune_at = time.time() + 3600
+                    cutoff = time.time() - 86400
+                    n = 0
+                    for v in rows:
+                        d = v.payload.get("done_at")
+                        if d and float(d) < cutoff:
+                            await client.delete_vertex(
+                                "decision_queue", realm=AGENTS_REALM,
+                                vertex_id=str(v.id))
+                            n += 1
+                    if n:
+                        logger.info("pruned %d done queue rows", n)
             except Exception:
                 # a re-dialing tunnel resets connections; survive it
                 logger.exception("queue poll failed; retrying")
