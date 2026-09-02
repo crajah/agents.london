@@ -773,21 +773,27 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     # origin realm and undecided queue items for this agent are void -- they
     # reference a world the agent is no longer in. Observed live: stale
     # home-world decisions marching a commons visitor off to phantom piles.
-    for ev in await store._c.get_vertices("events", realm=origin_realm):
+    # Range queries, never the table (the do_transfer copy of the
+    # load-everything bug went unnoticed until travel_to_portal made
+    # crossings common -- 16 concurrent transfers each hauling the whole
+    # events table and an 88k-row queue OOMed every decision shard)
+    for ev in await store._c.find_vertices(
+            "events", realm=origin_realm,
+            filters={"subject": agent.agent_uuid},
+            where=[("done_at", "is_null", None)], limit=200):
         p = ev.payload
-        if p.get("subject") == agent.agent_uuid and p.get("done_at") is None \
-                and p.get("kind") != "perish":
+        if p.get("kind") != "perish":
             await store._c.upsert_vertex("events", realm=origin_realm,
                 vertex_id=int(ev.id),
                 payload={**p, "done_at": _iso(now), "voided": "transfer"})
-    for it in await store._c.get_vertices("decision_queue",
-                                          realm="genome_agents"):
-        p = it.payload
-        if p.get("agent_uuid") == agent.agent_uuid \
-                and p.get("done_at") is None:
-            await store._c.upsert_vertex("decision_queue",
-                realm="genome_agents", vertex_id=int(it.id),
-                payload={**p, "done_at": _iso(now), "outcome": "voided:transfer"})
+    for it in await store._c.find_vertices(
+            "decision_queue", realm="genome_agents",
+            filters={"agent_uuid": agent.agent_uuid},
+            where=[("done_at", "is_null", None)], limit=200):
+        await store._c.upsert_vertex("decision_queue",
+            realm="genome_agents", vertex_id=int(it.id),
+            payload={**it.payload, "done_at": _iso(now),
+                     "outcome": "voided:transfer"})
     await store.set_presence(origin_realm, agent.agent_uuid, False)
     await store.set_presence(to_world, agent.agent_uuid, True)
     await store.set_movement(agent.agent_uuid,
