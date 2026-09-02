@@ -30,12 +30,18 @@ class Fighter:
     cargo: dict
 
 
-def resolve(att: Fighter, dfd: Fighter, seed: str) -> dict:
-    """One exchange. Returns the outcome and every delta the caller persists."""
+def resolve(att: Fighter, dfd: Fighter, seed: str,
+            att_mult: float = 1.0, dfd_mult: float = 1.0,
+            stamina_mult: float = 1.0) -> dict:
+    """One exchange. Returns the outcome and every delta the caller persists.
+    att_mult/dfd_mult: a standing Forge arms a resident, a Rampart shields
+    one (calibration §5); stamina_mult: an Infirmary halves the tolls."""
     fa, fd = faculties(att.genotype), faculties(dfd.genotype)
     # defender's Agility is escape (genotype §3.1): scales down hit chance
     agility = norm("Agility", dfd.genotype["Agility"])
-    p_att = fa["Attack"] / (fa["Attack"] + fd["Attack"] * (0.5 + agility))
+    p_att = (fa["Attack"] * att_mult) / (
+        fa["Attack"] * att_mult
+        + fd["Attack"] * dfd_mult * (0.5 + agility))
     rng = random.Random(f"combat:{seed}:{att.agent_uuid}:{dfd.agent_uuid}")
     attacker_wins = rng.random() < p_att
 
@@ -55,7 +61,9 @@ def resolve(att: Fighter, dfd: Fighter, seed: str) -> dict:
         "p_attacker": round(p_att, 4),
         "winner": winner.agent_uuid, "loser": loser.agent_uuid,
         "spoils": taken,
-        "winner_stamina_delta": -WINNER_STAMINA_COST * winner.stamina_max,
-        "loser_stamina_delta": -LOSER_STAMINA_COST * loser.stamina_max,
+        "winner_stamina_delta": -WINNER_STAMINA_COST * winner.stamina_max
+        * stamina_mult,
+        "loser_stamina_delta": -LOSER_STAMINA_COST * loser.stamina_max
+        * stamina_mult,
         "winner_max_burn": burn * winner.stamina_max,
     }

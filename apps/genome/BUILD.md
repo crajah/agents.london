@@ -318,6 +318,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] 18 constructions, five branches, contributor counts 1/2/3/4/5 (`construction-spec.md` §2) — tree + resolved cost table (calibration §5), sites founded on the map, cargo contributed from the hold, completion notified; live-proven in genome_demo2 (library, 1 user)
 - [x] Contributor counted once per **user** (Rule 3.4) — plus a reservation guard: 5 units of room held back per still-missing user, so a rich early contributor cannot strand a site filled-but-short-of-hands; claims (3.7) land with berths
 - [x] First effects live (calibration §5): Store lifts the stock ceiling, Toolhouse the collection rate
+- [x] ALL standing effects live (calibration §5 table, 2026-09-02): Cairn/Kiln/Grove/Granary/Foundation/Forge/Rampart/Infirmary/Apothecary/Sanatorium/Library/Beacon/Orchard/Observatory each move exactly one knob; Orchard plants, Observatory doubles the countdown window; residency rule for arms
 - [x] Berth claims proportional to contribution (3.7) — 12 slots, largest remainder, minted at Ark completion; unassigned per user (3.7e); boarding at the Ark consumes one (4.10a); death returns it to the pool (3.7g)
 - [x] Flood clock per world (4.7–4.9): undisclosed 15–30 day draw (÷ time_scale), 2-day countdown visible in snapshot + banner + notification; execution drowns everyone unboarded (visitors included), resets piles/stock/constructions, keeps the partial hull (4.4a), spends a voyaging Ark (4.4b), redraws the clock. Live-proven in genome_demo3: 1 drowned+regenerated bare, 1 survived aboard, Ark spent
 - [x] Movement overhaul (user directive): base crossing 6h → 1h (calibration 1.2 revised); Speed pool (Agility+Dexterity) paces each journey 0.7×–1.3×; client AND server interpolate from each record's own (departed_at, arrives_at) span — the latent renders-at-base-speed bug is gone; Rule 1.2a: nothing touches, proximity suffices for every act
@@ -344,7 +345,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Flood clock 15–30 days undisclosed; two-day countdown (`construction-spec.md` Rules 4.7, 4.8)
 - [ ] **Kills every agent present, native or visitor**; berth is the only exemption; those elsewhere untouched (4.9–4.11)
 - [ ] Partial hull persists across floods while building (4.4a); **a successful voyage spends the Ark** (4.4b); an unused Ark is not spent (4.4c)
-- [ ] Wreck state: decaying hull is unboardable, uncontributable, unsalvageable
+- [x] Wreck state: decaying hull is unboardable, uncontributable, unsalvageable — board/contribute/take_up/manifest all refuse a spent hull; the NEXT flood washes the wreck away entirely (verified in flood.execute)
 
 ---
 

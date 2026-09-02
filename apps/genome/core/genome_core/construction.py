@@ -201,7 +201,8 @@ def accepts(site: dict, cargo: dict[str, float]) -> dict[str, float]:
 async def contribute(client: Any, realm: str, site_key: str,
                      user_id: str, agent_uuid: str,
                      cargo: dict[str, float],
-                     time_scale: float = 1.0) -> dict:
+                     time_scale: float = 1.0,
+                     build_time_mult: float = 1.0) -> dict:
     """Pour an agent's hold into a site. Returns what was taken and whether
     the construction completed. Rule 3.4: the USER is counted, however many
     agents delivered."""
@@ -245,7 +246,8 @@ async def contribute(client: Any, realm: str, site_key: str,
     if starts_build:
         # materials in, hands counted: now the thing RISES (user directive:
         # tiered build time, divided by the world's clock)
-        mins = BUILD_MINUTES.get(int(site.get("tier", 1)), 60)
+        mins = BUILD_MINUTES.get(int(site.get("tier", 1)), 60) \
+            * max(0.1, build_time_mult)      # a Foundation halves the raising
         building_until = time.time() + mins * 60.0 / max(1.0, time_scale)
     await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
                                space="default",
@@ -286,6 +288,35 @@ async def finalize(client: Any, realm: str, site_key: str, now: float) -> dict:
                                space="default",
                                payload={**site, "complete": True,
                                         "completed_at": now, **extra})
+    if site["name"] == "orchard":
+        # the orchard PLANTS: one fresh pile of each of the world's kinds,
+        # rooted beside it -- new ground where there was none
+        import random as _r
+        wrows = await client.find_vertices("world_meta", realm=realm,
+                                           filters={"key": realm}, limit=1)
+        kinds = (wrows[0].payload.get("kinds") if wrows else None) or []
+        rng = _r.Random(f"orchard:{realm}:{site['key']}")
+        for i, kind in enumerate(kinds):
+            ang = rng.uniform(0, 6.28318)
+            await client.add_vertex("piles", realm=realm, payload={
+                "key": f"pile-orchard-{site['key']}-{i}",
+                "kind": int(kind),
+                "x": min(0.95, max(0.05, site["x"] + 0.05 * (1 + i)
+                                   * __import__("math").cos(ang))),
+                "y": min(0.95, max(0.05, site["y"] + 0.05 * (1 + i)
+                                   * __import__("math").sin(ang))),
+                "qty_at": 15.0, "measured_at": now,
+                "rate": 0.0015, "cap": 30.0, "qty_origin": 15.0})
+    if site["name"] == "observatory":
+        # the observatory WATCHES: the flood's countdown window doubles
+        wrows = await client.find_vertices("world_meta", realm=realm,
+                                           filters={"key": realm}, limit=1)
+        if wrows:
+            await client.upsert_vertex("world_meta", realm=realm,
+                                       vertex_id=int(wrows[0].id),
+                                       space="default",
+                                       payload={**wrows[0].payload,
+                                                "observatory_standing": True})
     for uid in contributors:
         notify.emit_bg(client, uid, "world", "construction_complete",
                           f"The {site['name']} is complete. "
@@ -450,10 +481,39 @@ def allocate_berths(contributors: dict[str, float],
 
 
 async def world_effects(client: Any, realm: str) -> dict:
-    """Calibration §5 first wirings; everything else defaults to neutral."""
-    done = await completed_names(client, realm)
-    return {"stock_ceiling_bonus": 25.0 if "store" in done else 0.0,
-            "mine_rate_mult": 1.5 if "toolhouse" in done else 1.0}
+    """Calibration §5, complete: every standing construction earns its keep."""
+    return effects_from([v.payload for v in await sites_in(client, realm)])
+
+
+def effects_from(sites: list[dict]) -> dict:
+    """Pure form: effects from already-loaded site payloads. All neutral when
+    nothing stands; the commons founds nothing, so it stays neutral forever."""
+    done = {s["name"] for s in sites
+            if s.get("complete") and not s.get("destroyed")
+            and not s.get("spent")}
+    return {
+        # earth: keeping
+        "stock_ceiling_bonus": 25.0 if "store" in done else 0.0,
+        "defence_mult": 1.2 if "rampart" in done else 1.0,
+        "build_time_mult": 0.5 if "foundation" in done else 1.0,
+        # fire: working
+        "mine_stint_bonus": 2.0 if "kiln" in done else 0.0,
+        "mine_rate_mult": 1.5 if "toolhouse" in done else 1.0,
+        "attack_mult": 1.25 if "forge" in done else 1.0,
+        # growth: renewing
+        "regen_mult": 1.25 if "grove" in done else 1.0,
+        "cargo_bonus": 5.0 if "granary" in done else 0.0,
+        # (orchard acts once, at finalize: it plants)
+        # life: healing
+        "strain_guard": "apothecary" in done,
+        "combat_recovery_mult": 0.5 if "infirmary" in done else 1.0,
+        "recovery_mult": 2.0 if "sanatorium" in done else 1.0,
+        # water: knowing
+        "sight_mult": 1.25 if "cairn" in done else 1.0,
+        "map_room": "library" in done,
+        "pace_mult": 1.15 if "beacon" in done else 1.0,
+        # (observatory acts on the flood clock via the world meta flag)
+    }
 
 
 # ---------------------------------------------------------------------------

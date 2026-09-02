@@ -197,12 +197,30 @@ agent's trip, a tier 2 a pair's afternoon, a capstone a coalition's project,
 and the Ark transitively touches all twenty kinds (construction-spec Rule
 3.2). The economy dry-run revisits these.
 
-First effect wirings (the rest land with their subsystems):
+Standing effects, complete (2026-09-02) — each building moves exactly one
+knob while it stands; spent, destroyed or still-rising confers nothing:
 
-| Completed | Effect now live |
+| Completed | Effect while standing |
 | :--- | :--- |
-| Store | User stock ceiling +25 per kind in this world (Rule 4.15 relaxed) |
-| Toolhouse | Collection rate ×1.5 in this world (Rule 4.5) |
+| Cairn | Reveal radius on arrival ×1.25 — it sees further |
+| Store | User stock ceiling +25 per kind (Rule 4.15 relaxed) |
+| Rampart | Resident defenders' Attack term ×1.2 in combat |
+| Foundation | Build times of later constructions here ×0.5 |
+| Kiln | Mining stint +2 units |
+| Toolhouse | Collection rate ×1.5 (Rule 4.5) |
+| Forge | Resident attackers' Attack term ×1.25 in combat |
+| Grove | Pile regeneration ×1.25 |
+| Granary | Agent cargo ceiling +5 in this world |
+| Orchard | Acts once, at completion: PLANTS one fresh pile of each world kind beside it |
+| Apothecary | Half of portal-crossing strains never take root here |
+| Infirmary | Combat stamina costs ×0.5 — patched up quickly |
+| Sanatorium | Remaining antigen synthesis runs ×2 while present |
+| Library | Map room: every pile in this world is known to all deciders here |
+| Beacon | Journey pace ×1.15 — the light guides |
+| Observatory | Flood countdown window ×2 (the watchers see it coming); the flag drowns with the flood |
+
+Residency rule: Forge and Rampart arm/shield only agents whose HOME is this
+world -- visitors fight with what they brought.
 
 Flood reversion note: worlds founded before the flood slice recorded no
 original pile quantities; their piles revert to **70% of capacity**

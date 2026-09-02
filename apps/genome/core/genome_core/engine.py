@@ -165,9 +165,10 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                      "portal_to": None, "portal_xy": None})
 
     if kind == "explored":
-        found = tuple(p.pile_uuid for p in piles
+        sr = SIGHT_RADIUS * (ctx or {}).get("sight_mult", 1.0)   # a Cairn
+        found = tuple(p.pile_uuid for p in piles                 # sees further
                       if (p.x - agent.x) ** 2 + (p.y - agent.y) ** 2
-                      <= SIGHT_RADIUS ** 2)
+                      <= sr ** 2)
         return Effects(reveal=found,
                        mark_explored=(cell_of(agent.x, agent.y),),
                        schedule=("decide", now + 15.0 / ts,
@@ -301,11 +302,14 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     by_id = {p.pile_uuid: p for p in piles}
     options: list[str] = []
     here = by_id.get(at_pile)
-    if here and here.qty > 0.05 and agent.cargo_total() < CARGO_CEILING:
+    hold_cap = CARGO_CEILING + ctx.get("cargo_bonus", 0.0)   # a Granary
+    if here and here.qty > 0.05 and agent.cargo_total() < hold_cap:
         options.append("mine_here")
     # Rule 5.2 of genome-spec: finding piles is work. Travel targets only piles
-    # this agent KNOWS; the rest of the map must be explored.
-    known = agent.known_piles or frozenset(by_id)   # empty = legacy: all known
+    # this agent KNOWS; the rest of the map must be explored -- unless a
+    # Library stands: its map room knows every pile in the world
+    known = frozenset(by_id) if ctx.get("map_room") \
+        else (agent.known_piles or frozenset(by_id))
     reachable = [u for u in known
                  if u != at_pile and u in by_id and by_id[u].qty > 0.05]
     if reachable:
@@ -498,13 +502,16 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     terrain = terrain or []
     ctx = ctx or {}
     occupied = [q for q in ctx.get("occupied", [])]
-    pace = speed_factor(ctx.get("genotype") or {})
+    pace = speed_factor(ctx.get("genotype") or {}) \
+        * ctx.get("pace_mult", 1.0)      # a Beacon guides every journey
     by_id = {p.pile_uuid: p for p in piles}
 
     if choice.option == "mine_here":
         pile = by_id[payload["pile_uuid"]]
-        want = min(pile.qty, CARGO_CEILING - agent.cargo_total(),
-                   MINE_STINT_UNITS)
+        want = min(pile.qty,
+                   CARGO_CEILING + ctx.get("cargo_bonus", 0.0)
+                   - agent.cargo_total(),
+                   MINE_STINT_UNITS + ctx.get("mine_stint_bonus", 0.0))
         rate = MINE_RATE_UNITS_PER_SEC * ctx.get("mine_rate_mult", 1.0)
         duration = want / rate / max(1.0, time_scale)
         return Effects(mine_pile=(pile.pile_uuid, want),

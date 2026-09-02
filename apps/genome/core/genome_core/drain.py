@@ -51,7 +51,9 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
                             pl["departed_at"], pl.get("arrives_at"))
             x, y = forms.route_position(r, now)
     if payload.get("infections"):
-        settled, events = pathogen.settle(payload, now)
+        cfx = await construction.world_effects(store._c, world_realm)
+        settled, events = pathogen.settle(payload, now,
+                                          recovery_mult=cfx["recovery_mult"])
         if events:
             await store.put_agent(agent_uuid, settled)
             payload = settled
@@ -91,15 +93,16 @@ async def _positions_of_others(store: GenomeStore, world_realm: str,
 async def engine_ctx(store: GenomeStore, world_realm: str,
                      world_payload: dict, agent_payload: dict,
                      agent: engine.AgentView, pile_views: list,
-                     now: float) -> dict:
+                     now: float, sites: list | None = None) -> dict:
     """Everything the engine's collision, muster and movement-style faculties
     need of the world, loaded once per decision."""
     neighbours = await _positions_of_others(store, world_realm,
                                             agent.agent_uuid, now)
-    sites = [v.payload for v in await construction.sites_in(store._c,
-                                                            world_realm)
-             if not v.payload.get("destroyed")]
-    effects = await construction.world_effects(store._c, world_realm)
+    if sites is None:
+        sites = [v.payload for v in await construction.sites_in(store._c,
+                                                                world_realm)
+                 if not v.payload.get("destroyed")]
+    effects = construction.effects_from(sites)
     flood_in = _flood_mod.countdown_visible(world_payload, now)
     boardable = None
     if flood_in is not None:
@@ -289,10 +292,12 @@ async def apply_contribution(store: GenomeStore, world_realm: str,
     site_key, offered = eff.contribute
     metrics.CONTRIBUTIONS.inc()
     wp = await _world_payload(store, world_realm)
+    cfx = await construction.world_effects(store._c, world_realm)
     res = await construction.contribute(
         store._c, world_realm, site_key,
         agent_payload.get("owner_user_id", ""), agent.agent_uuid, offered,
-        time_scale=wp.get("time_scale", 1.0))
+        time_scale=wp.get("time_scale", 1.0),
+        build_time_mult=cfx["build_time_mult"])
     if res.get("building_started"):
         # the completion is an EVENT, like everything else in this world
         await store.schedule(world_realm,
@@ -402,11 +407,15 @@ async def apply_decided(store: GenomeStore, world_realm: str,
                                             world_realm, now)
     pile_rows = await store.piles_in(world_realm)
     piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
+    sites = [v.payload for v in await construction.sites_in(store._c,
+                                                            world_realm)
+             if not v.payload.get("destroyed")]
+    fx = construction.effects_from(sites)
     pile_views = [engine.PileView(
         k, m["kind"], m["x"], m["y"],
-        forms.pile_quantity(forms.PileState(m["qty_at"],
-                                            m.get("measured_at", 0.0),
-                                            m["rate"], m["cap"]), now))
+        forms.pile_quantity(forms.PileState(
+            m["qty_at"], m.get("measured_at", 0.0),
+            m["rate"] * fx["regen_mult"], m["cap"]), now))   # a Grove renews
         for k, m in piles_meta.items()]
     world_payload = await _world_payload(store, world_realm)
     terrain = world_payload.get("terrain", [])
@@ -415,7 +424,7 @@ async def apply_decided(store: GenomeStore, world_realm: str,
         "options": req_options, "choice": choice.option,
         "model": model, "tier": "economy" if model != "stub" else "stub"})
     ctx = await engine_ctx(store, world_realm, world_payload, agent_payload,
-                           agent, pile_views, now)
+                           agent, pile_views, now, sites=sites)
     eff = engine.apply_choice(choice, agent, pile_views, now,
                               event_payload, terrain,
                               world_payload.get("time_scale", 1.0), ctx)
@@ -471,10 +480,15 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                             home_realm, now)
     pile_rows = await store.piles_in(world_realm)
     piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
+    sites = [v.payload for v in await construction.sites_in(store._c,
+                                                            world_realm)
+             if not v.payload.get("destroyed")]
+    fx = construction.effects_from(sites)
     pile_views = [engine.PileView(
         k, m["kind"], m["x"], m["y"],
-        forms.pile_quantity(forms.PileState(m["qty_at"], m.get("measured_at", 0.0),
-                                            m["rate"], m["cap"]), now))
+        forms.pile_quantity(forms.PileState(
+            m["qty_at"], m.get("measured_at", 0.0),
+            m["rate"] * fx["regen_mult"], m["cap"]), now))   # a Grove renews
         for k, m in piles_meta.items()]
     world_payload = await _world_payload(store, world_realm)
     terrain = world_payload.get("terrain", [])
@@ -554,24 +568,26 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         if muster and min(_math.hypot(agent.x - m["x"], agent.y - m["y"])
                           for m in muster) > 0.06:
             ctx = await engine_ctx(store, world_realm, world_payload,
-                                   agent_payload, agent, pile_views, now)
+                                   agent_payload, agent, pile_views, now,
+                                   sites=sites)
             eff = engine.apply_choice(engine.Choice("go_home_deposit"),
                                       agent, pile_views, now, {}, terrain,
                                       world_payload.get("time_scale", 1.0),
                                       ctx)
             outcome = "deposit:rerouted"
         else:
-            fx = await construction.world_effects(store._c, world_realm)
             eff = engine.on_deposit_arrival(
                 agent, stock, now,
                 engine.USER_CEILING_PER_KIND + fx["stock_ceiling_bonus"])
             outcome = "deposit"
     else:
         ctx = (await engine_ctx(store, world_realm, world_payload,
-                                agent_payload, agent, pile_views, now)
+                                agent_payload, agent, pile_views, now,
+                                sites=sites)
                if pl["kind"] in ("arrival", "decide")
                else {"genotype": agent_payload.get("genotype") or {},
                      "time_scale": world_payload.get("time_scale", 1.0),
+                     "sight_mult": fx["sight_mult"],
                      "carrying_site": agent_payload.get("carrying_site"),
                      "has_berth": bool(agent_payload.get("berth")),
                      "flood_in_s": _flood_mod.countdown_visible(
@@ -808,6 +824,12 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
         strain = pathogen.roll_teleport_strain(
             f"{agent.agent_uuid}:{counter}:{end}", existing)
         if strain:
+            import random as _rand
+            end_fx = await construction.world_effects(store._c, realm_name)
+            if end_fx["strain_guard"] and _rand.Random(
+                    f"apoth:{agent.agent_uuid}:{counter}:{end}").random() < 0.5:
+                strain = None            # an Apothecary catches it at the door
+        if strain:
             await store.put_world(realm_name,
                 {**r_meta, "strains": existing + [strain]})
             agent_payload = pathogen.infect(agent_payload, strain, now)
@@ -936,7 +958,14 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         f_dfd = combat.Fighter(dfd_v.agent_uuid, dfd_p["genotype"],
                                dfd_p.get("stamina", 1.0),
                                dfd_p.get("stamina_max", 1.0), dfd_v.cargo)
-        res = combat.resolve(f_att, f_dfd, seed=pair_key)
+        cfx = await construction.world_effects(store._c, world_realm)
+        res = combat.resolve(
+            f_att, f_dfd, seed=pair_key,
+            att_mult=cfx["attack_mult"]
+            if att_p.get("home_realm") == world_realm else 1.0,
+            dfd_mult=cfx["defence_mult"]
+            if dfd_p.get("home_realm") == world_realm else 1.0,
+            stamina_mult=cfx["combat_recovery_mult"])
         # spoils move winner-ward; movement records carry cargo
         win_v = att_v if res["winner"] == att_v.agent_uuid else dfd_v
         lose_v = dfd_v if win_v is att_v else att_v

@@ -94,7 +94,8 @@ def coverage(antigens: list[dict], signature: list[float], now: float) -> float:
     return sum(per_dim) / len(per_dim)
 
 
-def settle(agent_payload: dict, now: float) -> tuple[dict, list[str]]:
+def settle(agent_payload: dict, now: float,
+           recovery_mult: float = 1.0) -> tuple[dict, list[str]]:
     """Lazy state: infections whose synthesis completed become antigens
     (Rule 2.18a — earned in the illness, matching its signature with noise);
     the record of what changed is returned for notification."""
@@ -108,7 +109,12 @@ def settle(agent_payload: dict, now: float) -> tuple[dict, list[str]]:
     for rec in infections:
         strain = rec["strain"]
         cov = coverage(antigens, strain["signature"], now)
-        if cov >= COVERAGE_THRESHOLD or now >= rec["synth_done_at"]:
+        done_at = rec["synth_done_at"]
+        if recovery_mult > 1.0:
+            # a Sanatorium stands here: what synthesis remains runs faster
+            caught = rec.get("caught_at", done_at)
+            done_at = caught + (done_at - caught) / recovery_mult
+        if cov >= COVERAGE_THRESHOLD or now >= done_at:
             antigens.append({
                 "vector": [max(0.0, min(1.0, s + r.uniform(-0.08, 0.08)))
                            for s in strain["signature"]],

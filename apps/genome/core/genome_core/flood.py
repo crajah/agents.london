@@ -48,7 +48,8 @@ async def ensure_clock(store, realm: str, meta: dict, now: float) -> dict:
 
 
 def countdown_window(meta: dict) -> float:
-    return COUNTDOWN_DAYS * 86400.0 / max(1.0, meta.get("time_scale", 1.0))
+    days = COUNTDOWN_DAYS * (2.0 if meta.get("observatory_standing") else 1.0)
+    return days * 86400.0 / max(1.0, meta.get("time_scale", 1.0))
 
 
 def countdown_visible(meta: dict, now: float) -> float | None:
@@ -234,6 +235,7 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
         if ark and saved else {}
     await store.put_world(realm, {
         **meta, "stock": carried,
+        "observatory_standing": False,   # the watchers drowned with the rest
         "flood_at": draw_flood_at(now, scale, f"{realm}:{int(now)}"),
         "flood_count": meta.get("flood_count", 0) + 1,
         "countdown_notified": False,
