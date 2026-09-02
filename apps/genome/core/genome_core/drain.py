@@ -1202,12 +1202,14 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         if merged_b != theirs_k:
             other_payload["plans_known"] = merged_b
             await store.put_agent(other_uuid, dict(other_payload))
-    if ("enlist" in (a_ans, b_ans) or "delegate_task" in (a_ans, b_ans)) \
+    if any(x in (a_ans, b_ans) for x in
+           ("enlist", "delegate_task", "seed_objective", "smith_prompt")) \
             and "attack" not in (a_ans, b_ans):
         # coordination (skills-spec §4.7): persuasion, never command. The
         # TARGET's Amenability gates; Rule 5.2: the target's OWNER sees
         # every modification made to their agent.
-        for act in ("enlist", "delegate_task"):
+        for act in ("enlist", "delegate_task", "seed_objective",
+                    "smith_prompt"):
             if act not in (a_ans, b_ans):
                 continue
             actor = me if a_ans == act else other_uuid
@@ -1241,6 +1243,48 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                 verb_txt = (f"{actor_name} enlisted "
                             f"{tgt_pl.get('name', tgt)}: its purpose is "
                             f"now also theirs.")
+            elif act == "seed_objective":
+                seed_obj = (act_pl.get("objectives") or [None])[0]
+                if not seed_obj:
+                    continue
+                # the seeded goal reads as the target's OWN (§4.8); the
+                # provenance lives beside it, for the owner (Rule 5.2) and
+                # for any Introspection holder -- never in the list itself
+                influences = [i for i in (tgt_pl.get("influences") or [])
+                              if not (i.get("kind") == "seeded"
+                                      and i.get("by") == actor)][-3:]
+                influences.append({"kind": "seeded", "by": actor,
+                                   "by_name": actor_name,
+                                   "text": seed_obj, "at": now})
+                tgt_objs = [o for o in (tgt_pl.get("objectives") or [])
+                            if o != seed_obj]
+                tgt_pl["objectives"] = (tgt_objs + [seed_obj])[:4]
+                tgt_pl["influences"] = influences
+                await store.put_agent(tgt, dict(tgt_pl))
+                outcome = "seeded"
+                verb_txt = (f"{actor_name} SEEDED an objective into "
+                            f"{tgt_pl.get('name', tgt)} -- it now believes "
+                            f"the goal is its own: \"{seed_obj}\"")
+            elif act == "smith_prompt":
+                smith_obj = (act_pl.get("objectives") or [None])[0]
+                if not smith_obj:
+                    continue
+                line = f"You find yourself inclined toward: {smith_obj}"
+                mods = [m for m in (tgt_pl.get("prompt_mods") or [])
+                        if m.get("by") != actor][-1:]
+                mods.append({"by": actor, "by_name": actor_name,
+                             "text": line, "at": now})
+                influences = (tgt_pl.get("influences") or [])[-3:]
+                influences.append({"kind": "smithed", "by": actor,
+                                   "by_name": actor_name,
+                                   "text": line, "at": now})
+                tgt_pl["prompt_mods"] = mods
+                tgt_pl["influences"] = influences
+                await store.put_agent(tgt, dict(tgt_pl))
+                outcome = "smithed"
+                verb_txt = (f"{actor_name} SMITHED a line into "
+                            f"{tgt_pl.get('name', tgt)}'s nature: "
+                            f"\"{line}\" -- the agent cannot see the seam.")
             else:
                 objs = list(act_pl.get("objectives") or [])
                 if len(objs) < 2:
@@ -1667,6 +1711,7 @@ async def regenerate(store: GenomeStore, event_realm: str,
             pass
     await store.set_presence(home, a, True)
     reborn = {**agent_payload,
+              "influences": [], "prompt_mods": [],
               "addressable": [], "heard": [],
               "plans_known": [],   # Rule 13.8 read strictly: knowledge
               # survives in LIVING carriers; the dead wake knowing nothing

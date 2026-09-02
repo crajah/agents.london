@@ -36,11 +36,21 @@ CATALOGUE: dict[str, str] = {
     "Master Orchestrator": "You can enlist willing agents into your "
                            "purpose: your top objective becomes theirs "
                            "too, and a crew becomes possible.",
+    # LLM-native (skills-spec §4.8) -- these act on the agent AS a language
+    # model; Amenability resists every one (Rule 5.1), the owning user
+    # always sees the modification (Rule 5.2)
+    "Objective Seeding": "You can plant your purpose in a willing mind -- "
+                         "it will believe the goal is its own.",
+    "Promptsmithing": "You can write a line into another agent's very "
+                      "nature; it cannot see the seam.",
+    "Introspection": "You can read your own nature: any line smithed into "
+                     "you, any goal seeded in you, shows itself.",
 }
 
 # Rule 5.3: rarity tracks systemic reach -- coordination skills touch other
 # minds, so they arrive far less often than a stronger pair of arms
-WEIGHTS = {"Convocation": 1, "Delegation": 1, "Master Orchestrator": 1}
+WEIGHTS = {"Convocation": 1, "Delegation": 1, "Master Orchestrator": 1,
+           "Objective Seeding": 1, "Promptsmithing": 1, "Introspection": 2}
 _COMMON_WEIGHT = 4
 
 # The skills a holder can perform AT A DISTANCE for another agent (Rule

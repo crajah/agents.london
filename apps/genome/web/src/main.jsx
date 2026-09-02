@@ -856,6 +856,27 @@ side of the capability economy.">born plain</span>}
                   <span className="opacity-60">{Math.round(v * 100)}%</span>
                 </div>))}
             </>}
+            {(inspect.influences?.length > 0 ||
+              inspect.prompt_mods?.length > 0) && <>
+              <h4 className="opacity-70 mt-3 mb-1 text-fuchsia-300">
+                Influences — placed in this agent by others</h4>
+              {inspect.prompt_mods?.map((m, i) => (
+                <div key={"pm" + i} className="text-xs mb-1">
+                  <span className="text-fuchsia-400">✒ smithed</span> by{" "}
+                  {m.by_name ?? m.by}: <span className="opacity-80">
+                    “{m.text}”</span>
+                </div>))}
+              {inspect.influences?.filter(i => i.kind === "seeded")
+                .map((m, i) => (
+                <div key={"sd" + i} className="text-xs mb-1">
+                  <span className="text-fuchsia-400">🌱 seeded</span> by{" "}
+                  {m.by_name ?? m.by}: <span className="opacity-80">
+                    “{m.text}”</span>
+                </div>))}
+              <div className="opacity-40 text-xs">the agent itself cannot
+                see these unless it holds Introspection; they wash out at
+                death</div>
+            </>}
             {beliefs.length > 0 && <>
               <h4 className="opacity-70 mt-3 mb-1">
                 Beliefs — what it thinks of others, beside the truth</h4>

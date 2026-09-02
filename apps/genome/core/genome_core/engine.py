@@ -151,6 +151,10 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
             enc_options.insert(0, "enlist")
         if sk == "Delegation" and (ctx or {}).get("has_objective"):
             enc_options.insert(0, "delegate_task")
+        if sk == "Objective Seeding" and (ctx or {}).get("has_objective"):
+            enc_options.insert(0, "seed_objective")
+        if sk == "Promptsmithing" and (ctx or {}).get("has_objective"):
+            enc_options.insert(0, "smith_prompt")
         scried = {}
         if (ctx or {}).get("skill") == "Scrying":
             # skills-spec 4.2: the encounter turns sequential for a scryer
@@ -852,7 +856,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
     if choice.option in ("offer_trade", "propose_breeding", "attack",
                          "ignore", "offer_berth", "enlist",
-                         "delegate_task"):
+                         "delegate_task", "seed_objective", "smith_prompt"):
         # resolution is pairwise and happens in the drain once BOTH have
         # answered; the engine only records intent
         return Effects(schedule=("encounter_answer", now, agent.agent_uuid,

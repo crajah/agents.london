@@ -138,6 +138,8 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
            "capability": payload.get("capability"),
+           "influences": payload.get("influences") or [],
+           "prompt_mods": payload.get("prompt_mods") or [],
            "infected": bool(payload.get("infected"))}
     if g:
         out["dispositions"] = {d: g[d] for d in DISPOSITIONS if d in g}

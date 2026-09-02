@@ -94,6 +94,10 @@ OPTION_TEXT = {
                "will come.",
     "answer_convocation": "Answer the call: walk to the one who "
                           "summoned you.",
+    "seed_objective": "Plant your purpose in this agent's mind -- if it "
+                      "is biddable, it will believe the goal its own.",
+    "smith_prompt": "Write a line into this agent's very nature -- if it "
+                    "is biddable, it will never see the seam.",
 }
 
 
@@ -189,7 +193,9 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
                 timeout: float = 45.0,
                 objectives: list[str] | None = None,
                 heard: list[dict] | None = None,
-                capability: dict | None = None) -> engine.Choice:
+                capability: dict | None = None,
+                prompt_mods: list[dict] | None = None,
+                influences: list[dict] | None = None) -> engine.Choice:
     model = assign_models(req.agent_uuid)["economy"]
     # User directive 2026-09-02: the coming water rewrites the agenda -- Ark
     # first, survival second -- for any line whose Survival Instinct answers.
@@ -213,7 +219,9 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
     sys_p = prompt.system_prompt(genotype, pools or {},
                                  {"total": req.context["cargo_total"]},
                                  objectives or [], heard=heard,
-                                 capability=capability)
+                                 capability=capability,
+                                 prompt_mods=prompt_mods,
+                                 influences=influences)
     usr_p = prompt.user_prompt(situation_text(req),
                                {k: OPTION_TEXT.get(k, k) for k in req.options})
     from .models import UNBUDGETED

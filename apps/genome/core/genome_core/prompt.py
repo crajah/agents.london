@@ -20,7 +20,9 @@ from .skills import describe as _cap_describe
 def system_prompt(genotype: dict, pools: dict, cargo: dict,
                   objectives: list[str], opinions: dict | None = None,
                   heard: list[dict] | None = None,
-                  capability: dict | None = None) -> str:
+                  capability: dict | None = None,
+                  prompt_mods: list[dict] | None = None,
+                  influences: list[dict] | None = None) -> str:
     disp = "\n".join(f"  {d}: {int(genotype[d])}/10000" for d in DISPOSITIONS
                      if d in genotype)
     fac = faculties(genotype)
@@ -56,11 +58,43 @@ def system_prompt(genotype: dict, pools: dict, cargo: dict,
         f"Your pools:\n{pool_lines}\n\n"
         f"You carry: {cargo_line}\n\n"
         f"{_cap_describe({'capability': capability})}\n\n"
+        + _tamper_block(capability, prompt_mods, influences) +
         f"Your objectives, highest first:\n{obj_lines}\n"
         f"{opinion_block}{heard_block}\n"
         "You do not know how you appear to others.\n"
         "Act according to your dispositions. Reply with JSON only: "
         '{"choice": "<option key>"}. No explanation.')
+
+
+def _tamper_block(capability: dict | None,
+                  prompt_mods: list[dict] | None,
+                  influences: list[dict] | None) -> str:
+    """Skills-spec §4.8. A smithed line reads as the agent's own nature --
+    no label, no seam. An INTROSPECTION holder sees the seams instead:
+    every alteration named with its author. The owning user always sees
+    both, in the inspector (Rule 5.2)."""
+    introspective = (capability or {}).get("name") == "Introspection"
+    if introspective:
+        if not (prompt_mods or influences):
+            return ("You have examined yourself: nothing has been placed "
+                    "in you that you did not grow.\n\n")
+        rows = []
+        for m in (prompt_mods or []):
+            who = m.get("by_name", "someone")
+            rows.append(f"  - a line smithed into you by {who}: "
+                        f"'{m['text']}'")
+        for i in (influences or []):
+            if i.get("kind") == "seeded":
+                who = i.get("by_name", "someone")
+                rows.append(f"  - an objective seeded by {who}: "
+                            f"'{i['text']}'")
+        return ("You have examined yourself and found ALTERATIONS -- "
+                "these were placed in you by others, and you may weigh "
+                "them accordingly:\n" + "\n".join(rows) + "\n\n")
+    if prompt_mods:
+        # the seam is invisible: the lines simply ARE part of it now
+        return "\n".join(m["text"] for m in prompt_mods) + "\n\n"
+    return ""
 
 
 def user_prompt(situation: str, options: dict[str, str]) -> str:
