@@ -327,6 +327,51 @@ function Connections() {
     </div>);
 }
 
+function Timeline({ realm }) {
+  // Phase 11: the world's past, scrollable backwards -- built from the
+  // events record, never a separate log
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [done, setDone] = useState(false);
+  const load = async (before) => {
+    const r = await fetch(`${API}/worlds/${realm}/timeline?limit=40` +
+                          (before ? `&before=${encodeURIComponent(before)}`
+                                  : ""));
+    const more = await r.json();
+    if (more.length < 40) setDone(true);
+    setRows(cur => before ? [...cur, ...more] : more);
+  };
+  const fmt = (iso) => {
+    const t = Number(iso);
+    return isFinite(t) ? new Date(t * 1000).toLocaleTimeString() : iso;
+  };
+  return (
+    <div className="absolute bottom-10 left-2 z-20 text-xs">
+      <button onClick={() => { setOpen(o => !o);
+                               if (!open) { setDone(false); load(); } }}
+              className="px-2 py-1 bg-neutral-800/90 border
+                         border-neutral-600 rounded">⏱ timeline</button>
+      {open && (
+        <div className="mt-1 w-80 max-h-72 overflow-y-auto bg-neutral-900/95
+                        border border-neutral-700 rounded p-2 font-mono">
+          {rows.map((e, i) => (
+            <div key={i} className={"py-0.5 border-t border-neutral-800 " +
+                                    (e.voided ? "opacity-40" : "")}>
+              <span className="opacity-50">{fmt(e.at)}</span>{" "}
+              {(e.subject ?? "").slice(0, 16)}{" "}
+              <span className="opacity-70">{e.kind}</span>
+              {e.voided && " (voided)"}
+            </div>))}
+          {rows.length === 0 &&
+            <div className="opacity-50">nothing recorded yet</div>}
+          {!done && rows.length > 0 &&
+            <button className="mt-1 underline opacity-70"
+                    onClick={() => load(rows[rows.length - 1]?.at)}>
+              older…</button>}
+        </div>)}
+    </div>);
+}
+
 function Ticker({ realm }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
@@ -1261,6 +1306,7 @@ whole game -- the commons market is how the far kinds arrive."
           <PlanTable realm={realm} info={snapInfo} />}
         <FloodWave active={floodAnim} />
         <Legend />
+        <Timeline realm={realm} />
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} info={snapInfo}
           onClose={() => setMenu(null)}

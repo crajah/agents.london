@@ -354,12 +354,12 @@ Early payoff, and it tests interface assumptions against a real tick.
 The world runs unattended (`system-spec.md` Rule 2.2), so returning must be
 comprehensible. This is the phase most easily forgotten and most felt.
 
-- [ ] **Since-you-were-away digest** per world: births, deaths, trades, arrivals, infections, constructions
-- [ ] Digest is built from the `event` and `decision` tables, not a separate log
+- [x] **Since-you-were-away digest** per world (GET /me/digest + the panel) — floods, bargains, constructions, rebirths, infections; live since Phase 5
+- [x] Digest is built from the `event` and `decision` tables, not a separate log — as is the timeline
 - [ ] Push-worthy events, deliberately few: a flood countdown in a world you own, an agent of yours perishing, a berth offered to or surrendered by your agent, a plan of yours completed
-- [ ] Per-world and per-agent activity timeline, readable back in time
-- [ ] **Flood countdown surfaced prominently** wherever it applies (`construction-spec.md` Rule 4.8)
-- [ ] Quiet by default: no notification for routine gathering or movement
+- [x] Per-world and per-agent activity timeline, readable back in time — GET /worlds/{realm}/timeline paginates the events record backwards (⏱ panel with older…); the per-agent record is the decisions list in the inspector
+- [x] **Flood countdown surfaced prominently** (Rule 4.8) — full-width banner, digest line, admin table, prime-directive prompt injection
+- [x] Quiet by default: no notification for routine gathering or movement — notify sources are lifecycle/coordination/commerce events only, with per-source levels in Settings
 
 **Done when:** J11 and J12 work — two days away is legible in under a minute.
 

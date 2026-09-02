@@ -1145,6 +1145,11 @@ async def get_agent_decisions(agent_uuid: str, limit: int = 20):
     return await snapshot.agent_decisions(app.state.pg, agent_uuid, limit)
 
 
+@app.get("/worlds/{realm}/timeline", tags=["World"])
+async def get_timeline(realm: str, before: str = "", limit: int = 50):
+    return await snapshot.world_timeline(app.state.pg, realm, before, limit)
+
+
 @app.get("/worlds/{realm}/events", tags=["World"])
 async def get_events(realm: str, since: str = ""):
     return await snapshot.world_events(app.state.pg, realm, since)

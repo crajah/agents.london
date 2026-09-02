@@ -205,6 +205,25 @@ async def agent_decisions(client: Any, agent_uuid: str, limit: int = 20) -> list
     return [r.payload for r in recs]
 
 
+async def world_timeline(client: Any, world_realm: str,
+                         before: str = "", limit: int = 50) -> list[dict]:
+    """Phase 11: the world's activity, readable BACK in time -- newest
+    first, paginated by done_at. Built from the events table (Rule: the
+    digest and the timeline come from the record, never a separate log)."""
+    where = [("done_at", "not_null", None)]
+    if before:
+        where.append(("done_at", "<", before))
+    rows = await client.find_vertices("events", realm=world_realm,
+                                      where=where, order_by="done_at",
+                                      descending=True,
+                                      limit=max(1, min(int(limit), 200)))
+    return [{"at": v.payload.get("done_at"),
+             "kind": v.payload.get("kind"),
+             "subject": v.payload.get("subject"),
+             "voided": v.payload.get("voided")}
+            for v in rows]
+
+
 async def world_events(client: Any, world_realm: str, since: str) -> list[dict]:
     """Completed events after `since` — the client's incremental feed."""
     rows = await client.get_vertices("events", realm=world_realm)
