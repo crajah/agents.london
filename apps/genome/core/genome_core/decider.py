@@ -12,6 +12,7 @@ wrap this same prompt contract in the deploy manifests.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import urllib.request
@@ -22,6 +23,21 @@ from .models import assign_models
 
 ROUTER = os.getenv("GENOME_ROUTER_URL", "http://localhost:4000").rstrip("/")
 KEY = os.getenv("GENOME_ROUTER_KEY") or os.getenv("GLOBAL_API_KEY") or ""
+
+# the WORLD whose question is being decided -- set by the worker before a
+# decision so token spend lands against the right realm (Phase 13/14 cost
+# attribution); "?" for callers that never set it
+WORLD_CTX = contextvars.ContextVar("genome_world", default="?")
+
+
+def _count_tokens(data: dict, model: str) -> None:
+    from . import metrics
+    u = data.get("usage") or {}
+    total = u.get("total_tokens") or (
+        (u.get("prompt_tokens") or 0) + (u.get("completion_tokens") or 0))
+    if total:
+        metrics.TOKENS.labels(model, WORLD_CTX.get()).inc(total)
+
 
 OPTION_TEXT = {
     "mine_here": "Mine this pile.",
@@ -215,7 +231,9 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
                  "Authorization": "Bearer " + KEY})
     try:
         with urllib.request.urlopen(rq, timeout=timeout) as r:
-            text = json.load(r)["choices"][0]["message"]["content"]
+            data = json.load(r)
+        _count_tokens(data, model)
+        text = data["choices"][0]["message"]["content"]
         opt = prompt.parse_choice(text, list(req.options))
     except Exception:
         opt = None
@@ -276,7 +294,9 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
                  "Authorization": "Bearer " + KEY})
     try:
         with urllib.request.urlopen(rq, timeout=timeout) as r:
-            text = json.load(r)["choices"][0]["message"]["content"] or ""
+            data = json.load(r)
+        _count_tokens(data, model)
+        text = data["choices"][0]["message"]["content"] or ""
         s, e = text.index("{"), text.rindex("}")
         doc = json.loads(text[s:e + 1])
         action = str(doc.get("choice", "")).lower()
@@ -338,7 +358,9 @@ def market_decider(req: engine.DecisionRequest, genotype: dict,
                  "Authorization": "Bearer " + KEY})
     try:
         with urllib.request.urlopen(rq, timeout=timeout) as r:
-            text = json.load(r)["choices"][0]["message"]["content"] or ""
+            data = json.load(r)
+        _count_tokens(data, model)
+        text = data["choices"][0]["message"]["content"] or ""
         s, e = text.index("{"), text.rindex("}")
         doc = json.loads(text[s:e + 1])
         action = str(doc.get("choice", "")).lower()

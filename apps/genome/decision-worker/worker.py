@@ -63,6 +63,8 @@ def dsn() -> str:
 
 async def work_one(store: GenomeStore, client, item) -> str:
     pl = item.payload
+    from genome_core.decider import WORLD_CTX
+    WORLD_CTX.set(pl.get("world_realm", "?"))
     now = time.time()
     req = engine.DecisionRequest(
         agent_uuid=pl["agent_uuid"], situation=pl["situation"],

@@ -828,6 +828,48 @@ async def admin_replay(payload: dict,
             "agrees": choice.option == rec.get("choice")}
 
 
+@app.get("/admin/costs", tags=["Admin"])
+async def admin_costs(request: __import__("fastapi").Request):
+    """Phase 13: cost per world and per USER, biggest spenders first.
+    Token totals come from Prometheus (genome_llm_tokens_total); worlds map
+    to owners through their world_meta."""
+    from fastapi.responses import JSONResponse
+    import json as _j
+    import urllib.parse as _up
+    import urllib.request as _u
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    prom = os.getenv("GENOME_PROM_URL",
+                     "http://prometheus-service.telemetry:9090")
+    q = _up.quote("sum by (world, model) (genome_llm_tokens_total)")
+    try:
+        raw = _j.loads(_u.urlopen(f"{prom}/api/v1/query?query={q}",
+                                  timeout=10).read())
+        series = raw["data"]["result"]
+    except Exception as e:
+        return {"error": f"prometheus unreachable ({type(e).__name__})"}
+    store = GenomeStore(app.state.pg)
+    by_world: dict = {}
+    by_model: dict = {}
+    for row in series:
+        w = row["metric"].get("world", "?")
+        m = row["metric"].get("model", "?")
+        n = int(float(row["value"][1]))
+        by_world[w] = by_world.get(w, 0) + n
+        by_model[m] = by_model.get(m, 0) + n
+    by_user: dict = {}
+    for w, n in by_world.items():
+        meta = await _dr._world_payload(store, w) if w != "?" else {}
+        owner = meta.get("owner_user_id") or "(free worlds)"
+        by_user[owner] = by_user.get(owner, 0) + n
+    rank = lambda d: sorted(d.items(), key=lambda kv: -kv[1])
+    return {"tokens_by_world": rank(by_world),
+            "tokens_by_model": rank(by_model),
+            "tokens_by_user": rank(by_user)}
+
+
 @app.post("/admin/cure", tags=["Admin"])
 async def admin_cure(request: __import__("fastapi").Request):
     """Purge the pathosphere (user directive 2026-09-02): every agent's

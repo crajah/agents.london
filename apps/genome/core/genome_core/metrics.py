@@ -36,6 +36,9 @@ WORDS = Counter("genome_words_total",
                 "Testimony sent at a distance (A2A send_word)")
 SERVICES = Counter("genome_services_total",
                    "Capability brokerage operations", ["verb"])
+TOKENS = Counter("genome_llm_tokens_total",
+                 "LLM tokens spent on decisions, by model and world",
+                 ["model", "world"])
 CONTRIBUTIONS = Counter("genome_contributions_total",
                         "Cargo poured into construction sites")
 QUEUE_DEPTH = Gauge("genome_decision_queue_depth",

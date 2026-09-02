@@ -48,6 +48,7 @@ function AdminPanel({ onClose }) {
     localStorage.getItem("genome_admin_token") || "");
   const [worlds, setWorlds] = useState(null);
   const [cfg, setCfg] = useState(null);
+  const [costs, setCosts] = useState(null);
   const [err, setErr] = useState(null);
   const hdrs = { "x-admin-token": token, "Content-Type": "application/json" };
   const load = async () => {
@@ -135,6 +136,12 @@ function AdminPanel({ onClose }) {
             <span className="opacity-60">
               {worlds.decisions_last_hour} decisions in the last hour</span>
             <span className="flex-1" />
+            <button className="px-2 py-1 rounded bg-neutral-700 text-xs"
+                    onClick={async () => {
+                      const r = await fetch(`${API}/admin/costs`,
+                                            { headers: hdrs });
+                      setCosts(await r.json());
+                    }}>💸 costs</button>
             <button className="px-2 py-1 rounded bg-rose-900
                                hover:bg-rose-800 text-xs"
                     title="Purge the pathosphere: clears every infection,
@@ -153,6 +160,29 @@ from the next portal crossing."
                         : (d.error ?? "failed"));
                     }}>🧹 cure all plagues</button>
           </div>
+          {costs && !costs.error && (
+            <div className="mb-3 p-2 bg-neutral-800/60 rounded text-xs">
+              <div className="font-semibold mb-1">LLM tokens spent —
+                biggest first</div>
+              <div className="grid grid-cols-3 gap-3">
+                {[["by user", costs.tokens_by_user],
+                  ["by world", costs.tokens_by_world],
+                  ["by model", costs.tokens_by_model]].map(([t, rows]) => (
+                  <div key={t}>
+                    <div className="opacity-60 mb-0.5">{t}</div>
+                    {(rows ?? []).slice(0, 6).map(([k, n]) => (
+                      <div key={k} className="flex justify-between">
+                        <span className="truncate mr-2">{k}</span>
+                        <span className="opacity-70">
+                          {n >= 1e6 ? `${(n / 1e6).toFixed(1)}M`
+                            : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : n}
+                        </span>
+                      </div>))}
+                  </div>))}
+              </div>
+            </div>)}
+          {costs?.error &&
+            <div className="text-amber-400 text-xs mb-2">{costs.error}</div>}
           <table className="w-full text-xs">
             <thead><tr className="opacity-50 text-left">
               <th className="py-1">world</th><th>agents</th><th>due</th>
