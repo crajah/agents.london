@@ -454,6 +454,48 @@ function Legend() {
     </div>);
 }
 
+function MarketPanel({ info }) {
+  const [open, setOpen] = useState(false);
+  const listings = info?.listings ?? [];
+  const colourOf = k => {
+    const i = (info?.kinds ?? []).indexOf(Number(k));
+    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
+  };
+  const Chip = ({ k, u }) => (
+    <span className="inline-flex items-center gap-1 bg-neutral-800 rounded
+                     px-1 py-0.5 mr-1">
+      <span className="w-2 h-2 rounded-full inline-block"
+            style={{ background: colourOf(k) }} />
+      {Number(u).toFixed(0)}×{k}
+    </span>);
+  return (
+    <div className="absolute top-2 right-60 z-20 text-xs">
+      <button onClick={() => setOpen(o => !o)}
+              title="Open market listings in this world"
+              className="px-2 py-1 bg-neutral-900/85 border
+                         border-neutral-700 rounded">
+        ⌗ market{listings.length > 0 && ` (${listings.length})`}
+      </button>
+      {open && (
+        <div className="mt-1 w-72 max-h-64 overflow-y-auto bg-neutral-900/95
+                        border border-neutral-700 rounded p-2">
+          <div className="opacity-60 mb-1">open listings — hand-to-hand at
+            the board</div>
+          {listings.length === 0 &&
+            <div className="opacity-50">the board is bare</div>}
+          {listings.map(l => (
+            <div key={l.key} className="py-1 border-t border-neutral-800">
+              <span className="opacity-60">gives </span>
+              {Object.entries(l.give ?? {}).map(([k, u]) =>
+                <Chip key={k} k={k} u={u} />)}
+              <span className="opacity-60"> for </span>
+              {Object.entries(l.want ?? {}).map(([k, u]) =>
+                <Chip key={k} k={k} u={u} />)}
+            </div>))}
+        </div>)}
+    </div>);
+}
+
 function FloodWave({ active }) {
   // The water arrives ON SCREEN (user directive): a rising tide swallows the
   // world for a few seconds when a flood executes, then recedes.
@@ -807,6 +849,7 @@ function App() {
             ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
+                        listings: snap.market_open ?? [],
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
@@ -835,6 +878,7 @@ function App() {
             ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
+                        listings: snap.market_open ?? [],
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
@@ -998,6 +1042,7 @@ whole game -- the commons market is how the far kinds arrive."
               <div className="px-3 py-2 opacity-60">nobody here</div>}
           </nav>)}
         <StockPanel info={snapInfo} />
+        <MarketPanel info={snapInfo} />
         <FloodWave active={floodAnim} />
         <Legend />
         <Ticker realm={realm} />
