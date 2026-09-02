@@ -424,13 +424,13 @@ Diagnosed, in order of harm:
 
 ## Testing strategy
 
-- [ ] **Property tests** for every closed form: position, pile quantity, decay, opinion update — a stored value that could be derived is a defect
+- [x] **Property tests** for the closed forms — position/pile quantity (test_core), stamina/mana recovery (test_vitals), antigen decay and coverage (settle paths), opinion updates (test_word) — every derived value has a test asserting it is derived
 - [ ] **Fail-closed test** for realm scoping (Phase 0.3), asserted at the repository boundary
 - [ ] **Flush-and-resume test**: wipe Redis mid-run, confirm the simulation continues (`system-spec.md` Rule 8.3)
-- [ ] **Determinism harness**: same seed and same scripted decisions reproduce the same world, so a divergence is traceable
+- [x] **Determinism harness** (test_determinism.py): worldgen, a 12-step scripted journey, combat and the capability lottery all replay exactly per seed — the pure layer is provably clock-and-chance-free
 - [ ] **In-world validation replay**: reproduce `validation/` results against live agents, not a harness (Phase 2 done-when)
 - [ ] **Frame budget in CI** — a second atlas or a stray filter must fail the build, not degrade quietly (`interface-spec.md` Rule 6.12)
-- [ ] **Cost regression**: assert calls-per-decision, so an agentic loop cannot silently multiply spend (`execution-spec.md` Rule 8.3)
+- [x] **Cost regression** (test_cost_regression.py): every decision path — generic, negotiation, market — costs EXACTLY one router call, and a garbage reply falls back free, no retry; a chained or reflecting decider fails the suite loudly
 - [ ] **Soak test**: one world, 24h unattended, zero writes while agents travel
 - [ ] Load: 1,000 agents in one world, 100 worlds on one worker
 
