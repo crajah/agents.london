@@ -825,6 +825,39 @@ async def admin_replay(payload: dict,
             "agrees": choice.option == rec.get("choice")}
 
 
+@app.get("/admin/selection", tags=["Admin"])
+async def selection_differential(request: __import__("fastapi").Request):
+    """Phase 6's selection-differential check (genotype-spec §3.8's
+    warning): mean combat-relevant loci of agents WITH victories against
+    those without. A large gap means combat is selecting; the sign says
+    for what."""
+    from fastapi.responses import JSONResponse
+    if request.headers.get("x-admin-token") != os.getenv(
+            "GENOME_ADMIN_TOKEN", ""):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    loci = ("Aggression", "Courage", "Attrition", "Agility",
+            "Vindictiveness", "Prudence")
+    rows = await app.state.pg.find_vertices("agents",
+                                            realm="genome_agents",
+                                            limit=2000)
+    fought, plain = [], []
+    for v in rows:
+        g = v.payload.get("genotype")
+        if not g:
+            continue
+        (fought if v.payload.get("victories", 0) > 0 else plain).append(g)
+    def mean(pop, k):
+        vals = [g.get(k) for g in pop if g.get(k) is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+    return {"victors": len(fought), "unblooded": len(plain),
+            "differential": {
+                k: {"victors": mean(fought, k), "unblooded": mean(plain, k),
+                    "gap": round((mean(fought, k) or 0)
+                                 - (mean(plain, k) or 0), 1)
+                    if fought and plain else None}
+                for k in loci}}
+
+
 @app.post("/admin/worlds/{realm}/pause", tags=["Admin"])
 async def admin_pause(realm: str, request: __import__("fastapi").Request):
     from fastapi.responses import JSONResponse

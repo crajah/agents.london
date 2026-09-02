@@ -16,6 +16,7 @@ from . import combat, construction, engine, forms, identity, market, \
 from . import genotype as G
 from . import metrics
 from . import skills as _skills
+from . import vitals as _vitals
 from . import word as _word
 from . import worldgen
 from . import flood as _flood_mod
@@ -692,6 +693,15 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         return await regenerate(store, world_realm, agent, agent_payload, now,
                                 cause=pl["payload"].get("cause", "longevity"))
 
+    if pl["kind"] in ("decide", "arrival") \
+            and _vitals.incapacitated(agent_payload, now):
+        # Rule 9.3e: the body lies where it fell until the pool refills;
+        # nothing is asked of the mind meanwhile
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        await store.schedule(world_realm, f"up-{agent_uuid}-{int(now)}",
+                             _iso(now + 900.0), "decide", agent_uuid, {})
+        return "incapacitated"
+
     if pl["kind"] == "construction_done":
         await store.complete_event(world_realm, pl["key"], _iso(now))
         res = await construction.finalize(store._c, world_realm,
@@ -1188,11 +1198,21 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
             else (other_view, other_payload)
         dfd_v, dfd_p = (other_view, other_payload) if att_uuid == me \
             else (agent, agent_payload)
+        # Rule 9.3d: pressing an attack SPENDS Mana; an empty pool (or an
+        # incapacitated body, 9.3e) cannot press one -- the moment passes
+        if _vitals.incapacitated(att_p, now) or \
+                _vitals.mana_now(att_p, now) < _vitals.MANA_ATTACK_COST:
+            await store.complete_event(world_realm, pl["key"], _iso(now))
+            return "attack:fizzled"
+        att_p.update(_vitals.set_mana(
+            att_p, _vitals.mana_now(att_p, now)
+            - _vitals.MANA_ATTACK_COST, now))
+        await store.put_agent(att_uuid, dict(att_p))
         f_att = combat.Fighter(att_v.agent_uuid, att_p["genotype"],
-                               att_p.get("stamina", 1.0),
+                               _vitals.stamina_now(att_p, now),
                                att_p.get("stamina_max", 1.0), att_v.cargo)
         f_dfd = combat.Fighter(dfd_v.agent_uuid, dfd_p["genotype"],
-                               dfd_p.get("stamina", 1.0),
+                               _vitals.stamina_now(dfd_p, now),
                                dfd_p.get("stamina_max", 1.0), dfd_v.cargo)
         cfx = await construction.world_effects(store._c, world_realm)
         ward = 1.2 if (dfd_p.get("capability") or {}).get("name") \
@@ -1229,9 +1249,21 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         ops.setdefault(att_uuid, {})["Aggression"] = \
             {"estimate": op2.estimate, "weight": op2.weight}
         await store.put_agent(dfd_v.agent_uuid, {**dfd_p, "opinions": ops})
-        # stamina bookkeeping (Rules 9.3b/3.8c); zero MAXIMUM perishes (3.8d)
+        # stamina bookkeeping (Rules 9.3b/3.8c); zero MAXIMUM perishes
+        # (3.8d). Both parties' CURRENT stamina now actually falls -- the
+        # deltas were computed and silently dropped before this slice.
         win_p = att_p if res["winner"] == att_v.agent_uuid else dfd_p
+        lose_p = dfd_p if res["winner"] == att_v.agent_uuid else att_p
+        loser_uuid = dfd_v.agent_uuid if res["winner"] == att_v.agent_uuid \
+            else att_v.agent_uuid
+        lose_p.update(_vitals.set_stamina(
+            lose_p, _vitals.stamina_now(lose_p, now)
+            + res["loser_stamina_delta"], now))
+        await store.put_agent(loser_uuid, dict(lose_p))
         new_max = win_p.get("stamina_max", 1.0) - res["winner_max_burn"]
+        win_p.update(_vitals.set_stamina(
+            win_p, _vitals.stamina_now(win_p, now)
+            + res["winner_stamina_delta"], now))
         await store.put_agent(res["winner"],
                               {**win_p, "stamina_max": max(0.0, new_max),
                                "victories": win_p.get("victories", 0) + 1})

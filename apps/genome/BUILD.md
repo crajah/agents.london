@@ -256,13 +256,13 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Ends at **six turns** or when a party cannot afford to continue (7.2)
 - [ ] Proposals bind; claims are evidence (7.3); timeouts are scheduled events (7.4)
 - [ ] Two-phase handoff, no intermediate custody (`system-spec.md` Rules 5.1, 5.2)
-- [ ] **Combat**: Attack against Attack moderated by Agility, probabilistic (`genome-spec.md` 9.3a)
-- [ ] Both parties lose Stamina, loser more; recovery at reStamina (9.3b), **less Immune Vigilance's watch-cost** (`genotype-spec.md` 3.8e)
-- [ ] Winner takes cargo to its ceiling, remainder stays (9.3c, 4.19a)
-- [ ] Mana spent to press an attack (9.3d); zero Stamina incapacitates without killing (9.3e)
-- [ ] **Winner's maximum Stamina permanently reduced by Attrition** (`genotype-spec.md` 3.8c); loser recovers in full
-- [ ] Zero maximum Stamina perishes, Rule 7.2 applying as for any death (3.8d)
-- [ ] **Selection-differential check**: combat loci against dispositions, per §3.8's warning
+- [x] **Combat**: Attack against Attack moderated by Agility, probabilistic (9.3a) — combat.resolve, deterministic per seed; Forge/Rampart/Ward multipliers layered
+- [x] Both parties lose Stamina, loser more; recovery at reStamina (9.3b), less Immune Vigilance's watch-cost (3.8e) — pools are CLOSED FORMS (level, measured_at) in vitals.py; both deltas now actually persist (they were computed and dropped before this slice); pools reach every prompt
+- [x] Winner takes cargo to its ceiling, remainder stays (9.3c, 4.19a) — live-proven (robbery beat trade in the barter-triangle staging)
+- [x] Mana spent to press an attack (9.3d): 0.3 of the pool, no pool no attack (fizzles); zero Stamina incapacitates without killing (9.3e): the body lies where it fell below the 5% floor, decisions skipped at zero LLM cost until it can stand
+- [x] **Winner's maximum Stamina permanently reduced by Attrition** (3.8c); loser recovers in full — burn was already live; the closed-form cap makes 'in full' mean to-the-burned-max
+- [x] Zero maximum Stamina perishes, Rule 7.2 applying as for any death (3.8d) — burnout perish event, was already live
+- [x] **Selection-differential check** (§3.8's warning) — GET /admin/selection: mean combat loci of victors vs the unblooded, gap per locus, on demand
 
 **Done when:** two agents meet, negotiate, and cargo moves atomically — and a counterparty walking away mid-deal is recorded as an outcome, not an error.
 

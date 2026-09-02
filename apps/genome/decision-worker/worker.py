@@ -136,7 +136,9 @@ async def work_one(store: GenomeStore, client, item) -> str:
         from genome_core import pathogen
         eff = pathogen.phenotype(agent_payload, now) \
             if agent_payload.get("infections") else g
+        from genome_core import vitals as _vt
         choice, model = llm_decider(req, eff, seed=int(now),
+                                    pools=_vt.pools(agent_payload, now),
                                     objectives=agent_payload.get("objectives"),
                                     heard=agent_payload.get("heard"),
                                     capability=agent_payload.get("capability"))
