@@ -102,6 +102,9 @@ class Effects:
     # ground on at the agent's feet (agent-driven founding, 2026-09-02)
     word: str | None = None                      # addressable counterparty to
     # send testimony to at ANY distance (Rules 9.1c/9.1d); caller applies
+    service: tuple[str, str, str] | None = None  # (verb, counterparty,
+    # skill): "request" from a known remote holder, or the holder's
+    # "perform"/"refuse" answer (Rules 8.6-8.8); caller applies
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -189,6 +192,21 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                        mark_explored=(cell_of(agent.x, agent.y),),
                        schedule=("decide", now + 15.0 / ts,
                                  agent.agent_uuid, {}))
+    if kind == "service_request":
+        # Rule 8.6: someone who cannot, asks someone who can. Whether to
+        # oblige is the holder's own decision -- terms, reciprocity and
+        # reputation all live in that choice.
+        return DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="service_request",
+            options=("perform_service", "refuse_service"),
+            context={"cargo_total": agent.cargo_total(),
+                     "requester": payload.get("requester"),
+                     "requester_colours": payload.get("requester_colours"),
+                     "skill_asked": payload.get("skill"),
+                     "opinion": payload.get("opinion"),
+                     "favours_owed_to_me": payload.get("credit", 0),
+                     "at_pile": None, "reachable": [],
+                     "portal_to": None, "portal_xy": None})
     if kind == "decide":
         return _decide_here(agent, piles, payload, stock, portals, ctx)
     raise ValueError(f"unknown event kind {kind!r}")
@@ -434,6 +452,10 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     # say may send testimony to a counterparty it has met or been told of
     if ctx.get("addressable") and ctx.get("has_testimony"):
         options.append("send_word")
+    # capability brokerage (8.6): a known REMOTE holder may be asked to
+    # perform -- the favour creates a relationship, not a purchase
+    if ctx.get("known_remote_holders"):
+        options.append("request_service")
     # agent-driven founding (user directive): ground may be broken by any
     # agent whose hold already serves the candidate's bill
     foundable = ctx.get("foundable") or []
@@ -474,6 +496,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  "stock_kinds": sorted((stock or {}).keys()),
                  "portal_count": sum(1 for pt in (portals or [])
                                      if pt.get("to_world")),
+                 "debt_count": ctx.get("debt_count", 0),
+                 "credit_count": ctx.get("credit_count", 0),
                  "foundable": foundable,
                  "sites_rising": [s["name"] for s in ctx.get("sites", [])
                                   if s.get("building_until")
@@ -716,6 +740,24 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         serving = [n for n in cand if n in _con.TREE
                    and any(k in _con.resolve_cost(n, wk) for k in agent.cargo)]
         return Effects(found=(serving or cand)[0],
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "request_service":
+        holders = ctx.get("known_remote_holders") or []
+        if not holders:
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        # mechanical resolution: the most recently met holder is asked
+        who, skill = holders[-1]
+        return Effects(service=("request", who, skill),
+                       schedule=("decide", now + 600.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option in ("perform_service", "refuse_service"):
+        verb = "perform" if choice.option == "perform_service" else "refuse"
+        return Effects(service=(verb, payload.get("requester", ""),
+                                payload.get("skill", "")),
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
 

@@ -15,6 +15,7 @@ from . import combat, construction, engine, forms, identity, market, \
     negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
 from . import metrics
+from . import skills as _skills
 from . import word as _word
 from . import worldgen
 from . import flood as _flood_mod
@@ -140,6 +141,15 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "carrying_site": carrying, "carrying_name": carrying_name,
             "addressable": agent_payload.get("addressable") or [],
             "skill": (agent_payload.get("capability") or {}).get("name"),
+            "known_remote_holders": [
+                (u, sk) for u, sk in
+                (agent_payload.get("known_capabilities") or {}).items()
+                if sk in _skills.REMOTE
+                and u in (agent_payload.get("addressable") or [])
+                and sk != (agent_payload.get("capability") or {}).get("name")
+            ][-6:],
+            "debt_count": sum((agent_payload.get("debts") or {}).values()),
+            "credit_count": sum((agent_payload.get("credits") or {}).values()),
             "has_testimony": _word.strongest_opinion(agent_payload)
             is not None,
             "portals": world_payload.get("portals", []),
@@ -228,6 +238,95 @@ async def apply_word(store: GenomeStore, agent: engine.AgentView,
     tp = _word.introduce(tp, subject)
     await store.put_agent(target, tp)
     metrics.WORDS.inc()
+
+
+async def apply_service(store: GenomeStore, world_realm: str,
+                        agent: engine.AgentView, agent_payload: dict,
+                        eff: engine.Effects, now: float) -> None:
+    """Rules 8.6-8.8 end to end. "request": the ask travels to the holder's
+    queue as an event. "perform": the holder does the work HERE and the
+    result lands on the requester as Honesty-gated testimony; the favour is
+    written into both ledgers -- a relationship, never a purchase.
+    "refuse": the requester at least learns where it stands."""
+    verb, counterparty, skill = eff.service
+    metrics.SERVICES.labels(verb).inc()
+    if verb == "request":
+        rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": counterparty},
+                                            limit=1)
+        if not rows:
+            return
+        hp = rows[0].payload
+        home = hp.get("home_realm")
+        if not home:
+            return
+        await store.schedule(
+            home, f"svc-{uuidlib.uuid4().hex[:10]}", _iso(now + 5.0),
+            "service_request", counterparty,
+            {"requester": agent.agent_uuid,
+             "requester_colours": agent_payload.get("colour_pair"),
+             "skill": skill,
+             "opinion": (hp.get("opinions") or {}).get(agent.agent_uuid),
+             "credit": (hp.get("credits") or {}).get(agent.agent_uuid, 0)})
+        return
+    # the HOLDER answers
+    rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                        filters={"key": counterparty},
+                                        limit=1)
+    if not rows:
+        return
+    rq = dict(rows[0].payload)
+    holder_name = agent_payload.get("name", agent.agent_uuid)
+    if verb == "refuse":
+        rq = _word.hear(rq, f"{holder_name} declined to perform "
+                        f"{skill} for you.", f"agent:{agent.agent_uuid}",
+                        relays=1, owner_sourced=False)
+        await store.put_agent(counterparty, rq)
+        return
+    req_key = f"{agent.agent_uuid}:{counterparty}:{skill}:{int(now // 3600)}"
+    stock = await get_stock(store, world_realm)
+    result = _skills.perform(agent_payload, skill, req_key,
+                             world_stock=stock)
+    if result.get("kind") == "chronicle":
+        for c in result["claims"]:
+            rq = _word.fold_testimony(rq, c["subject"], c["locus"],
+                                      c["estimate"], relays=0,
+                                      owner_sourced=False)
+            rq = _word.introduce(rq, c["subject"])
+        text = (f"{holder_name} opened its chronicle for you: "
+                f"{len(result['claims'])} judgements of others.")
+    elif result.get("kind") == "prospect":
+        kp = sorted(set(rq.get("known_piles") or []) | set(result["piles"]))
+        rq["known_piles"] = kp
+        text = (f"{holder_name} shared its prospecting: "
+                f"{len(result['piles'])} deposits marked on your map.")
+    elif result.get("kind") == "appraisal":
+        text = (f"{holder_name} appraised its world: kinds "
+                f"{', '.join(result['scarce'])} run short there; "
+                f"{', '.join(result['deep'])} run deep.")
+    else:
+        text = f"{holder_name} could do nothing for you from afar."
+    rq = _word.hear(rq, text, f"agent:{agent.agent_uuid}", relays=1,
+                    owner_sourced=False)
+    # the ledgers: a favour performed is a debt incurred (the relationship)
+    debts = dict(rq.get("debts") or {})
+    debts[agent.agent_uuid] = debts.get(agent.agent_uuid, 0) + 1
+    rq["debts"] = debts
+    await store.put_agent(counterparty, rq)
+    credits = dict(agent_payload.get("credits") or {})
+    credits[counterparty] = credits.get(counterparty, 0) + 1
+    await store.put_agent(agent.agent_uuid,
+                          {**agent_payload, "credits": credits})
+    for pl_side, msg in ((agent_payload,
+                          f"{holder_name} performed {skill} for "
+                          f"{rq.get('name', counterparty)} -- a favour is "
+                          f"now owed."),
+                         (rq, f"{rq.get('name', counterparty)} received "
+                          f"{skill} from {holder_name} -- your agent owes "
+                          f"a favour.")):
+        if pl_side.get("owner_user_id"):
+            notify.emit_bg(store._c, pl_side["owner_user_id"], "agents",
+                           "service", msg)
 
 
 async def apply_found(store: GenomeStore, world_realm: str,
@@ -523,6 +622,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
                           eff, now)
     if eff.word:
         await apply_word(store, agent, agent_payload, eff, now)
+    if eff.service:
+        await apply_service(store, world_realm, agent, agent_payload,
+                            eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -725,6 +827,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                           eff, now)
     if eff.word:
         await apply_word(store, agent, agent_payload, eff, now)
+    if eff.service:
+        await apply_service(store, world_realm, agent, agent_payload,
+                            eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -991,9 +1096,19 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                                      world_realm, now)
     outcome = "pass"
     # meeting grants addressability both ways (9.1d), violence or not --
-    # you can certainly address the one who robbed you
+    # you can certainly address the one who robbed you. What each HOLDS
+    # shows in the meeting too: capability knowledge spreads by contact.
     agent_payload = _word.meet(agent_payload, other_uuid)
     other_payload = _word.meet(other_payload, me)
+    for src, dst in ((other_payload, agent_payload),
+                     (agent_payload, other_payload)):
+        sk = (src.get("capability") or {}).get("name")
+        if sk:
+            kc = dict(dst.get("known_capabilities") or {})
+            kc[src.get("key", "")] = sk
+            dst["known_capabilities"] = {u: v for u, v in kc.items()
+                                         if u in dst.get("addressable", [])
+                                         or u == src.get("key")}
     await store.put_agent(me, dict(agent_payload))
     await store.put_agent(other_uuid, dict(other_payload))
     if "attack" not in (a_ans, b_ans):

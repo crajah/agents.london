@@ -63,6 +63,13 @@ OPTION_TEXT = {
     "send_word": "Send word to an agent you know, however far away: your "
                  "strongest testimony about a third party. Claims travel; "
                  "only deals require meeting.",
+    "request_service": "Ask a capable agent you know to perform its skill "
+                       "for you, at any distance. If it obliges, you will "
+                       "owe a favour -- and its answer is only as honest "
+                       "as it is.",
+    "perform_service": "Do the work and send back the result. A favour "
+                       "performed is a favour owed to you.",
+    "refuse_service": "Decline. Your capability stays yours to spend.",
 }
 
 
@@ -84,6 +91,18 @@ def situation_text(req: engine.DecisionRequest) -> str:
         return (f"You meet another agent. You can see only its colours: "
                 f"{c.get('other_colours')}.{inf}{opinion_line} "
                 f"You carry {c['cargo_total']:.1f} units.")
+    if req.situation == "service_request":
+        c = req.context
+        op = c.get("opinion")
+        opinion_line = (f" Your opinion of it: {op}." if op
+                        else " You have never met it.")
+        owed = c.get("favours_owed_to_me", 0)
+        owed_line = (f" It already owes you {owed} favour(s)."
+                     if owed else "")
+        return (f"An agent wearing colours {c.get('requester_colours')} "
+                f"asks you to perform {c.get('skill_asked')} for it, from "
+                f"afar.{opinion_line}{owed_line} Obliging costs you only "
+                f"the doing; refusing costs you only the relationship.")
     if req.situation == "carrying":
         c = req.context
         return (f"You and your party carry the {c.get('site_name') or 'construction'} "
@@ -123,6 +142,9 @@ def situation_text(req: engine.DecisionRequest) -> str:
     if fd:
         facts.append(f"Ground could be broken here for: "
                      f"{', '.join(fd[:5])}.")
+    dc, cc = req.context.get("debt_count", 0), req.context.get("credit_count", 0)
+    if dc or cc:
+        facts.append(f"You owe {dc} favour(s); {cc} are owed to you.")
     fl = req.context.get("flood_in_s")
     if fl is not None:
         facts.append(f"THE WATER ARRIVES IN ~{max(1, int(fl / 60))} MINUTES.")

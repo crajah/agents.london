@@ -25,7 +25,14 @@ CATALOGUE: dict[str, str] = {
     "Pathfinding": "Your journeys run a tenth quicker.",
     "Chronicle": "Your testimony carries double weight when others fold "
                  "it in.",
+    "Appraisal": "You read true scarcity: asked, you can tell which kinds "
+                 "run short in a world and which run deep.",
 }
+
+# The skills a holder can perform AT A DISTANCE for another agent (Rule
+# 8.6). Everything else is a capability of the body: it travels with the
+# holder and cannot be posted.
+REMOTE = {"Chronicle", "Prospecting", "Appraisal"}
 
 
 def roll_capability(agent_uuid: str) -> dict | None:
@@ -36,6 +43,53 @@ def roll_capability(agent_uuid: str) -> dict | None:
         return None
     name = r.choice(sorted(CATALOGUE))
     return {"kind": "skill", "name": name}
+
+
+def honesty_holds(holder_payload: dict, request_key: str) -> bool:
+    """Rule 8.8: the provider's Honesty governs whether the result is TRUE.
+    Deterministic per (holder, request) so a replay agrees -- and so a liar
+    lies consistently about the same question."""
+    from .genotype import norm
+    g = holder_payload.get("genotype") or {}
+    p_true = norm("Honesty", g.get("Honesty", 5000.0))
+    return random.Random(f"honesty:{holder_payload.get('key')}"
+                         f":{request_key}").random() < p_true
+
+
+def perform(holder_payload: dict, skill: str, request_key: str,
+            world_stock: dict | None = None) -> dict:
+    """The holder does the work and RETURNS A RESULT (Rule 8.7) -- never the
+    tool. What comes back is testimony, true at the holder's Honesty."""
+    truthful = honesty_holds(holder_payload, request_key)
+    r = random.Random(f"svc:{request_key}")
+    if skill == "Chronicle":
+        out = []
+        for subject, loci in sorted(
+                (holder_payload.get("opinions") or {}).items())[:3]:
+            for locus, v in sorted(loci.items())[:2]:
+                est = v.get("estimate", 5000.0)
+                if not truthful:
+                    est = 10000.0 - est          # a liar inverts the record
+                out.append({"subject": subject, "locus": locus,
+                            "estimate": est})
+        return {"kind": "chronicle", "claims": out, "_truthful": truthful}
+    if skill == "Prospecting":
+        piles = list(holder_payload.get("known_piles") or [])[:10]
+        if not truthful:
+            piles = [f"pile-{r.getrandbits(40):010x}" for _ in piles]
+        return {"kind": "prospect",
+                "realm": holder_payload.get("realm_hint"),
+                "piles": piles, "_truthful": truthful}
+    if skill == "Appraisal":
+        stock = world_stock or {}
+        ranked = sorted(stock.items(), key=lambda kv: kv[1])
+        scarce = [k for k, _ in ranked[:3]]
+        deep = [k for k, _ in ranked[-3:]]
+        if not truthful:
+            scarce, deep = deep, scarce
+        return {"kind": "appraisal", "scarce": scarce, "deep": deep,
+                "_truthful": truthful}
+    return {"kind": "nothing"}
 
 
 def held(payload: dict) -> str | None:
