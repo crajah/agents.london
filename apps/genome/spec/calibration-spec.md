@@ -129,7 +129,7 @@ founder.
 flood fires **two full days after the countdown actually became visible**. An
 infrastructure delay shifts the flood; it never shortens the warning.
 
-> Agents should lose to the game, never to an outage. Rule 4.8's two days is the
+> Agents should lose to the game, never to an outage. construction-spec.md Rule 4.8's two days is the
 > basis of every evacuation and boarding decision in `construction-spec.md` §4.2,
 > and a warning that could silently shrink would make those decisions gambles on
 > the platform rather than on the world.
@@ -147,7 +147,7 @@ chosen deliberately rather than defaulted into by whoever writes the code first.
 
 | Quantity | Blocks | Note |
 | :--- | :--- | :--- |
-| **Pile regeneration rate range** | Phase 1.1 | Rule 4.6 assigns each pile its own; the range is unset |
+| **Pile regeneration rate range** | Phase 1.1 | genome-spec.md Rule 4.6 assigns each pile its own; the range is unset |
 | **Base collection rate** | Phase 1.1 | A Toolhouse improves it, so a base exists |
 | **Cargo decay rate** | Phase 1.1 | Rule 4.18 decays carried cargo; the rate governs how far an agent can usefully range |
 | **Infection distance range** | Phase 9 | `pathogen-spec.md` 2.4 gives strains a radius; the range is unset |

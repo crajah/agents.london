@@ -265,7 +265,7 @@ Expect regional Ark coalitions to form around a focal builder, and expect the
 competition to be over *which* Ark rather than whether to build one.
 
 **And it gives a poorly connected user a role rather than an exclusion.** The
-fairness problem in Rule 6.2 — a trade graph nobody chose — is at its worst here,
+fairness problem in genome-spec.md Rule 6.2 — a trade graph nobody chose — is at its worst here,
 since a user with few links can reach few kinds and fewer partners. But
 contribution requires only *reaching* an Ark, not leading one. A user who can
 touch a single well-connected neighbour can put agents aboard a vessel they could
@@ -366,7 +366,7 @@ prevention, resistance or waiting it out. A capstone that clears an active
 infection makes the Life branch worth completing even for a user who never
 intends to build an Ark, which is a good property for a branch to have.
 
-**Observatory is the counterweight to the LinkedIn topology.** Rule 6.2 hands a
+**Observatory is the counterweight to the LinkedIn topology.** genome-spec.md Rule 6.2 hands a
 user a trade graph they did not choose, and the Water capstone is the only thing
 in the design that lets them see past it — including other worlds' flood clocks
 (§4.2.1). Whether it also lets them *create* links is a much larger question
@@ -728,7 +728,7 @@ genotype intact, and everything earned gone.
 
 ### 4.1.1 What the flood actually takes
 
-The genotype survives either way. Rule 7.2 already guarantees that. So the Ark is
+The genotype survives either way. genome-spec.md Rule 7.2 already guarantees that. So the Ark is
 not saving agents from extinction — it is saving them from **amnesia**:
 
 | Lost by drowning | Kept by boarding |
@@ -974,7 +974,7 @@ ever emerges owning a hull.
 > design's most distinctive constraint. Working through the consequences, creating
 > links is the better answer, because of how it interacts with the flood.
 >
-> **It converts structural inequality from permanent to initial.** Rule 6.2 hands
+> **It converts structural inequality from permanent to initial.** genome-spec.md Rule 6.2 hands
 > a user a trade graph they did not choose, and reveal-only would have made that a
 > cage for the entire life of the simulation — a poorly connected user could see
 > exactly how badly placed they were and do nothing about it. Creating links means

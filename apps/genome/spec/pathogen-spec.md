@@ -198,7 +198,7 @@ space and is **lost when the agent perishes** (`genome-spec.md` Rule 7.3).
 
 > The split is not invented for the occasion; it falls out of rules already
 > written. `genotype-spec.md` Rule 5.1 makes gained attributes uninheritable, and
-> Rule 7.3 destroys what an agent learned when it dies. Applying both to immunity
+> genome-spec.md Rule 7.3 destroys what an agent learned when it dies. Applying both to immunity
 > gives exactly the biological division between **innate** immunity, which is
 > inherited, and **adaptive** immunity, which is earned in a lifetime and dies
 > with the body. That the simulation's existing rules produce that division
@@ -455,7 +455,7 @@ would destroy data permanently, which is not an expression change at all.
 > corrosive to the product is not a trade worth making.**
 
 **4.6 Decided** — a regenerated agent returns **cured and unimmunised**.
-Rule 7.2's "original state" is taken literally: no infection, and none of the
+genome-spec.md Rule 7.2's "original state" is taken literally: no infection, and none of the
 antigens the agent had earned (Rule 2.19).
 
 > Death is therefore a cure and an amnesia at once, which is what stops it being

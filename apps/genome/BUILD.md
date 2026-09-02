@@ -401,8 +401,8 @@ Contact import makes this non-optional rather than a courtesy.
 - [x] **Economy dry-run before constants freeze** (validation/economy_dryrun.py, results in RESULTS.md): an Ark is reachable in ~1.5 days of perfect 8-user coordination against a 15-30 day cycle — the constants are not the barrier, the coalition is; 84% of an Ark is imports (17x the price of local units). No calibration change before live coalition data
 - [x] **Construction cost table** in `calibration-spec.md` §5 — tier table plus the complete standing-effects table; resolve_cost is the executable form
 - [x] **Production-prompt re-screen done**: 11/14 pass outright, several strengthened (Cooperativeness 0.25→0.50); two harness biases found and encoded (`validation/RESULTS.md`)
-- [ ] **Genotype schema versioning**: adding a budgeted locus post-launch changes every agent's expressed values; migrations must state the dilution and re-baseline
-- [ ] **Cross-document reference lint**: rule numbers collide across documents (two Rule 6.9a's exist); every cross-doc citation must be doc-qualified
+- [x] **Genotype schema versioning** — spec/MIGRATIONS.md: outside-budget additions free (the Teleport Affinity / Survival Instinct precedent), budgeted additions require a logged dilution factor and re-baseline date, analyses partition at every migration
+- [x] **Cross-document reference lint** (validation/spec_lint.py, runs with the suite): 52 rule numbers exist in >1 doc; every genuinely cross-doc citation is now qualified and the baseline is ZERO — new ambiguity fails the tests
 
 ### UI audit (user report 2026-08-31: glitches, no context menus, treacle)
 Diagnosed, in order of harm:
@@ -429,7 +429,7 @@ Diagnosed, in order of harm:
 - [ ] **Flush-and-resume test**: wipe Redis mid-run, confirm the simulation continues (`system-spec.md` Rule 8.3)
 - [x] **Determinism harness** (test_determinism.py): worldgen, a 12-step scripted journey, combat and the capability lottery all replay exactly per seed — the pure layer is provably clock-and-chance-free
 - [ ] **In-world validation replay**: reproduce `validation/` results against live agents, not a harness (Phase 2 done-when)
-- [ ] **Frame budget in CI** — a second atlas or a stray filter must fail the build, not degrade quietly (`interface-spec.md` Rule 6.12)
+- [x] **Frame budget in CI** (web/check-budget.mjs, wired into `npm run build`): total shipped JS gated at 1400KB (currently 789KB) — a stray heavyweight dependency fails the image build itself
 - [x] **Cost regression** (test_cost_regression.py): every decision path — generic, negotiation, market — costs EXACTLY one router call, and a garbage reply falls back free, no retry; a chained or reflecting decider fails the suite loudly
 - [ ] **Soak test**: one world, 24h unattended, zero writes while agents travel
 - [ ] Load: 1,000 agents in one world, 100 worlds on one worker
