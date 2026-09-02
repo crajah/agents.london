@@ -243,8 +243,9 @@ async def tick_once(store: GenomeStore, realm: str, decider,
 async def main() -> None:
     if not REALMS:
         raise SystemExit("set GENOME_REALMS")
-    client = AsyncPostGraph(dsn=dsn())   # SCHEMA_PER_REALM deliberately unset
-    await client.connect(min_size=1, max_size=4)
+    client = AsyncPostGraph(dsn=dsn(), pool_min_size=1,
+                            pool_max_size=4)   # SCHEMA_PER_REALM unset
+    await client.connect()
     store = GenomeStore(client)
     decider = make_decider(USE_LLM) if INLINE else None
     stop = asyncio.Event()

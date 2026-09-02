@@ -44,13 +44,13 @@ DB_URI = os.getenv(
 def make_client() -> AsyncPostGraph:
     """SCHEMA_PER_REALM is deliberately NOT passed (user decision, recorded in
     genome_core/store.py): the environment and post-graph's default decide."""
-    return AsyncPostGraph(dsn=DB_URI)
+    return AsyncPostGraph(dsn=DB_URI, pool_min_size=1, pool_max_size=5)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = make_client()
-    await client.connect(min_size=1, max_size=5)
+    await client.connect()
     app.state.pg = client
     try:
         await store.ensure_agents_realm(client)
