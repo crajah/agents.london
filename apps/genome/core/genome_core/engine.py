@@ -100,6 +100,8 @@ class Effects:
     # site_key) — construction-spec §3.10–3.13; the caller applies
     found: str | None = None                     # construction name to break
     # ground on at the agent's feet (agent-driven founding, 2026-09-02)
+    word: str | None = None                      # addressable counterparty to
+    # send testimony to at ANY distance (Rules 9.1c/9.1d); caller applies
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -413,6 +415,10 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         # a portal exists somewhere in this world and this agent is one that
         # crosses: walking to a door is now a CHOOSABLE act, not an accident
         options.append("travel_to_portal")
+    # word at a distance (9.1c): an agent with a rolodex and something to
+    # say may send testimony to a counterparty it has met or been told of
+    if ctx.get("addressable") and ctx.get("has_testimony"):
+        options.append("send_word")
     # agent-driven founding (user directive): ground may be broken by any
     # agent whose hold already serves the candidate's bill
     foundable = ctx.get("foundable") or []
@@ -692,6 +698,17 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                    and any(k in _con.resolve_cost(n, wk) for k in agent.cargo)]
         return Effects(found=(serving or cand)[0],
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "send_word":
+        addr = ctx.get("addressable") or []
+        if not addr:
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        # mechanical resolution: the most recently met counterparty hears it
+        return Effects(word=choice.target if choice.target in addr
+                       else addr[-1],
+                       schedule=("decide", now + 300.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
 
     if choice.option == "take_up_construction":

@@ -32,6 +32,8 @@ TRANSFERS = Counter("genome_transfers_total",
 PORTAGE = Counter("genome_portage_total",
                   "Construction portage operations", ["op"])
 FLOODS = Counter("genome_floods_total", "Flood executions")
+WORDS = Counter("genome_words_total",
+                "Testimony sent at a distance (A2A send_word)")
 CONTRIBUTIONS = Counter("genome_contributions_total",
                         "Cargo poured into construction sites")
 QUEUE_DEPTH = Gauge("genome_decision_queue_depth",

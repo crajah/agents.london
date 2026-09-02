@@ -140,7 +140,7 @@ The bet the whole design rests on. Prove it before building on it.
 - [x] **Surprise-weighted update** `E' = E + K(S − σ(κ(E − θ)))` (Rule 6.10a)
 - [x] General opinion seeds strangers, population mean at materialisation (6.9a/6.9b)
 - [x] Colour **not** in the seed (6.9c)
-- [ ] Owner-sourced evidence decays faster, compounding per relay (6.10b)
+- [x] Owner-sourced evidence decays faster, compounding per relay (6.10b) — testimony folds at k=0.25·0.6^hops, halved again when the chain began at an owner; proven monotone in tests
 
 ### 2.5 Budget
 - [x] Token bucket, 10/day, capacity 12 (`execution-spec.md` Rule 5.2) — wired: counters charge it; a broke agent bargains take-it-or-leave-it
@@ -249,8 +249,8 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] **Negotiation lands** (execution-spec §7): mutual offer_trade opens a bounded turn sequence — propose/counter/accept/walk_away, six turns then death (7.2), acceptance BINDING with both purses verified at the instant (7.3), an empty purse killing rather than half-executing; state on a negotiations vertex, every turn an LLM decision through the ordinary queue (deliberative tier, JSON offer), non-strategic fallback proposes-then-walks. Live within minutes: three negotiations opened organically, first completed one a genuine walk-away refusal
 
 - [ ] A2A endpoints **per worker**, agent identity in the envelope (`system-spec.md` Rule 8.5)
-- [ ] Claims, questions, testimony, capability requests travel freely (`genome-spec.md` Rule 9.1c)
-- [ ] **Binding proposals require co-location** (9.1b); addressable counterparties only (9.1d)
+- [x] Claims, questions, testimony travel freely (Rule 9.1c) — send_word carries an agent's strongest weighted opinion to any addressable counterparty at any distance; the receiver hears it, folds it as relay-decayed evidence, and learns the subject exists. Capability requests (8.8) remain open
+- [x] **Binding proposals require co-location** (9.1b — negotiation/trade already encounter-gated); addressable counterparties only (9.1d) — the rolodex grows by MEETING (both ways, violence included) and by INTRODUCTION (testimony about a third party makes it addressable; introductions are worth something); capped 24, newest kept; the drowned wake with an empty rolodex
 - [ ] Capability brokerage: holder performs, returns a result, never lends (8.6–8.8)
 - [ ] Negotiation: bounded turn sequence, state in the event payload (`execution-spec.md` Rule 7.1)
 - [ ] Ends at **six turns** or when a party cannot afford to continue (7.2)
@@ -272,7 +272,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 
 - [ ] Per-agent chat, opened by clicking an agent; persisted in that agent's store
 - [ ] **Instruction vs assertion shown at send time** (`interface-spec.md` Rule 3.3, `genome-spec.md` Rule 13.5)
-- [ ] Owner-sourced marking survives relay (13.5a); Loyalty disposes relaying (13.5b)
+- [x] Owner-sourced marking survives relay (13.5a); Loyalty disposes relaying (13.5b) — at peaceful encounters a head may leak its owner's standing word: probability 1−norm(Loyalty), deterministic per moment; the leak arrives marked [a leaked owner confidence] with hop count, and the marks reach the hearer's prompt
 - [ ] Agent inspector: genotype and expression for **any** agent (13.1)
 - [ ] Observe any world read-only (13.2); observation confers nothing on agents (13.3)
 - [ ] **Agent-facing and user-facing reads on separate paths** (`interface-spec.md` Rule 1.1)

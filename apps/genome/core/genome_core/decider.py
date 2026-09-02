@@ -60,6 +60,9 @@ OPTION_TEXT = {
     "travel_to_portal": "Walk to the nearest portal in this world.",
     "found_construction": "Break ground for a new construction here -- "
                           "others (and you) can then pour cargo into it.",
+    "send_word": "Send word to an agent you know, however far away: your "
+                 "strongest testimony about a third party. Claims travel; "
+                 "only deals require meeting.",
 }
 
 

@@ -15,6 +15,7 @@ from . import combat, construction, engine, forms, identity, market, \
     negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
 from . import metrics
+from . import word as _word
 from . import worldgen
 from . import flood as _flood_mod
 from .models import assign_models
@@ -131,6 +132,9 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
     return {"genotype": agent_payload.get("genotype") or {},
             "time_scale": world_payload.get("time_scale", 1.0),
             "carrying_site": carrying, "carrying_name": carrying_name,
+            "addressable": agent_payload.get("addressable") or [],
+            "has_testimony": _word.strongest_opinion(agent_payload)
+            is not None,
             "portals": world_payload.get("portals", []),
             "world_kinds": world_payload.get("kinds", []),
             "foundable": (construction.foundable_names(sites)
@@ -185,6 +189,34 @@ async def learn_nearby_plans(store: GenomeStore, agent: engine.AgentView,
                            f"studied the drawing for '{name}'.")
     agent_payload["plans_known"] = known
     await store.put_agent(agent.agent_uuid, dict(agent_payload))
+
+
+async def apply_word(store: GenomeStore, agent: engine.AgentView,
+                     agent_payload: dict, eff: engine.Effects,
+                     now: float) -> None:
+    """Rules 9.1c/9.1d: a claim travels to a counterparty this agent has met
+    or been told of, wherever both stand. The receiver hears it, folds it as
+    relay-decayed evidence (6.10b), and learns the SUBJECT exists (an
+    introduction, addressable in turn)."""
+    target = eff.word
+    said = _word.strongest_opinion(agent_payload)
+    if not target or said is None:
+        return
+    subject, locus, v = said
+    rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                        filters={"key": target}, limit=1)
+    if not rows:
+        return
+    tp = dict(rows[0].payload)
+    text = (f"{agent_payload.get('name', agent.agent_uuid)} says: my read of "
+            f"{subject} on {locus} is about {int(v['estimate'] / 100)}%.")
+    tp = _word.hear(tp, text, f"agent:{agent.agent_uuid}", relays=1,
+                    owner_sourced=False)
+    tp = _word.fold_testimony(tp, subject, locus, v["estimate"], relays=1,
+                              owner_sourced=False)
+    tp = _word.introduce(tp, subject)
+    await store.put_agent(target, tp)
+    metrics.WORDS.inc()
 
 
 async def apply_found(store: GenomeStore, world_realm: str,
@@ -478,6 +510,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.found:
         await apply_found(store, world_realm, agent, agent_payload,
                           eff, now)
+    if eff.word:
+        await apply_word(store, agent, agent_payload, eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -678,6 +712,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.found:
         await apply_found(store, world_realm, agent, agent_payload,
                           eff, now)
+    if eff.word:
+        await apply_word(store, agent, agent_payload, eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -943,7 +979,28 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
     other_view, _ = await load_agent(store, world_realm, other_uuid,
                                      world_realm, now)
     outcome = "pass"
+    # meeting grants addressability both ways (9.1d), violence or not --
+    # you can certainly address the one who robbed you
+    agent_payload = _word.meet(agent_payload, other_uuid)
+    other_payload = _word.meet(other_payload, me)
+    await store.put_agent(me, dict(agent_payload))
+    await store.put_agent(other_uuid, dict(other_payload))
     if "attack" not in (a_ans, b_ans):
+        # Rule 13.5b: whether a head leaks its owner's standing word is
+        # Loyalty's call; the mark and the hop-count survive every relay
+        # (13.5a), and each hop folds weaker downstream (6.10b)
+        for src_pl, dst_uuid, dst_pl in ((agent_payload, other_uuid,
+                                          other_payload),
+                                         (other_payload, me, agent_payload)):
+            conf = _word.relayable_confidence(src_pl)
+            if conf and _word.would_relay_confidence(
+                    src_pl, f"{pl['key']}:{src_pl.get('key', '')}"):
+                leaked = _word.hear(
+                    dst_pl, f"their owner told them: {conf}",
+                    f"agent:{src_pl.get('key', '')}", relays=1,
+                    owner_sourced=True)
+                dst_pl.update(leaked)
+                await store.put_agent(dst_uuid, dict(dst_pl))
         # Rule 13.6: designs pass between heads that met without violence --
         # the third population spreads exactly here, agent to agent
         from . import plans as _plans
@@ -1326,6 +1383,7 @@ async def regenerate(store: GenomeStore, event_realm: str,
             pass
     await store.set_presence(home, a, True)
     reborn = {**agent_payload,
+              "addressable": [], "heard": [],
               "plans_known": [],   # Rule 13.8 read strictly: knowledge
               # survives in LIVING carriers; the dead wake knowing nothing
               "known_piles": [], "explored": [], "opinions": {},
