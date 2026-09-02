@@ -57,6 +57,9 @@ OPTION_TEXT = {
                        "moving as one body with your party.",
     "set_down_construction": "Set the construction down where you stand; "
                              "the party's hands open.",
+    "travel_to_portal": "Walk to the nearest portal in this world.",
+    "found_construction": "Break ground for a new construction here -- "
+                          "others (and you) can then pour cargo into it.",
 }
 
 
@@ -99,9 +102,34 @@ def situation_text(req: engine.DecisionRequest) -> str:
         lift_line = (f" A completed {req.context.get('portable_name')} stands "
                      f"here and may be taken up and carried "
                      f"({req.context.get('portable_crew')}).")
+    facts = []
+    wk = req.context.get("world_kinds")
+    if wk:
+        facts.append(f"This world yields only kinds "
+                     f"{', '.join(str(k) for k in wk)} of the 20 that exist; "
+                     f"other kinds exist only in other worlds.")
+    pc = req.context.get("portal_count")
+    if pc:
+        facts.append(f"{pc} portal(s) stand in this world, each leading "
+                     f"somewhere else.")
+    facts.append("A new agent for a line costs four DISTINCT kinds -- no "
+                 "single world can supply them alone. Floods periodically "
+                 "drown every agent present in a world; an Ark berth or "
+                 "absence are the only shelters.")
+    fd = req.context.get("foundable")
+    if fd:
+        facts.append(f"Ground could be broken here for: "
+                     f"{', '.join(fd[:5])}.")
+    fl = req.context.get("flood_in_s")
+    if fl is not None:
+        facts.append(f"THE WATER ARRIVES IN ~{max(1, int(fl / 60))} MINUTES.")
+    sr = req.context.get("sites_rising")
+    if sr:
+        facts.append(f"Rising now: {', '.join(sr)}.")
+    fact_block = " ".join(facts)
     return (f"You are {where}, carrying {req.context['cargo_total']:.1f} of a "
             f"maximum 15 units. {len(req.context['reachable'])} other pile(s) "
-            f"are known to you.{portal_line}{lift_line}")
+            f"are known to you.{portal_line}{lift_line}\n\n{fact_block}")
 
 
 def llm_decider(req: engine.DecisionRequest, genotype: dict,
@@ -110,6 +138,21 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
                 objectives: list[str] | None = None,
                 heard: list[dict] | None = None) -> engine.Choice:
     model = assign_models(req.agent_uuid)["economy"]
+    # User directive 2026-09-02: the coming water rewrites the agenda -- Ark
+    # first, survival second -- for any line whose Survival Instinct answers.
+    # A reckless genotype (bottom fifth) keeps its own priorities and drowns
+    # as it lived.
+    if req.context.get("flood_in_s") is not None:
+        from .genotype import norm as _n
+        if _n("Survival Instinct",
+              (genotype or {}).get("Survival Instinct", 5000.0)) >= 0.2:
+            objectives = ([
+                "THE WATER IS COMING. Prime directive: an Ark must stand "
+                "in this world with you aboard -- break ground, feed it, "
+                "board it, or bargain for a berth.",
+                "Then survive: if no Ark can rise in time, be elsewhere "
+                "when the water arrives."]
+                + list(objectives or []))[:5]
     # Rule 10.1a/10.1b: the owner's objectives outrank the standing floor and
     # MUST reach the prompt -- they were hardcoded empty once, and three
     # max-Wanderlust agents dutifully refused a portal because "deposit at

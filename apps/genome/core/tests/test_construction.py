@@ -134,7 +134,17 @@ class TestReservation(unittest.TestCase):
         res = asyncio.run(C.contribute(fc, "w", "s", "u:second", "a2",
                                        {"17": 6.0}))
         self.assertAlmostEqual(sum(res["taken"].values()), 5.0)
-        self.assertTrue(res["complete"])
+        # filled + crewed no longer completes INSTANTLY: the build clock
+        # starts (user directive: tiered build time) and finalize() lands it
+        self.assertTrue(res["building_started"])
+        self.assertFalse(res["complete"])
+        import time
+        self.assertLess(res["building_until"],
+                        time.time() + C.BUILD_MINUTES[2] * 60 + 5)
+        done = asyncio.run(C.finalize(fc, "w", "s",
+                                      res["building_until"] + 1))
+        self.assertTrue(done["ok"])
+        self.assertTrue(fc.site["complete"])
 
 
 if __name__ == "__main__":

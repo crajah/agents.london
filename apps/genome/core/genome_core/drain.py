@@ -129,6 +129,9 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "time_scale": world_payload.get("time_scale", 1.0),
             "carrying_site": carrying, "carrying_name": carrying_name,
             "portals": world_payload.get("portals", []),
+            "world_kinds": world_payload.get("kinds", []),
+            "foundable": construction.foundable_names(sites)
+            if not world_payload.get("is_commons") else [],
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
             "muster": world_payload.get("muster_points", []),
@@ -142,6 +145,27 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "colour_pair": agent_payload.get("colour_pair"),
             "caches": [s for s in sites if s.get("name") == "cache"],
             **effects}
+
+
+async def apply_found(store: GenomeStore, world_realm: str,
+                      agent: engine.AgentView, agent_payload: dict,
+                      eff: engine.Effects, now: float) -> None:
+    """Agent-driven ground-breaking (user directive 2026-09-02): the agent
+    founds for its LINE -- attribution lands on its owner so Rule 3.3's
+    distinct-user ledger stays honest; a free agent founds as itself."""
+    wp = await _world_payload(store, world_realm)
+    uid = agent_payload.get("owner_user_id") \
+        or f"free:{agent_payload.get('lineage', agent.agent_uuid)}"
+    res = await construction.found_site(
+        store._c, world_realm, uid, eff.found, agent.x, agent.y,
+        [int(k) for k in wp.get("kinds", [])])
+    if res.get("ok"):
+        metrics.PORTAGE.labels("found").inc()
+        if agent_payload.get("owner_user_id"):
+            notify.emit_bg(store._c, agent_payload["owner_user_id"], "world",
+                           "ground_broken",
+                           f"{agent_payload.get('name', agent.agent_uuid)} "
+                           f"broke ground on a {eff.found}.")
 
 
 async def apply_portage(store: GenomeStore, world_realm: str,
@@ -264,9 +288,17 @@ async def apply_contribution(store: GenomeStore, world_realm: str,
     agent (construction.contribute is authoritative under races)."""
     site_key, offered = eff.contribute
     metrics.CONTRIBUTIONS.inc()
+    wp = await _world_payload(store, world_realm)
     res = await construction.contribute(
         store._c, world_realm, site_key,
-        agent_payload.get("owner_user_id", ""), agent.agent_uuid, offered)
+        agent_payload.get("owner_user_id", ""), agent.agent_uuid, offered,
+        time_scale=wp.get("time_scale", 1.0))
+    if res.get("building_started"):
+        # the completion is an EVENT, like everything else in this world
+        await store.schedule(world_realm,
+                             f"built-{site_key}-{int(res['building_until'])}",
+                             _iso(res["building_until"]), "construction_done",
+                             agent.agent_uuid, {"site_key": site_key})
     taken = res.get("taken", {})
     if taken:
         cargo = dict(agent.cargo)
@@ -397,6 +429,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.portage:
         await apply_portage(store, world_realm, agent, agent_payload,
                             eff, now)
+    if eff.found:
+        await apply_found(store, world_realm, agent, agent_payload,
+                          eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -458,6 +493,13 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         await store.complete_event(world_realm, pl["key"], _iso(now))
         return await regenerate(store, world_realm, agent, agent_payload, now,
                                 cause=pl["payload"].get("cause", "longevity"))
+
+    if pl["kind"] == "construction_done":
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        res = await construction.finalize(store._c, world_realm,
+                                          pl["payload"]["site_key"], now)
+        return f"built:{res.get('name', pl['payload']['site_key'])}" \
+            if res.get("ok") else f"build_pending:{res.get('error')}"
 
     if pl["kind"] == "mating_answer":
         ans = pl["payload"]["answer"]
@@ -578,6 +620,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.portage:
         await apply_portage(store, world_realm, agent, agent_payload,
                             eff, now)
+    if eff.found:
+        await apply_found(store, world_realm, agent, agent_payload,
+                          eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)

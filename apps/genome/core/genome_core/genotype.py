@@ -32,13 +32,16 @@ RANGES: dict[str, tuple[float, float]] = {
     "Loyalty": (0, 10000), "Patience": (0, 10000), "Curiosity": (0, 10000),
     "Prudence": (0, 10000), "Wanderlust": (0, 10000), "Fecundity": (0, 10000),
     "Selectivity": (0, 10000), "Teleport Affinity": (0, 10000),
+    "Survival Instinct": (0, 10000),   # user directive 2026-09-02: how hard
+    # the coming water bends this agent's will toward the Ark
     # meta (outside)
     "Gender": (0, 1), "Mutability": (0, 10000),
 }
 
 DISPOSITIONS = ["Cooperativeness", "Reciprocity", "Vindictiveness", "Aggression",
                 "Honesty", "Credulity", "Amenability", "Loyalty", "Patience",
-                "Curiosity", "Prudence", "Wanderlust", "Fecundity", "Selectivity"]
+                "Curiosity", "Prudence", "Wanderlust", "Fecundity",
+                "Selectivity", "Survival Instinct"]
 OUTSIDE_BUDGET = set(DISPOSITIONS) | {"Gender", "Mutability"}  # + colour, prefs
 BUDGETED = [k for k in RANGES if k not in OUTSIDE_BUDGET]
 
@@ -194,6 +197,27 @@ def breeding_cost_met(cargo_a: dict, cargo_b: dict) -> dict | None:
 # One line per locus for human surfaces (the inspector's hover text).
 # Spec-faithful compressions of genotype-spec.md; adding a locus here is
 # part of adding it at all.
+def default_objectives(genotype: dict[str, float]) -> list[str]:
+    """The standing floor when an owner has said nothing (user directive
+    2026-09-02): objectives DERIVED from the genotype, deterministically, so
+    heritable temperament becomes visible strategy. Never advice on HOW --
+    each is a telos the dispositions already imply."""
+    g = genotype or {}
+    n = lambda k: norm(k, g.get(k, 5000.0))
+    out = []
+    if n("Wanderlust") >= 0.55 and n("Teleport Affinity") >= 0.15:
+        out.append("See what lies beyond: cross portals and learn what "
+                   "other worlds hold.")
+    if (n("Cooperativeness") + n("Curiosity")) / 2 >= 0.55:
+        out.append("Raise lasting works: found and feed constructions, "
+                   "with others where hands are short.")
+    if n("Reciprocity") >= 0.55:
+        out.append("Trade for the kinds your line lacks.")
+    out.append("Keep your line provisioned: gather what this world yields "
+               "and deposit it at home.")
+    return out[:3]
+
+
 DESCRIPTIONS: dict[str, str] = {
     "Aggression": "Readiness to attack for what it wants",
     "Agility": "Evading blows; part of Speed and Counsel",
@@ -224,6 +248,8 @@ DESCRIPTIONS: dict[str, str] = {
     "Reciprocity": "Returning favours and remembering debts",
     "Selectivity": "Minimum attractiveness accepted in a mate",
     "Sight": "Radius revealed around it on arrival",
+    "Survival Instinct": "How completely an imminent flood overrides all "
+                         "other purposes",
     "Synthesis Speed": "How fast an antigen is made once infection is detected",
     "Teleport Affinity": "Willingness to step through a portal at all",
     "Vindictiveness": "How long wrongs are held against the wrongdoer",

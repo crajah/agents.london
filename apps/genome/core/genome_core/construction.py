@@ -63,6 +63,16 @@ CONTRIBUTORS["foundation"] = 3           # capstone, though tier 4 in earth
 
 TABLE = "constructions"
 
+# User directive 2026-09-02: a filled, fully-crewed site RISES over time --
+# longer the higher the tier, never so long the watch goes stale. Divided by
+# the world's time_scale like every other duration.
+BUILD_MINUTES = {1: 15, 2: 30, 3: 60, 4: 90, 5: 120, 6: 180}
+
+# User directive: the Ark is ASSEMBLED -- its sub-components must be dragged
+# together (portage) before the convergence tier can be founded. Prereqs of a
+# convergence construction must stand within this radius of the new ground.
+ASSEMBLY_RADIUS = 0.15
+
 
 def resolve_cost(name: str, world_kinds: list[int]) -> dict[str, float]:
     """Calibration §5: the world's own kinds where they qualify, lowest
@@ -99,18 +109,66 @@ async def completed_names(client: Any, realm: str) -> set[str]:
             and not v.payload.get("spent")}
 
 
+def _prereqs(name: str) -> tuple:
+    after = TREE[name]["after"]
+    return (after,) if isinstance(after, str) else (after or ())
+
+
+def foundable_names(sites: list[dict]) -> list[str]:
+    """What may break ground here NOW: prerequisites standing complete (for
+    the convergence tier, complete AND huddled within ASSEMBLY_RADIUS of one
+    another -- the drag-the-components-together rule), and no live duplicate
+    already under way or standing."""
+    done = {s["name"]: s for s in sites
+            if s.get("complete") and not s.get("destroyed")
+            and not s.get("spent")}
+    live = {s["name"] for s in sites
+            if not s.get("destroyed") and not s.get("spent")}
+    out = []
+    for name in TREE:
+        if name in live:
+            continue
+        need = _prereqs(name)
+        if any(a not in done for a in need):
+            continue
+        if TREE[name]["branch"] == "convergence" and len(need) > 1:
+            pts = [(done[a]["x"], done[a]["y"]) for a in need]
+            cx = sum(q[0] for q in pts) / len(pts)
+            cy = sum(q[1] for q in pts) / len(pts)
+            if any((qx - cx) ** 2 + (qy - cy) ** 2 > ASSEMBLY_RADIUS ** 2
+                   for qx, qy in pts):
+                continue
+        out.append(name)
+    return out
+
+
 async def found_site(client: Any, realm: str, user_id: str, name: str,
                      x: float, y: float, world_kinds: list[int]) -> dict:
-    """Owner breaks ground. Prerequisites are constructions standing COMPLETE
-    in this world (Rule 3.2's transitivity arrives via the tree)."""
+    """Ground is broken by an AGENT for its line (user directive 2026-09-02:
+    no human hand needed) or by the owner through the API -- either way the
+    tree itself never bends: names come from TREE and only from TREE
+    (Rule 3.9a; user plans are ADDITIVE trees, arriving with 13.6)."""
     if name not in TREE:
         return {"error": f"no construction named {name}"}
-    done = await completed_names(client, realm)
-    after = TREE[name]["after"]
-    needs_after = (after,) if isinstance(after, str) else (after or ())
+    done_sites = {v.payload["name"]: v.payload
+                  for v in await sites_in(client, realm)
+                  if v.payload.get("complete")
+                  and not v.payload.get("destroyed")
+                  and not v.payload.get("spent")}
+    done = set(done_sites)
+    needs_after = _prereqs(name)
     missing = [a for a in needs_after if a not in done]
     if missing:
         return {"error": f"requires completed: {', '.join(missing)}"}
+    if TREE[name]["branch"] == "convergence":
+        # assembly: every sub-component dragged to the new ground
+        far = [a for a in needs_after
+               if (done_sites[a]["x"] - x) ** 2
+               + (done_sites[a]["y"] - y) ** 2 > ASSEMBLY_RADIUS ** 2]
+        if far:
+            return {"error": f"the {name} is assembled from its parts: "
+                    f"{', '.join(far)} stand too far from this ground "
+                    f"-- carry them here first"}
     for v in await sites_in(client, realm):
         if v.payload["name"] == name and not v.payload.get("complete") \
                 and not v.payload.get("destroyed"):
@@ -142,7 +200,8 @@ def accepts(site: dict, cargo: dict[str, float]) -> dict[str, float]:
 
 async def contribute(client: Any, realm: str, site_key: str,
                      user_id: str, agent_uuid: str,
-                     cargo: dict[str, float]) -> dict:
+                     cargo: dict[str, float],
+                     time_scale: float = 1.0) -> dict:
     """Pour an agent's hold into a site. Returns what was taken and whether
     the construction completed. Rule 3.4: the USER is counted, however many
     agents delivered."""
@@ -181,37 +240,59 @@ async def contribute(client: Any, realm: str, site_key: str,
     filled = all(delivered.get(k, 0.0) >= units - 1e-9
                  for k, units in site["needs"].items())
     enough_users = len(contributors) >= site.get("required_users", 1)
-    complete = filled and enough_users
+    starts_build = filled and enough_users and not site.get("building_until")
+    building_until = site.get("building_until")
+    if starts_build:
+        # materials in, hands counted: now the thing RISES (user directive:
+        # tiered build time, divided by the world's clock)
+        mins = BUILD_MINUTES.get(int(site.get("tier", 1)), 60)
+        building_until = time.time() + mins * 60.0 / max(1.0, time_scale)
     await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
                                space="default",
                                payload={**site, "delivered": delivered,
                                         "contributors": contributors,
-                                        "complete": complete,
-                                        **({"completed_at": time.time()}
-                                           if complete else {})})
-    if filled and not enough_users:
-        # the material is all there; only hands are missing (Rule 3.3)
-        pass
-    if complete:
-        extra = {}
-        if site["name"] == "ark":
-            extra["berths"] = allocate_berths(contributors)   # Rule 3.7e:
-            # the pool is per-user and UNASSIGNED; agents contest below
-            await client.upsert_vertex(TABLE, realm=realm,
-                                       vertex_id=int(rows[0].id),
-                                       space="default",
-                                       payload={**site, "delivered": delivered,
-                                                "contributors": contributors,
-                                                "complete": True,
-                                                "completed_at": time.time(),
-                                                **extra})
+                                        "complete": False,
+                                        **({"building_until": building_until}
+                                           if building_until else {})})
+    if starts_build:
         for uid in contributors:
-            notify.emit_bg(client, uid, "world", "construction_complete",
-                              f"The {site['name']} is complete. "
-                              f"{len(contributors)} users raised it."
-                              + (f" {extra['berths'].get(uid, 0)} berths fall "
-                                 f"to your claim." if extra else ""))
-    return {"taken": take, "complete": complete}
+            notify.emit_bg(client, uid, "world", "construction_rising",
+                              f"The {site['name']} rises -- complete in "
+                              f"about {mins} minutes of world time.")
+    return {"taken": take, "complete": False,
+            "building_started": starts_build,
+            "building_until": building_until,
+            "site_name": site["name"]}
+
+
+async def finalize(client: Any, realm: str, site_key: str, now: float) -> dict:
+    """The build clock ran out: the construction stands. Idempotent; the Ark
+    mints its berth pool here (Rule 3.7e)."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": site_key}, limit=1)
+    if not rows:
+        return {"error": "no such site"}
+    site = dict(rows[0].payload)
+    if site.get("complete") or site.get("destroyed"):
+        return {"ok": True, "already": True}
+    bu = site.get("building_until")
+    if not bu or now + 1e-6 < bu:
+        return {"error": "still rising"}
+    contributors = site.get("contributors", {})
+    extra = {}
+    if site["name"] == "ark":
+        extra["berths"] = allocate_berths(contributors)
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**site, "complete": True,
+                                        "completed_at": now, **extra})
+    for uid in contributors:
+        notify.emit_bg(client, uid, "world", "construction_complete",
+                          f"The {site['name']} is complete. "
+                          f"{len(contributors)} users raised it."
+                          + (f" {extra['berths'].get(uid, 0)} berths fall "
+                             f"to your claim." if extra else ""))
+    return {"ok": True, "name": site["name"]}
 
 
 def manifest_slots_used(ark: dict, sites: list[dict]) -> int:

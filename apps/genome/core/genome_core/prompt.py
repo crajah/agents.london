@@ -26,8 +26,10 @@ def system_prompt(genotype: dict, pools: dict, cargo: dict,
     pool_lines = "\n".join(f"  {k}: {v:.2f}" for k, v in sorted(pools.items()))
     cargo_line = ", ".join(f"kind {k}: {v:.1f}" for k, v in sorted(cargo.items())) \
         or "nothing"
-    obj_lines = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(objectives)) \
-        or "  1. Gather resources and deposit them at your home world."
+    if not objectives:
+        from .genotype import default_objectives
+        objectives = default_objectives(genotype)
+    obj_lines = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(objectives))
     heard_block = ""
     if heard:
         rows = "\n".join(f"  - {h.get('text', '')}" for h in heard)

@@ -398,7 +398,13 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
         <div className="px-3 py-1.5">
           {hit.data.wreck
             ? "spent — the next flood takes it"
-            : `${Math.round((hit.data.progress ?? 0) * 100)}% built`}
+            : hit.data.carried
+            ? "aloft — a party carries it as one body"
+            : hit.data.building_until && !hit.data.complete
+            ? `rising — ready in ~${Math.max(1, Math.round(
+                (hit.data.building_until - now) / 60))}m`
+            : `${Math.round((hit.data.progress ?? 0) * 100)}% ` +
+              (hit.data.complete ? "— standing" : "filled")}
         </div>
       </>}
     </div>);
@@ -445,6 +451,44 @@ function Legend() {
       <Row icon={<span className="inline-block w-3 h-3 rotate-45
                                   bg-emerald-700/70" />}>
         cache — a larder only its line's colours open</Row>
+    </div>);
+}
+
+function FloodWave({ active }) {
+  // The water arrives ON SCREEN (user directive): a rising tide swallows the
+  // world for a few seconds when a flood executes, then recedes.
+  if (!active) return null;
+  return (
+    <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden">
+      <style>{`
+        @keyframes genome-tide {
+          0%   { transform: translateY(101%); }
+          35%  { transform: translateY(6%); }
+          70%  { transform: translateY(0%); }
+          100% { transform: translateY(101%); }
+        }
+        @keyframes genome-swell {
+          from { background-position-x: 0; }
+          to   { background-position-x: 240px; }
+        }`}</style>
+      <div style={{
+        position: "absolute", inset: 0,
+        animation: "genome-tide 6s ease-in-out forwards",
+        background: "linear-gradient(to bottom, rgba(56,130,190,.55)," +
+                    " rgba(12,50,90,.92))" }}>
+        <div style={{
+          position: "absolute", top: -14, left: 0, right: 0, height: 16,
+          animation: "genome-swell 1.2s linear infinite",
+          background: "radial-gradient(circle at 12px 16px," +
+                      " rgba(120,180,230,.9) 10px, transparent 11px)",
+          backgroundSize: "48px 16px" }} />
+      </div>
+      <div className="absolute inset-x-0 top-1/3 text-center text-sky-100
+                      text-2xl font-bold tracking-widest drop-shadow-lg"
+           style={{ animation: "genome-tide 6s ease-in-out forwards",
+                    animationName: "none" }}>
+        🌊 THE WATER CAME
+      </div>
     </div>);
 }
 
@@ -726,6 +770,16 @@ function App() {
   }, [me?.authenticated]);
   const [agentList, setAgentList] = useState([]);
   const [snapInfo, setSnapInfo] = useState(null);
+  const [floodAnim, setFloodAnim] = useState(false);
+  const floodCountRef = useRef(null);
+  const noteFloodCount = (snap) => {
+    const n = snap.flood_count ?? 0;
+    if (floodCountRef.current != null && n > floodCountRef.current) {
+      setFloodAnim(true);
+      setTimeout(() => setFloodAnim(false), 6500);
+    }
+    floodCountRef.current = n;
+  };
   const [listOpen, setListOpen] = useState(false);
   const loadRef = useRef(null);
   const esRef = useRef(null);
@@ -735,6 +789,7 @@ function App() {
 
   useEffect(() => {
     if (!realm || !ref.current) return;
+    floodCountRef.current = null;        // a fresh world is not "a flood"
     let canvas, timer, dead = false;
     (async () => {
       canvas = await createWorldCanvas(ref.current, {
@@ -753,6 +808,7 @@ function App() {
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         agentCount: (snap.agents ?? []).length });
+          noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
           setLive(true);
           setStatus(`watching ${realm}`);
@@ -780,6 +836,7 @@ function App() {
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         agentCount: (snap.agents ?? []).length });
+          noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
           setLive(true);
           setStatus(`live — ${realm}`);
@@ -941,6 +998,7 @@ whole game -- the commons market is how the far kinds arrive."
               <div className="px-3 py-2 opacity-60">nobody here</div>}
           </nav>)}
         <StockPanel info={snapInfo} />
+        <FloodWave active={floodAnim} />
         <Legend />
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}

@@ -98,6 +98,8 @@ class Effects:
     # the caller queues a structured market decision (genome-spec §4.5)
     portage: tuple[str, str] | None = None       # ("take_up"|"set_down",
     # site_key) — construction-spec §3.10–3.13; the caller applies
+    found: str | None = None                     # construction name to break
+    # ground on at the agent's feet (agent-driven founding, 2026-09-02)
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -393,14 +395,25 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         near_ark = (ark["x"] - agent.x) ** 2 + (ark["y"] - agent.y) ** 2 \
             < 0.03 ** 2
         options.append("board_ark" if near_ark else "flee_to_ark")
+    from .genotype import norm as _norm
+    g = ctx.get("genotype") or {}
+    _steps_through = _norm("Teleport Affinity",
+                           g.get("Teleport Affinity", 5000.0)) >= 0.15
     if near_portal:
         # Teleport Affinity (genotype disposition): some agents simply will
         # not step through. Below the floor the option is never offered —
         # a mechanical faculty, like Gender's gate on carrying young.
-        from .genotype import norm as _norm
-        g = ctx.get("genotype") or {}
-        if _norm("Teleport Affinity", g.get("Teleport Affinity", 5000.0)) >= 0.15:
+        if _steps_through:
             options.append("take_portal")
+    elif _steps_through and any(pt.get("to_world") for pt in (portals or [])):
+        # a portal exists somewhere in this world and this agent is one that
+        # crosses: walking to a door is now a CHOOSABLE act, not an accident
+        options.append("travel_to_portal")
+    # agent-driven founding (user directive): ground may be broken by any
+    # agent whose hold already serves the candidate's bill
+    foundable = ctx.get("foundable") or []
+    if foundable and not ctx.get("is_commons") and agent.cargo_total() > 0:
+        options.append("found_construction")
     if not options:
         options = ["wait"]
     return DecisionRequest(
@@ -429,7 +442,18 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                      for l in ctx.get("listings", [])
                      if l.get("status", "open") == "open"][:8],
                  "sites_wanting": [s["key"] for s in sites
-                                   if _con.accepts(s, agent.cargo)]})
+                                   if _con.accepts(s, agent.cargo)],
+                 # standing world facts (Rule 12.4: facts, never advice —
+                 # what a genotype does with them is its own affair)
+                 "world_kinds": ctx.get("world_kinds"),
+                 "stock_kinds": sorted((stock or {}).keys()),
+                 "portal_count": sum(1 for pt in (portals or [])
+                                     if pt.get("to_world")),
+                 "foundable": foundable,
+                 "sites_rising": [s["name"] for s in ctx.get("sites", [])
+                                  if s.get("building_until")
+                                  and not s.get("complete")
+                                  and not s.get("destroyed")]})
 
 
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
@@ -632,6 +656,34 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
                               "decide", {}, time_scale, pace)
+
+    if choice.option == "travel_to_portal":
+        doors = [pt for pt in ctx.get("portals", []) if pt.get("to_world")]
+        if not doors:
+            return Effects(schedule=("decide", now + 600.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        pt = min(doors, key=lambda q: (q["x"] - agent.x) ** 2
+                 + (q["y"] - agent.y) ** 2)
+        tx, ty = standoff(agent.x, agent.y, pt["x"], pt["y"])
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale, pace)
+
+    if choice.option == "found_construction":
+        from . import construction as _con
+        cand = [n for n in (ctx.get("foundable") or payload.get("foundable")
+                            or [])]
+        if not cand:
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        # mechanical resolution, not strategy (the travel_to_site precedent):
+        # lowest tier first, preferring a bill the hold already serves
+        cand.sort(key=lambda n: _con.TREE[n]["tier"])
+        wk = [int(k) for k in (ctx.get("world_kinds") or [])]
+        serving = [n for n in cand
+                   if any(k in _con.resolve_cost(n, wk) for k in agent.cargo)]
+        return Effects(found=(serving or cand)[0],
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
 
     if choice.option == "take_up_construction":
         sites = {s["key"]: s for s in ctx.get("sites", [])}

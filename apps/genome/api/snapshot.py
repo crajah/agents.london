@@ -64,6 +64,8 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                    "tier": s.payload["tier"], "x": s.payload["x"],
                    "y": s.payload["y"], "progress": _con.progress(s.payload),
                    "complete": s.payload.get("complete", False),
+                   "building_until": s.payload.get("building_until"),
+                   "carried": bool(s.payload.get("carried")),
                    "needs": s.payload.get("needs", {}),
                    "delivered": s.payload.get("delivered", {}),
                    "contributors": len(s.payload.get("contributors", {})),
