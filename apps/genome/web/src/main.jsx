@@ -404,22 +404,6 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
     </div>);
 }
 
-function Tip({ text, children }) {
-  // native title tooltips proved unreliable over small spans — this one is
-  // instant, styled, and works on every row
-  return (
-    <span className="relative group cursor-help underline decoration-dotted
-                     decoration-neutral-600">
-      {children}
-      {text && (
-        <span className="pointer-events-none absolute left-0 bottom-full mb-1
-                         z-50 hidden group-hover:block w-64 bg-neutral-950
-                         border border-neutral-600 rounded px-2 py-1 text-xs
-                         font-normal shadow-xl whitespace-normal">
-          {text}</span>)}
-    </span>);
-}
-
 function Legend() {
   const [open, setOpen] = useState(true);
   const Dot = ({ c, ring }) => (
@@ -494,6 +478,7 @@ function StockPanel({ info }) {
 }
 
 function AgentModal({ inspect, onClose }) {
+  const [locusInfo, setLocusInfo] = useState(null);  // {name, value, text}
   const [chat, setChat] = useState([]);
   const [beliefs, setBeliefs] = useState([]);
   useEffect(() => {
@@ -539,6 +524,29 @@ function AgentModal({ inspect, onClose }) {
           <span className="flex-1" />
           <button onClick={onClose} className="opacity-60 text-lg">✕</button>
         </div>
+        {locusInfo && (
+          <div className="absolute inset-0 z-50 flex items-center
+                          justify-center"
+               onClick={e => { e.stopPropagation(); setLocusInfo(null); }}>
+            <div className="absolute inset-0 bg-black/50 rounded-lg" />
+            <div className="relative w-80 bg-neutral-800 border
+                            border-neutral-500 rounded-lg shadow-2xl p-4"
+                 onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-2">
+                <strong>{locusInfo.name}</strong>
+                <span className="flex items-center gap-3">
+                  {locusInfo.value &&
+                    <span className="text-emerald-400 font-mono">
+                      {locusInfo.value}</span>}
+                  <button className="opacity-60"
+                          onClick={() => setLocusInfo(null)}>✕</button>
+                </span>
+              </div>
+              <div className="opacity-80">
+                {locusInfo.text ?? "No description recorded for this locus."}
+              </div>
+            </div>
+          </div>)}
         <div className="flex-1 min-h-0 flex">
           <div className="w-1/2 overflow-y-auto p-4 border-r
                           border-neutral-800">
@@ -546,8 +554,11 @@ function AgentModal({ inspect, onClose }) {
               <h4 className="opacity-70 mb-1">Dispositions</h4>
               {Object.entries(inspect.dispositions).map(([k, v]) => (
                 <div key={k} className="flex items-center gap-2">
-                  <span className="w-28 truncate">
-                    <Tip text={inspect.locus_help?.[k]}>{k}</Tip></span>
+                  <button className="w-28 truncate text-left underline
+                                     decoration-dotted decoration-neutral-600"
+                          onClick={() => setLocusInfo({ name: k,
+                            value: `${Math.round(v / 100)}%`,
+                            text: inspect.locus_help?.[k] })}>{k}</button>
                   <div className="flex-1 h-1.5 bg-neutral-700 rounded">
                     <div className="h-1.5 rounded bg-neutral-300"
                          style={{ width: `${(v / 10000) * 100}%` }} />
@@ -556,13 +567,21 @@ function AgentModal({ inspect, onClose }) {
                     {Math.round(v / 100)}%</span>
                 </div>))}
               <h4 className="opacity-70 mt-3 mb-1">
-                <Tip text="The phenotype: what each budgeted locus EXPRESSES
-after the genome's budget is applied — the working value, not the raw gene.">
-                  Expression — the phenotype</Tip></h4>
+                <button className="underline decoration-dotted
+                                   decoration-neutral-600"
+                        onClick={() => setLocusInfo({
+                          name: "Expression — the phenotype",
+                          text: "What each budgeted locus EXPRESSES after " +
+                                "the genome's budget is applied — the " +
+                                "working value, not the raw gene." })}>
+                  Expression — the phenotype</button></h4>
               {Object.entries(inspect.expressed ?? {}).map(([k, v]) => (
                 <div key={k} className="flex items-center gap-2">
-                  <span className="w-28 truncate">
-                    <Tip text={inspect.locus_help?.[k]}>{k}</Tip></span>
+                  <button className="w-28 truncate text-left underline
+                                     decoration-dotted decoration-neutral-600"
+                          onClick={() => setLocusInfo({ name: k,
+                            value: `${Math.round(v * 100)}%`,
+                            text: inspect.locus_help?.[k] })}>{k}</button>
                   <div className="flex-1 h-1.5 bg-neutral-700 rounded">
                     <div className="h-1.5 rounded bg-sky-300/80"
                          style={{ width: `${Math.min(100, v * 100)}%` }} />
@@ -573,7 +592,11 @@ after the genome's budget is applied — the working value, not the raw gene.">
               <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
               {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
                 <div key={k} className="flex justify-between">
-                  <Tip text={inspect.locus_help?.[k]}>{k}</Tip>
+                  <button className="underline decoration-dotted
+                                     decoration-neutral-600"
+                          onClick={() => setLocusInfo({ name: k,
+                            value: `${Math.round(v * 100)}%`,
+                            text: inspect.locus_help?.[k] })}>{k}</button>
                   <span className="opacity-60">{Math.round(v * 100)}%</span>
                 </div>))}
             </>}
