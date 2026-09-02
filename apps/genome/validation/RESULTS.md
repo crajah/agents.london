@@ -335,3 +335,28 @@ working economy with no further staging:
   strain (contagion 0.86) is loose in the same population that trades.
   Commerce, contagion and haggling now run continuously, unattended, in
   production.
+
+## Economy dry-run (2026-09-02, `economy_dryrun.py`)
+
+Best-case arithmetic under the live constants (resolve_cost, engine rates,
+build clocks — the script imports them, so a calibration edit moves these
+numbers the day it lands):
+
+- One agent banks ~106 u/h at a face; a two-kind world sustains ~20 u/h of
+  regrowth (regeneration, not agent count, is the world bottleneck beyond
+  two miners).
+- A courier imports ~6 u/h (15-unit hold, two crossings and a trade per
+  round trip) — **imports are 17x more expensive than local mining**,
+  which is Rule 2.3's wall expressed as a price.
+- The full canonical tree costs ~145 local + ~735 foreign units for a
+  two-kind host world: **84% of an Ark is imports.**
+- Eight cooperating users raise an Ark in **~1.3–1.8 days** of perfect
+  coordination — comfortably inside every flood draw (15–30 days).
+
+**Verdict: the constants are not the barrier, and were never going to be.**
+Under 8 users the Ark is impossible by construction (Rule 3.3); above 8 the
+material race is easy *if* the coalition behaves like one. Everything
+between those poles — discovery, trust, negotiation overhead, LLM
+dithering, combat, illness, defection — is the actual game, and the margin
+(1.5 days of logistics inside a 15-day cycle) is the space it plays in. No
+calibration change recommended before live coalition data exists.

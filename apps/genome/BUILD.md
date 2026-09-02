@@ -398,8 +398,8 @@ Contact import makes this non-optional rather than a courtesy.
 ---
 
 ### Consequent tasks (structural)
-- [ ] **Economy dry-run before constants freeze**: spreadsheet-level simulation of mining → cargo → trade → materialisation → construction under the chosen calibration, verifying an Ark is reachable inside a cycle
-- [ ] **Construction cost table** in `calibration-spec.md` — 18 rows plus the Ark, kinds × units each
+- [x] **Economy dry-run before constants freeze** (validation/economy_dryrun.py, results in RESULTS.md): an Ark is reachable in ~1.5 days of perfect 8-user coordination against a 15-30 day cycle — the constants are not the barrier, the coalition is; 84% of an Ark is imports (17x the price of local units). No calibration change before live coalition data
+- [x] **Construction cost table** in `calibration-spec.md` §5 — tier table plus the complete standing-effects table; resolve_cost is the executable form
 - [x] **Production-prompt re-screen done**: 11/14 pass outright, several strengthened (Cooperativeness 0.25→0.50); two harness biases found and encoded (`validation/RESULTS.md`)
 - [ ] **Genotype schema versioning**: adding a budgeted locus post-launch changes every agent's expressed values; migrations must state the dilution and re-baseline
 - [ ] **Cross-document reference lint**: rule numbers collide across documents (two Rule 6.9a's exist); every cross-doc citation must be doc-qualified
@@ -455,7 +455,7 @@ and need a decision before the phase that meets them.
 ### Found by structural analysis (composition, not coverage)
 - [x] **Deleterious-direction loci repaired.** Attrition is now intensity (adds to Attack, burns maximum Stamina on wins); Detection Latency became **Immune Vigilance** (fast detection costs Stamina regeneration). Both are trade-offs selection can settle either way (`genotype-spec.md` 3.8c/3.8e).
 - [x] **Budget membership stated: all four inside**, with Longevity's membership made deliberate (`genotype-spec.md` Rule 3.23a). Pre-launch dilution is free; post-launch additions need the genotype-versioning task below.
-- [ ] ⚠ **Construction resource costs do not exist.** The tree specifies kinds and contributor counts and never unit quantities — there is no cost table for any of the eighteen constructions or the Ark. Every feasibility claim in §4.2 is unfalsifiable until they exist.
+- [x] **Construction resource costs exist** (calibration §5, resolve_cost) and the feasibility claims are now falsified-or-verified by the economy dry-run: verified, with the coalition as the binding constraint.
 - [x] **Partial Ark survives** (Rule 4.4a): hull contributions persist across floods, so the first Ark is a multi-cycle undertaking and the one-cycle impossibility cannot strand the objective hierarchy. Economy dry-run still required to size the cycles.
 - [x] **The validated prompts are not the production prompts.** Resolved by the Phase 2 re-screen: expression survives and mostly strengthens under the full Rule 6.6a assembly. Every ρ in `validation/RESULTS.md` came from prompts showing 14 dispositions. Rule 6.6a's self-knowledge adds faculties, pools, maxima, cargo, objectives and opinions — several times the context. Expression may not survive the dilution; **the validation must be re-run with the full production prompt** before Phase 2's done-when is meaningful.
 - [x] **Amenability vs 10.1a settled: rank absolute, fidelity is not** (Rule 10.1d). The owner decides what; the genotype decides how, and how much.
