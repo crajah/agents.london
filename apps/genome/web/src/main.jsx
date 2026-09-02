@@ -675,6 +675,16 @@ function AgentModal({ inspect, onClose }) {
             <span className="text-red-400 text-xs">infected</span>}
           <span className="text-xs opacity-50">
             {inspect.models?.economy} · T={inspect.temperament}</span>
+          {inspect.capability
+            ? <span className="text-xs px-1.5 py-0.5 rounded bg-violet-900
+                               text-violet-200"
+                    title="Its one capability, rolled at birth. Never
+traded, never inherited; it survives death.">
+                ✦ {inspect.capability.name}</span>
+            : inspect.capability === null &&
+              <span className="text-xs opacity-40"
+                    title="One in four agents is born plain -- the demand
+side of the capability economy.">born plain</span>}
           <span className="flex-1" />
           <button onClick={onClose} className="opacity-60 text-lg">✕</button>
         </div>

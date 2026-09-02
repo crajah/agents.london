@@ -153,10 +153,15 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
                                        f"{strain['strain_uuid']} in a meeting.")
             for me, other in ((a, b), (b, a)):
                 om = metas[other]
+                mv = await store.latest_movement(other)
+                o_cargo = (mv.payload.get("cargo") if mv is not None
+                           else {}) or {}
                 await store.schedule(
                     realm, f"meet-{me}-{int(now)}", _d._iso(now), "encounter",
                     me, {"other": {"agent_uuid": other,
                                    "colour_pair": om.get("colour_pair"),
+                                   "cargo": o_cargo,   # revealed only to a
+                                   # Scrying holder (skills-spec 4.2)
                                    "infected": bool(om.get("infected"))},
                          "opinion": (metas[me].get("opinions", {})
                                      .get(other))})

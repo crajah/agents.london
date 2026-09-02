@@ -41,6 +41,12 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
     rows = await store._c.find_vertices("agents", realm="genome_agents",
                                         filters={"key": agent_uuid}, limit=1)
     payload = rows[0].payload if rows else {}
+    if rows and "capability" not in payload:
+        # born before skills-spec landed: the birth roll happens now,
+        # deterministic per uuid, and is thereafter part of the agent
+        from . import skills as _sk
+        payload = {**payload, "capability": _sk.roll_capability(agent_uuid)}
+        await store.put_agent(agent_uuid, payload)
     latest = await store.latest_movement(agent_uuid)
     cargo: dict[str, float] = {}
     x, y = engine.HOME_XY
@@ -133,6 +139,7 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "time_scale": world_payload.get("time_scale", 1.0),
             "carrying_site": carrying, "carrying_name": carrying_name,
             "addressable": agent_payload.get("addressable") or [],
+            "skill": (agent_payload.get("capability") or {}).get("name"),
             "has_testimony": _word.strongest_opinion(agent_payload)
             is not None,
             "portals": world_payload.get("portals", []),
@@ -212,8 +219,12 @@ async def apply_word(store: GenomeStore, agent: engine.AgentView,
             f"{subject} on {locus} is about {int(v['estimate'] / 100)}%.")
     tp = _word.hear(tp, text, f"agent:{agent.agent_uuid}", relays=1,
                     owner_sourced=False)
-    tp = _word.fold_testimony(tp, subject, locus, v["estimate"], relays=1,
-                              owner_sourced=False)
+    chronicler = (agent_payload.get("capability") or {}).get("name") \
+        == "Chronicle"
+    tp = _word.fold_testimony(tp, subject, locus, v["estimate"],
+                              relays=0 if chronicler else 1,
+                              owner_sourced=False)   # skills-spec 4.1:
+    # a Chronicle's word arrives as if first-hand
     tp = _word.introduce(tp, subject)
     await store.put_agent(target, tp)
     metrics.WORDS.inc()
@@ -1069,12 +1080,15 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                                dfd_p.get("stamina", 1.0),
                                dfd_p.get("stamina_max", 1.0), dfd_v.cargo)
         cfx = await construction.world_effects(store._c, world_realm)
+        ward = 1.2 if (dfd_p.get("capability") or {}).get("name") \
+            == "Ward" else 1.0        # skills-spec 4.5: the defensive floor
         res = combat.resolve(
             f_att, f_dfd, seed=pair_key,
             att_mult=cfx["attack_mult"]
             if att_p.get("home_realm") == world_realm else 1.0,
-            dfd_mult=cfx["defence_mult"]
-            if dfd_p.get("home_realm") == world_realm else 1.0,
+            dfd_mult=ward * (cfx["defence_mult"]
+                             if dfd_p.get("home_realm") == world_realm
+                             else 1.0),
             stamina_mult=cfx["combat_recovery_mult"])
         # spoils move winner-ward; movement records carry cargo
         win_v = att_v if res["winner"] == att_v.agent_uuid else dfd_v
@@ -1137,7 +1151,8 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         await store.schedule(world_realm, f"prop-{pair_key}", _iso(now + 30.0),
                              "mating_proposal", recipient,
                              {"proposer": {"agent_uuid": proposer,
-                                           "colour_pair": prop_pl.get("colour_pair")},
+                                           "colour_pair": prop_pl.get("colour_pair"),
+                                           "genotype": prop_pl.get("genotype")},
                               "opinion": (recip_pl.get("opinions", {})
                                           .get(proposer))})
         outcome = "mating:proposed"
@@ -1308,8 +1323,11 @@ async def consummate(store: GenomeStore, world_realm: str,
                             seed, worldgen.FIRST_NAMES)
         # Rule 7.5: parental influence is exactly one objective
         inherited_obj = (parent_pl.get("objectives") or [None])[0]
+        from . import skills as _sk
         await store.put_agent(child_uuid, {
             "alive": True, "home_realm": home,
+            "capability": _sk.roll_capability(child_uuid),   # rolled FRESH:
+            # capability is luck, never inheritance (skills-spec 1.2)
             "name": name,
             "parents": [a_view.agent_uuid, b_view.agent_uuid],
             "genotype": cg,

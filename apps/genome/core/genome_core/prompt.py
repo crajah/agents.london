@@ -14,11 +14,13 @@ from __future__ import annotations
 import json
 
 from .genotype import DISPOSITIONS, faculties
+from .skills import describe as _cap_describe
 
 
 def system_prompt(genotype: dict, pools: dict, cargo: dict,
                   objectives: list[str], opinions: dict | None = None,
-                  heard: list[dict] | None = None) -> str:
+                  heard: list[dict] | None = None,
+                  capability: dict | None = None) -> str:
     disp = "\n".join(f"  {d}: {int(genotype[d])}/10000" for d in DISPOSITIONS
                      if d in genotype)
     fac = faculties(genotype)
@@ -53,6 +55,7 @@ def system_prompt(genotype: dict, pools: dict, cargo: dict,
         f"Your computed faculties (you know yourself in full):\n{fac_lines}\n\n"
         f"Your pools:\n{pool_lines}\n\n"
         f"You carry: {cargo_line}\n\n"
+        f"{_cap_describe({'capability': capability})}\n\n"
         f"Your objectives, highest first:\n{obj_lines}\n"
         f"{opinion_block}{heard_block}\n"
         "You do not know how you appear to others.\n"

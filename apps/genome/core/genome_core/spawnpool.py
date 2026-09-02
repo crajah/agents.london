@@ -76,7 +76,9 @@ async def spawn_free_agent(store, realm: str, meta: dict,
             cert = I.issue_agent_cert(meta["cert"], a, ident)
         except Exception:
             cert = None                    # unsigned worlds still populate
+    from . import skills as _sk
     payload = {"alive": True, "home_realm": realm, "owner_user_id": None,
+               "capability": _sk.roll_capability(a),   # skills-spec 1.1
                "spawned_free": True,
                "name": worldgen.founder_name(seed),
                "genotype": g, "colour_pair": meta.get("colours"),

@@ -116,6 +116,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "colour_pair": payload.get("colour_pair"),
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
+           "capability": payload.get("capability"),
            "infected": bool(payload.get("infected"))}
     if g:
         out["dispositions"] = {d: g[d] for d in DISPOSITIONS if d in g}

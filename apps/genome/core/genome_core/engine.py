@@ -140,6 +140,11 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         if (ctx or {}).get("has_berth") and \
                 (ctx or {}).get("flood_in_s") is not None:
             enc_options.insert(0, "offer_berth")
+        scried = {}
+        if (ctx or {}).get("skill") == "Scrying":
+            # skills-spec 4.2: the encounter turns sequential for a scryer
+            scried = {"scried_cargo": other.get("cargo"),
+                      "scried_infected": other.get("infected")}
         return DecisionRequest(
             agent_uuid=agent.agent_uuid, situation="encounter",
             options=tuple(enc_options),
@@ -147,6 +152,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                      "other_uuid": other["agent_uuid"],
                      "other_colours": other.get("colour_pair"),
                      "other_infected": other.get("infected", False),
+                     **scried,
                      "opinion": payload.get("opinion"),
                      "at_pile": None, "reachable": [],
                      "portal_to": None, "portal_xy": None})
@@ -156,10 +162,18 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         # known only by colours and any prior opinion -- and by the fact of
         # the proposal itself, which is information too.
         p = payload
+        read = {}
+        if (ctx or {}).get("skill") == "Gene-reading" \
+                and p["proposer"].get("genotype"):
+            from .genotype import expressed as _expr
+            read = {"suitor_expressed": {
+                k: round(v, 3) for k, v in
+                _expr(p["proposer"]["genotype"]).items()}}
         return DecisionRequest(
             agent_uuid=agent.agent_uuid, situation="mating_proposal",
             options=("accept_mate", "decline_mate"),
             context={"cargo_total": agent.cargo_total(),
+                     **read,
                      "proposer_uuid": p["proposer"]["agent_uuid"],
                      "proposer_colours": p["proposer"].get("colour_pair"),
                      "opinion": p.get("opinion"),
@@ -304,7 +318,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     by_id = {p.pile_uuid: p for p in piles}
     options: list[str] = []
     here = by_id.get(at_pile)
-    hold_cap = CARGO_CEILING + ctx.get("cargo_bonus", 0.0)   # a Granary
+    hold_cap = CARGO_CEILING + ctx.get("cargo_bonus", 0.0) \
+        + (5.0 if ctx.get("skill") == "Porterage" else 0.0)   # a Granary
     if here and here.qty > 0.05 and agent.cargo_total() < hold_cap:
         options.append("mine_here")
     # Rule 5.2 of genome-spec: finding piles is work. Travel targets only piles
@@ -509,15 +524,19 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     ctx = ctx or {}
     occupied = [q for q in ctx.get("occupied", [])]
     pace = speed_factor(ctx.get("genotype") or {}) \
-        * ctx.get("pace_mult", 1.0)      # a Beacon guides every journey
+        * ctx.get("pace_mult", 1.0) \
+        * (1.1 if ctx.get("skill") == "Pathfinding" else 1.0)   # a Beacon
+    # guides every journey; a Pathfinder needs no beacon
     by_id = {p.pile_uuid: p for p in piles}
 
     if choice.option == "mine_here":
         pile = by_id[payload["pile_uuid"]]
         want = min(pile.qty,
                    CARGO_CEILING + ctx.get("cargo_bonus", 0.0)
+                   + (5.0 if ctx.get("skill") == "Porterage" else 0.0)
                    - agent.cargo_total(),
-                   MINE_STINT_UNITS + ctx.get("mine_stint_bonus", 0.0))
+                   MINE_STINT_UNITS + ctx.get("mine_stint_bonus", 0.0)
+                   + (2.0 if ctx.get("skill") == "Prospecting" else 0.0))
         rate = MINE_RATE_UNITS_PER_SEC * ctx.get("mine_rate_mult", 1.0)
         duration = want / rate / max(1.0, time_scale)
         return Effects(mine_pile=(pile.pile_uuid, want),
