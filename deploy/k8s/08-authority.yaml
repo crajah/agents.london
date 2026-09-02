@@ -1,0 +1,52 @@
+# Authority — the platform's one front door. Stateless: the private key and
+# OIDC client credentials arrive from secrets; everything else is a JWT the
+# services verify locally via /jwks.json. Two replicas because login is the
+# one path with no fallback.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authority
+  namespace: default
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: authority } }
+  template:
+    metadata:
+      labels: { app: authority }
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+        - name: authority
+          image: gcr.io/marty-457112/authority:latest
+          ports: [{ containerPort: 8810 }]
+          envFrom:
+            - secretRef: { name: oidc-auth-secret }
+          env:
+            - name: AUTHORITY_JWT_KEY
+              valueFrom:
+                secretKeyRef: { name: authority-jwt, key: key }
+            - name: AUTHORITY_STATE_KEY
+              valueFrom:
+                secretKeyRef: { name: authority-jwt, key: state_key }
+            - name: AUTHORITY_REDIRECT_BASE
+              value: https://agents.london/authority
+            - name: AUTHORITY_PATH_PREFIX
+              value: /authority
+            - name: AUTHORITY_ALLOWED_RETURN
+              value: https://agents.london/,http://localhost
+          readinessProbe:
+            httpGet: { path: /health, port: 8810 }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authority-service
+  namespace: default
+spec:
+  selector: { app: authority }
+  ports: [{ port: 8810, targetPort: 8810 }]

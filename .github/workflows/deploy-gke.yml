@@ -62,6 +62,8 @@ jobs:
             dockerfile: apps/civilization/backend/Dockerfile
           - name: agent-london-frontend
             context: apps/civilization/frontend
+          - name: authority
+            context: services/authority
           - name: genome-api
             # apps/genome context: the image copies core/ beside api/.
             context: apps/genome
@@ -167,6 +169,10 @@ jobs:
             manifest: deploy/k8s/04-frontend.yaml
             type: deployment
             target: agent-london-frontend
+          - name: authority
+            manifest: deploy/k8s/08-authority.yaml
+            type: deployment
+            target: authority
           - name: ingress-and-cert
             manifest: deploy/k8s/05-ingress.yaml
             type: ingress

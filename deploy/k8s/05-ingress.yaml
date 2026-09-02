@@ -88,6 +88,15 @@ spec:
                 name: grafana-proxy-service
                 port:
                   number: 3000
+          # authority: the platform's one front door (OIDC broker + JWKS);
+          # strips its own prefix (AUTHORITY_PATH_PREFIX)
+          - path: /authority
+            pathType: Prefix
+            backend:
+              service:
+                name: authority-service
+                port:
+                  number: 8810
           # genome + the landing page. genome-api strips its own prefix
           # (GENOME_PATH_PREFIX); the web image carries the landing at /
           # and the genome app built for /genome/.
