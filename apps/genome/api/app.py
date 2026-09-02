@@ -781,7 +781,10 @@ async def admin_infect(realm: str, request: __import__("fastapi").Request):
                             status_code=400)
     now = _t.time()
     strain = pathogen.new_strain(f"admin:{realm}:{now}")
-    infected = pathogen.infect(pl, strain, now)
+    from genome_core import drain as _drx
+    meta = await _drx._world_payload(store, realm)
+    infected = pathogen.infect(pl, strain, now,
+                               time_scale=meta.get("time_scale", 1.0))
     await store.put_agent(victim, infected)
     return {"ok": True, "patient_zero": victim,
             "strain": strain["strain_uuid"],

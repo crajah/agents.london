@@ -59,19 +59,27 @@ def roll_teleport_strain(seed: str, existing: list[dict]) -> dict | None:
     return new_strain(seed, parent)
 
 
-def infect(agent_payload: dict, strain: dict, now: float) -> dict:
+def infect(agent_payload: dict, strain: dict, now: float,
+           time_scale: float = 1.0) -> dict:
     """The infection record carries its future: detection after Immune
     Vigilance's latency, synthesis complete after Synthesis Speed's span.
-    Severity scales duration by replication (Rule 2.13-ish)."""
+    Severity scales duration by replication (Rule 2.13-ish).
+
+    time_scale: the WORLD's clock. An illness in a 60x demo world runs its
+    whole course 60x faster -- without this, a 30-hour synthesis outlived
+    weeks of world time and nothing ever visibly healed (user report
+    2026-09-02)."""
     g = agent_payload["genotype"]
+    ts = max(1.0, time_scale)
     vig = norm("Immune Vigilance", g.get("Immune Vigilance",
                                          RANGES["Immune Vigilance"][0]))
     spd = norm("Synthesis Speed", g.get("Synthesis Speed",
                                         RANGES["Synthesis Speed"][0]))
-    detect_after = 3600.0 * (0.5 + 6.0 * (1.0 - vig))          # 0.5h-6.5h
+    detect_after = 3600.0 * (0.5 + 6.0 * (1.0 - vig)) / ts     # 0.5h-6.5h
     synth_span = 3600.0 * (2.0 + 20.0 * (1.0 - spd)) \
-        * (0.5 + strain["replication"])                         # the race
-    rec = {"strain": strain, "since": now,
+        * (0.5 + strain["replication"]) / ts                    # the race
+    rec = {"strain": strain, "since": now, "caught_at": now,
+           "time_scale": ts,
            "detected_at": now + detect_after,
            "synth_done_at": now + detect_after + synth_span}
     infections = list(agent_payload.get("infections", []))
@@ -111,16 +119,24 @@ def settle(agent_payload: dict, now: float,
         cov = coverage(antigens, strain["signature"], now)
         done_at = rec["synth_done_at"]
         if recovery_mult > 1.0:
-            # a Sanatorium stands here: what synthesis remains runs faster
-            caught = rec.get("caught_at", done_at)
+            # a Sanatorium stands here: what synthesis remains runs faster.
+            # (This hook read a key infect() never wrote until 2026-09-02
+            # -- caught_at fell back to done_at and the Sanatorium healed
+            # nobody. "since" is the honest fallback for old records.)
+            caught = rec.get("caught_at", rec.get("since", done_at))
             done_at = caught + (done_at - caught) / recovery_mult
         if cov >= COVERAGE_THRESHOLD or now >= done_at:
+            # antigen decay runs on the WORLD's clock like the illness did,
+            # and slower than the first draft: immunity should comfortably
+            # outlast the strain that taught it (user report: antigens died
+            # too fast for herd protection to accumulate)
+            ts = rec.get("time_scale", 1.0)
             antigens.append({
                 "vector": [max(0.0, min(1.0, s + r.uniform(-0.08, 0.08)))
                            for s in strain["signature"]],
                 "made_at": now,
                 "strain_uuid": strain.get("strain_uuid"),
-                "decay_rate": r.uniform(0.3, 1.2) / (30 * 86400.0)})
+                "decay_rate": r.uniform(0.15, 0.5) * ts / (90 * 86400.0)})
             history.append({"strain_uuid": strain.get("strain_uuid"),
                             "caught_at": rec.get("caught_at"),
                             "recovered_at": now})

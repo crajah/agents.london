@@ -1033,7 +1033,9 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
         if strain:
             await store.put_world(realm_name,
                 {**r_meta, "strains": existing + [strain]})
-            agent_payload = pathogen.infect(agent_payload, strain, now)
+            agent_payload = pathogen.infect(
+                agent_payload, strain, now,
+                time_scale=r_meta.get("time_scale", 1.0))
             if agent_payload.get("owner_user_id"):
                 notify.emit_bg(store._c, agent_payload["owner_user_id"],
                                   "agents", "infection",

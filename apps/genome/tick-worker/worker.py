@@ -142,7 +142,9 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
                 strain = _pg.try_transmit(f"{pair}:{int(now)}",
                                           metas[src], metas[dst], now)
                 if strain:
-                    infected = _pg.infect(metas[dst], strain, now)
+                    infected = _pg.infect(metas[dst], strain, now,
+                                          time_scale=meta.get("time_scale",
+                                                              1.0))
                     await store.put_agent(dst, infected)
                     metas[dst] = infected
                     if infected.get("owner_user_id"):

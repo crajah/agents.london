@@ -313,10 +313,10 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
   };
   const KChip = ({ k, u }) => (
     <span className="inline-flex items-center gap-1 bg-neutral-700/70
-                     rounded px-1 mr-1">
-      <span className="w-2 h-2 rounded-full inline-block"
+                     rounded px-1 mr-1" title={`kind ${k}`}>
+      {Number(u).toFixed(0)}×
+      <span className="w-2.5 h-2.5 rounded-full inline-block"
             style={{ background: colourOf(k) }} />
-      {Number(u).toFixed(0)}×{k}
     </span>);
   const { hit, x, y } = menu;
   const Item = ({ children, onClick }) => (
@@ -342,8 +342,12 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
         const dt = Math.max(0, now - p.measured_at);
         const qty = Math.min(p.cap, p.qty_at + p.rate * dt);
         return <>
-          <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
-            resource pile · kind {p.kind}</div>
+          <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700
+                          flex items-center gap-2">
+            resource pile
+            <span className="w-3 h-3 rounded-full inline-block"
+                  title={`kind ${p.kind}`}
+                  style={{ background: colourOf(p.kind) }} /></div>
           <div className="px-3 py-1.5">
             {qty.toFixed(1)} / {p.cap.toFixed(1)} units
             <div className="opacity-60">
@@ -398,7 +402,7 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
           {Object.entries(hit.data.holdings ?? {}).length === 0
             ? "empty"
             : Object.entries(hit.data.holdings).map(([k, u]) =>
-                `kind ${k}: ${u.toFixed(1)}`).join(", ")}
+                <KChip key={k} k={k} u={u} />)}
         </div>
         <div className="px-3 py-1.5 opacity-50">
           opens only to its line's colours</div>
@@ -477,7 +481,11 @@ function Legend() {
     </div>);
 }
 
-function PlanTable({ realm }) {
+function PlanTable({ realm, info }) {
+  const colourOf = k => {
+    const i = (info?.kinds ?? []).indexOf(Number(k));
+    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
+  };
   // Rule 13.6b: plans are authored conversationally, not through a form --
   // this is a conversation with the drafting table, retried in prose
   const [open, setOpen] = useState(false);
@@ -526,8 +534,12 @@ on a tower of 10 of kind 16, two users for the tower…"
               <div className="text-emerald-400">“{result.name}” posted.</div>
               {result.tree.map(n => (
                 <div key={n.item} className="opacity-80">
-                  {n.item}: {Object.entries(n.needs).map(([k, u]) =>
-                    `${u}×kind${k}`).join(", ")}
+                  {n.item}: {Object.entries(n.needs).map(([k, u]) => (
+                    <span key={k} title={`kind ${k}`}
+                          className="inline-flex items-center gap-0.5 mr-1">
+                      {u}×<span className="w-2.5 h-2.5 rounded-full
+                                           inline-block"
+                        style={{ background: colourOf(k) }} /></span>))}
                   {n.after?.length ? ` (after ${n.after.join(", ")})` : ""}
                   {n.contributors > 1 ? ` · ${n.contributors} users` : ""}
                 </div>))}
@@ -545,10 +557,10 @@ function MarketPanel({ info }) {
   };
   const Chip = ({ k, u }) => (
     <span className="inline-flex items-center gap-1 bg-neutral-800 rounded
-                     px-1 py-0.5 mr-1">
-      <span className="w-2 h-2 rounded-full inline-block"
+                     px-1 py-0.5 mr-1" title={`kind ${k}`}>
+      {Number(u).toFixed(0)}×
+      <span className="w-2.5 h-2.5 rounded-full inline-block"
             style={{ background: colourOf(k) }} />
-      {Number(u).toFixed(0)}×{k}
     </span>);
   return (
     <div className="absolute top-2 right-60 z-20 text-xs">
@@ -1175,7 +1187,7 @@ whole game -- the commons market is how the far kinds arrive."
         <StockPanel info={snapInfo} />
         <MarketPanel info={snapInfo} />
         {me?.authenticated && realm === me.world_realm &&
-          <PlanTable realm={realm} />}
+          <PlanTable realm={realm} info={snapInfo} />}
         <FloodWave active={floodAnim} />
         <Legend />
         <Ticker realm={realm} />
