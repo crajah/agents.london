@@ -14,6 +14,7 @@ import uuid as uuidlib
 from . import combat, construction, engine, forms, identity, market, \
     negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
+from . import metrics
 from . import worldgen
 from . import flood as _flood_mod
 from .models import assign_models
@@ -107,8 +108,27 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             (s for s in sites if s["name"] == "ark" and s.get("complete")
              and not s.get("spent") and s.get("berths", {}).get(me, 0) > 0),
             None)
+    carrying = agent_payload.get("carrying_site")
+    carrying_name = None
+    if carrying:
+        live = next((s for s in sites if s.get("key") == carrying
+                     and s.get("carried") and not s.get("destroyed")), None)
+        if live is None:
+            # the construction is gone (flood, set-down elsewhere): a stale
+            # flag would freeze the agent forever, so clear it here
+            cleaned = dict(agent_payload)
+            cleaned.pop("carrying_site", None)
+            cleaned.pop("carrying_realm", None)
+            await store.put_agent(agent.agent_uuid, cleaned)
+            agent_payload.pop("carrying_site", None)
+            agent_payload.pop("carrying_realm", None)
+            carrying = None
+        else:
+            carrying_name = live.get("name")
     return {"genotype": agent_payload.get("genotype") or {},
             "time_scale": world_payload.get("time_scale", 1.0),
+            "carrying_site": carrying, "carrying_name": carrying_name,
+            "portals": world_payload.get("portals", []),
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
             "muster": world_payload.get("muster_points", []),
@@ -122,6 +142,82 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "colour_pair": agent_payload.get("colour_pair"),
             "caches": [s for s in sites if s.get("name") == "cache"],
             **effects}
+
+
+async def apply_portage(store: GenomeStore, world_realm: str,
+                        agent: engine.AgentView, agent_payload: dict,
+                        eff: engine.Effects, now: float) -> None:
+    """Rules 3.10-3.12a made real. take_up pledges; the lift is confirmed
+    only against porters actually STANDING at the site, so a stale pledge
+    from an agent who wandered off cannot phantom-carry (3.12's one body
+    begins as one huddle). set_down releases everyone."""
+    op, key = eff.portage
+    metrics.PORTAGE.labels(op).inc()
+    me_uid = agent_payload.get("owner_user_id", "")
+    if op == "take_up":
+        res = await construction.take_up(store._c, world_realm, key, me_uid,
+                                         agent.agent_uuid, now)
+        if not res.get("carried"):
+            return
+        site = res["site"]
+        near: dict[str, dict] = {}
+        for porter, pledge in site.get("porters", {}).items():
+            mv = await store.latest_movement(porter)
+            if mv is None or "waypoints" not in mv.payload:
+                continue
+            r = forms.Route(tuple(tuple(q) for q in mv.payload["waypoints"]),
+                            mv.payload["departed_at"],
+                            mv.payload.get("arrives_at"))
+            px, py = forms.route_position(r, now)
+            if (px - site["x"]) ** 2 + (py - site["y"]) ** 2 < 0.1 ** 2:
+                near[porter] = pledge
+        users_near = {q.get("user") for q in near.values() if q.get("user")}
+        rows = await store._c.find_vertices(construction.TABLE,
+                                            realm=world_realm,
+                                            filters={"key": key}, limit=1)
+        if not rows:
+            return
+        if len(users_near) < int(site.get("required_users", 1)):
+            await store._c.upsert_vertex(
+                construction.TABLE, realm=world_realm,
+                vertex_id=int(rows[0].id), space="default",
+                payload={**site, "porters": near, "carried": False})
+            return
+        await store._c.upsert_vertex(
+            construction.TABLE, realm=world_realm,
+            vertex_id=int(rows[0].id), space="default",
+            payload={**site, "porters": near})
+        for porter in near:
+            prow = await store._c.find_vertices("agents",
+                                                realm="genome_agents",
+                                                filters={"key": porter},
+                                                limit=1)
+            if prow:
+                pl = dict(prow[0].payload)
+                await store.put_agent(porter,
+                                      {**pl, "carrying_site": key,
+                                       "carrying_realm": world_realm})
+                if pl.get("owner_user_id"):
+                    notify.emit_bg(store._c, pl["owner_user_id"], "world",
+                                   "portage",
+                                   f"{pl.get('name', porter)} and "
+                                   f"{len(near) - 1} others lifted the "
+                                   f"{site['name']}. The party moves as one "
+                                   f"body until it is set down.")
+    else:
+        res = await construction.set_down(store._c, world_realm, key,
+                                          agent.x, agent.y)
+        porters = res.get("porters") or [agent.agent_uuid]
+        for porter in set(porters) | {agent.agent_uuid}:
+            prow = await store._c.find_vertices("agents",
+                                                realm="genome_agents",
+                                                filters={"key": porter},
+                                                limit=1)
+            if prow:
+                pl = dict(prow[0].payload)
+                if pl.pop("carrying_site", None) is not None or porter == agent.agent_uuid:
+                    pl.pop("carrying_realm", None)
+                    await store.put_agent(porter, pl)
 
 
 async def apply_cache_op(store: GenomeStore, world_realm: str,
@@ -167,6 +263,7 @@ async def apply_contribution(store: GenomeStore, world_realm: str,
     """Pour the hold into the site; only what the site ACCEPTS leaves the
     agent (construction.contribute is authoritative under races)."""
     site_key, offered = eff.contribute
+    metrics.CONTRIBUTIONS.inc()
     res = await construction.contribute(
         store._c, world_realm, site_key,
         agent_payload.get("owner_user_id", ""), agent.agent_uuid, offered)
@@ -297,6 +394,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.cache_op:
         await apply_cache_op(store, world_realm, agent, agent_payload,
                              eff, now)
+    if eff.portage:
+        await apply_portage(store, world_realm, agent, agent_payload,
+                            eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -329,6 +429,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     ev, decider, seed: int) -> str:
     """Process one due event vertex. Returns the choice or event kind."""
     pl = ev.payload
+    metrics.EVENTS.labels(pl["kind"]).inc()
     now = from_iso(pl["due_at"])
     agent_uuid = pl["subject"]
     agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
@@ -429,6 +530,7 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                if pl["kind"] in ("arrival", "decide")
                else {"genotype": agent_payload.get("genotype") or {},
                      "time_scale": world_payload.get("time_scale", 1.0),
+                     "carrying_site": agent_payload.get("carrying_site"),
                      "has_berth": bool(agent_payload.get("berth")),
                      "flood_in_s": _flood_mod.countdown_visible(
                          world_payload, now)})
@@ -473,6 +575,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.cache_op:
         await apply_cache_op(store, world_realm, agent, agent_payload,
                              eff, now)
+    if eff.portage:
+        await apply_portage(store, world_realm, agent, agent_payload,
+                            eff, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -508,6 +613,70 @@ async def _world_payload(store: GenomeStore, world_realm: str) -> dict:
     return rows[0].payload if rows else {}
 
 
+async def _portage_group_cross(store: GenomeStore, origin_realm: str,
+                               agent: engine.AgentView, agent_payload: dict,
+                               transfer: dict, portals: list[dict],
+                               now: float) -> bool:
+    """Move the carried construction and every OTHER porter through the
+    portal; the initiator's own crossing follows in do_transfer. False
+    refuses the whole step (the party was not assembled at the door)."""
+    key = agent_payload["carrying_site"]
+    to_world = transfer["to_world"]
+    rows = await store._c.find_vertices(construction.TABLE,
+                                        realm=origin_realm,
+                                        filters={"key": key}, limit=1)
+    if not rows or not rows[0].payload.get("carried"):
+        return True                       # stale flag: cross alone, unburdened
+    site = dict(rows[0].payload)
+    pxy = transfer.get("portal_xy")
+    if not pxy:
+        for pt in portals:
+            if pt.get("to_world") == to_world:
+                pxy = [pt["x"], pt["y"]]
+                break
+    if not pxy:
+        return False
+    positions: dict[str, tuple] = {}
+    for porter in site.get("porters", {}):
+        if porter == agent.agent_uuid:
+            positions[porter] = (agent.x, agent.y)
+            continue
+        mv = await store.latest_movement(porter)
+        if mv is None or "waypoints" not in mv.payload:
+            return False
+        r = forms.Route(tuple(tuple(q) for q in mv.payload["waypoints"]),
+                        mv.payload["departed_at"],
+                        mv.payload.get("arrives_at"))
+        positions[porter] = forms.route_position(r, now)
+    if any((px - pxy[0]) ** 2 + (py - pxy[1]) ** 2 > 0.05 ** 2
+           for px, py in positions.values()):
+        return False                       # the body is not yet one huddle
+    dest_xy = None
+    for pt in portals:
+        if pt.get("to_world") == to_world:
+            dest_xy = pt.get("dest_xy")
+            break
+    dest_xy = dest_xy or [0.5, 0.5]
+    await construction.portage_cross(store._c, origin_realm, to_world,
+                                     site, dest_xy)
+    for porter in site.get("porters", {}):
+        if porter == agent.agent_uuid:
+            continue
+        pview, ppl = await load_agent(store, origin_realm, porter,
+                                      origin_realm, now)
+        ok = await do_transfer(store, origin_realm, pview,
+                               {**ppl, "carrying_realm": to_world},
+                               {"to_world": to_world, "portal_xy": pxy,
+                                "_porter": True}, portals, now)
+        if not ok:
+            # an unsigned porter cannot strand the load mid-door: it sheds
+            # the flag and stays behind; the party continues without it
+            ppl.pop("carrying_site", None)
+            ppl.pop("carrying_realm", None)
+            await store.put_agent(porter, ppl)
+    return True
+
+
 async def do_transfer(store: GenomeStore, origin_realm: str,
                       agent: engine.AgentView, agent_payload: dict,
                       transfer: dict, portals: list[dict], now: float) -> bool:
@@ -517,6 +686,19 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     the agent stands at the destination portal.
     """
     to_world = transfer["to_world"]
+    # Rule 3.12: a carrying party crosses as ONE BODY or not at all. The
+    # initiating porter's step is refused unless every porter stands at the
+    # portal; when it goes, the construction and the whole party go with it.
+    carrying = agent_payload.get("carrying_site")
+    if carrying and not transfer.get("_porter"):
+        crossed = await _portage_group_cross(store, origin_realm, agent,
+                                             agent_payload, transfer,
+                                             portals, now)
+        if not crossed:
+            return False
+        # the initiator's own crossing continues below with the flag intact;
+        # its realm-of-carriage moves with it
+        agent_payload = {**agent_payload, "carrying_realm": to_world}
     origin_meta = await _world_payload(store, origin_realm)
     dest_meta = await _world_payload(store, to_world)
     root_pub = origin_meta.get("root_public_pem", "").encode()
@@ -598,6 +780,7 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
                               {**agent_payload, "transfer_counter": counter,
                                "commons_entry_from": origin_realm,
                                "commons_entry_xy": entry_xy})
+    metrics.TRANSFERS.inc()
     dest_owner = dest_meta.get("owner_user_id")
     if dest_owner:
         notify.emit_bg(store._c, dest_owner, "world", "arrival",
@@ -1014,6 +1197,35 @@ async def regenerate(store: GenomeStore, event_realm: str,
               "victories": 0, "stamina": 1.0, "stamina_max": 1.0,
               "born_at": now, "infections": [], "antigens": []}
     reborn.pop("perishes_at", None)
+    # Rule 3.12a: a dead carrier's construction is SET DOWN where the party
+    # stands; every surviving porter's hands open. Reclaimable by whoever
+    # next musters the right number of distinct users -- strangers included.
+    c_key = reborn.pop("carrying_site", None)
+    c_realm = reborn.pop("carrying_realm", None)
+    if c_key and c_realm:
+        try:
+            res = await construction.set_down(
+                store._c, c_realm, c_key, agent.x, agent.y,
+                reason=f"carrier died ({cause})")
+            for porter in res.get("porters", []):
+                if porter == a:
+                    continue
+                prow = await store._c.find_vertices(
+                    "agents", realm="genome_agents",
+                    filters={"key": porter}, limit=1)
+                if prow:
+                    ppl = dict(prow[0].payload)
+                    ppl.pop("carrying_site", None)
+                    ppl.pop("carrying_realm", None)
+                    await store.put_agent(porter, ppl)
+                    if ppl.get("owner_user_id"):
+                        notify.emit_bg(
+                            store._c, ppl["owner_user_id"], "world",
+                            "portage",
+                            f"A carrier died; the {res.get('name')} was set "
+                            f"down where the party stands.")
+        except Exception:
+            pass
     # Rule 3.7g: a berth does not survive its holder -- back to the pool,
     # contested afresh
     ark_key = reborn.pop("aboard_ark", None)

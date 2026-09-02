@@ -1,6 +1,10 @@
 """Construction-spec §3 slice one: the tree, resolved costs, acceptance,
 contributor counting, completion, effects."""
+import pathlib
+import sys
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from genome_core import construction as C
 from genome_core.engine import AgentView, Choice, Effects, apply_choice

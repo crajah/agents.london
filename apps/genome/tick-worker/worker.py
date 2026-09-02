@@ -241,6 +241,8 @@ async def tick_once(store: GenomeStore, realm: str, decider,
 
 
 async def main() -> None:
+    from genome_core import metrics as _metrics
+    _metrics.serve(9100)   # pod annotation scrape (marty infra/telemetry)
     if not REALMS:
         raise SystemExit("set GENOME_REALMS")
     client = AsyncPostGraph(dsn=dsn(), pool_min_size=1, pool_max_size=4,

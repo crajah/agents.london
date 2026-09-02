@@ -231,4 +231,15 @@ DESCRIPTIONS: dict[str, str] = {
     "Wisdom": "Mana pool and spell class",
     "reMana": "Mana recovery rate",
     "reStamina": "Stamina recovery rate",
+    # computed faculties (§4 faculty table) — shown in the inspector, so they
+    # need hover text like every locus
+    "Stamina": "Endurance pool: mean of Knowledge, Agility and Courage",
+    "Mana": "Casting pool: mean of Intelligence, Knowledge and Wisdom",
+    "Attack": "Striking power: Intelligence, Dexterity and Courage in "
+              "harmony, amplified by Aggression and Attrition",
+    "Counsel": "Read of an opponent: Dexterity and Agility combined",
+    "Occulmancy": "Hiding its own nature: Intelligence with Knowledge",
+    "Safe Period": "Judged window for risky acts: Knowledge tempered by "
+                   "Prudence",
+    "Speed": "Journey pace across a map: Agility with Dexterity, 0.7x-1.3x",
 }

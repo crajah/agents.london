@@ -470,3 +470,85 @@ async def cache_exchange(client: Any, realm: str, cache_key: str,
                                space="default",
                                payload={**site, "holdings": holdings})
     return {"ok": True, "took": took, "holdings": holdings}
+
+
+# ---------------------------------------------------------------------------
+# Portage — construction-spec Rules 3.10–3.13. A completed construction moves
+# only on the shoulders of as many agents as it took distinct users to raise,
+# and those agents must again be that many distinct users. Never dismantled
+# (3.13); a carrier's death sets it down where the party stands (3.12a).
+# ---------------------------------------------------------------------------
+
+PORTABLE_EXCLUDED = {"cache"}       # a larder is dug in, not built up
+PLEDGE_FRESH_S = 3600.0             # a take-up pledge goes stale in an hour
+
+
+def portable(site: dict) -> bool:
+    return bool(site.get("complete") and not site.get("destroyed")
+                and not site.get("spent") and not site.get("manifested")
+                and site.get("name") not in PORTABLE_EXCLUDED)
+
+
+async def take_up(client: Any, realm: str, site_key: str, user_id: str,
+                  agent_uuid: str, now: float) -> dict:
+    """Pledge a pair of hands. The construction lifts the moment the fresh
+    pledges span the required number of DISTINCT users (Rule 3.10); until
+    then pledges accumulate and quietly expire."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": site_key}, limit=1)
+    if not rows:
+        return {"error": "no such construction"}
+    site = dict(rows[0].payload)
+    if not portable(site):
+        return {"error": f"the {site.get('name')} cannot be taken up"}
+    if site.get("carried"):
+        return {"error": "already aloft"}
+    porters = {u: p for u, p in dict(site.get("porters", {})).items()
+               if now - p.get("at", 0.0) < PLEDGE_FRESH_S}
+    porters[agent_uuid] = {"user": user_id, "at": now}
+    users = {p["user"] for p in porters.values() if p.get("user")}
+    need = int(site.get("required_users", 1))
+    carried = len(users) >= need
+    site = {**site, "porters": porters, "carried": carried,
+            **({"carried_at": now} if carried else {})}
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default", payload=site)
+    return {"ok": True, "carried": carried, "site": site,
+            "users": len(users), "need": need}
+
+
+async def set_down(client: Any, realm: str, site_key: str,
+                   x: float, y: float, reason: str = "") -> dict:
+    """The construction comes to rest where the party stands (3.12a's clause
+    covers death; a chosen set-down is the same motion). Whoever musters the
+    right hands next may take it up again -- strangers included."""
+    rows = await client.find_vertices(TABLE, realm=realm,
+                                      filters={"key": site_key}, limit=1)
+    if not rows:
+        return {"error": "no such construction", "porters": []}
+    site = dict(rows[0].payload)
+    porters = list(site.get("porters", {}))
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
+                               space="default",
+                               payload={**site, "porters": {}, "carried": False,
+                                        "x": x, "y": y,
+                                        **({"set_down_reason": reason}
+                                           if reason else {})})
+    return {"ok": True, "porters": porters, "name": site.get("name")}
+
+
+async def portage_cross(client: Any, origin_realm: str, to_world: str,
+                        site: dict, dest_xy: list) -> None:
+    """The party stepped through: retire the origin vertex and raise the
+    construction, still aloft, at the destination portal. Same key -- the
+    thing itself travelled (3.13: it is never anything but itself)."""
+    rows = await client.find_vertices(TABLE, realm=origin_realm,
+                                      filters={"key": site["key"]}, limit=1)
+    if rows:
+        await client.upsert_vertex(TABLE, realm=origin_realm,
+                                   vertex_id=int(rows[0].id), space="default",
+                                   payload={**site, "destroyed": True,
+                                            "portaged_to": to_world})
+    await client.add_vertex(TABLE, realm=to_world, payload={
+        **site, "x": float(dest_xy[0]), "y": float(dest_xy[1]),
+        "portaged_from": origin_realm})

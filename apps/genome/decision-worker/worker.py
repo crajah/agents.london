@@ -152,6 +152,8 @@ async def work_one(store: GenomeStore, client, item) -> str:
 
 
 async def main() -> None:
+    from genome_core import metrics as _metrics
+    _metrics.serve(9100)   # pod annotation scrape (marty infra/telemetry)
     client = AsyncPostGraph(dsn=dsn(), pool_min_size=1, pool_max_size=4,
                             statement_cache_size=0)  # pgbouncer; SCHEMA_PER_REALM unset
     await client.connect()

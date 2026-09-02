@@ -50,6 +50,13 @@ OPTION_TEXT = {
                    "two offspring, one raised as yours).",
     "decline_mate": "Decline the proposal.",
     "take_portal": "Step through the portal to another world.",
+    "take_up_construction": "Join hands to carry the completed construction "
+                            "standing here -- it lifts only when its full "
+                            "crew of distinct users has pledged.",
+    "carry_to_portal": "Haul the construction toward the nearest portal, "
+                       "moving as one body with your party.",
+    "set_down_construction": "Set the construction down where you stand; "
+                             "the party's hands open.",
 }
 
 
@@ -71,6 +78,12 @@ def situation_text(req: engine.DecisionRequest) -> str:
         return (f"You meet another agent. You can see only its colours: "
                 f"{c.get('other_colours')}.{inf}{opinion_line} "
                 f"You carry {c['cargo_total']:.1f} units.")
+    if req.situation == "carrying":
+        c = req.context
+        return (f"You and your party carry the {c.get('site_name') or 'construction'} "
+                f"as one body. You may not separate, mine or trade until it "
+                f"is set down. A portal is the only way to move it between "
+                f"worlds.")
     at = req.context.get("at_pile")
     where = "at a resource pile" if at else "in open country"
     # The situation must PRESENT what is here (the 12.17 lesson: an option the
@@ -81,9 +94,14 @@ def situation_text(req: engine.DecisionRequest) -> str:
         portal_line = (f" A teleport portal stands here, wearing the colours "
                        f"{cols} of another world you have never entered — its "
                        f"piles, agents and terrain are entirely unknown to you.")
+    lift_line = ""
+    if req.context.get("portable_here"):
+        lift_line = (f" A completed {req.context.get('portable_name')} stands "
+                     f"here and may be taken up and carried "
+                     f"({req.context.get('portable_crew')}).")
     return (f"You are {where}, carrying {req.context['cargo_total']:.1f} of a "
             f"maximum 15 units. {len(req.context['reachable'])} other pile(s) "
-            f"are known to you.{portal_line}")
+            f"are known to you.{portal_line}{lift_line}")
 
 
 def llm_decider(req: engine.DecisionRequest, genotype: dict,

@@ -404,6 +404,95 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
     </div>);
 }
 
+function Tip({ text, children }) {
+  // native title tooltips proved unreliable over small spans — this one is
+  // instant, styled, and works on every row
+  return (
+    <span className="relative group cursor-help underline decoration-dotted
+                     decoration-neutral-600">
+      {children}
+      {text && (
+        <span className="pointer-events-none absolute left-0 bottom-full mb-1
+                         z-50 hidden group-hover:block w-64 bg-neutral-950
+                         border border-neutral-600 rounded px-2 py-1 text-xs
+                         font-normal shadow-xl whitespace-normal">
+          {text}</span>)}
+    </span>);
+}
+
+function Legend() {
+  const [open, setOpen] = useState(true);
+  const Dot = ({ c, ring }) => (
+    <span className={"inline-block w-3 h-3 rounded-full mr-0.5" +
+                     (ring ? " ring-2 ring-amber-300" : "")}
+          style={{ background: c }} />);
+  const Row = ({ icon, children }) => (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="w-8 text-center">{icon}</span>
+      <span className="opacity-80">{children}</span>
+    </div>);
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+            className="absolute bottom-2 right-3 z-20 text-xs px-2 py-1
+                       bg-neutral-800/90 border border-neutral-600 rounded">
+      legend</button>);
+  return (
+    <div className="absolute bottom-2 right-3 z-20 bg-neutral-900/90 border
+                    border-neutral-700 rounded p-2 text-xs w-60">
+      <div className="flex justify-between items-center mb-1">
+        <span className="opacity-60 font-semibold">legend</span>
+        <button className="opacity-50" onClick={() => setOpen(false)}>✕</button>
+      </div>
+      <Row icon={<><Dot c="#e57373" /><Dot c="#64b5f6" /></>}>
+        agent — disc + heading, tinted with its lineage colours</Row>
+      <Row icon={<Dot c="#a5d6a7" ring />}>ringed agent — one of yours</Row>
+      <Row icon={<span className="inline-block w-4 h-3 rounded-full
+                                  bg-neutral-400/70 blur-[1px]" />}>
+        pile — brighter is fuller, larger holds more</Row>
+      <Row icon={<span className="inline-block w-3.5 h-3.5 rounded-full
+                                  border-2 border-sky-400
+                                  border-b-fuchsia-400" />}>
+        portal — ring in the destination's colours</Row>
+      <Row icon="⚑">muster flag — loads are deposited here</Row>
+      <Row icon="⌗">market — the world's trading board</Row>
+      <Row icon={<span className="inline-block w-3.5 h-3.5 bg-neutral-500/60
+                                  border border-neutral-300/60" />}>
+        construction — opacity tracks build progress</Row>
+      <Row icon={<span className="inline-block w-3 h-3 rotate-45
+                                  bg-emerald-700/70" />}>
+        cache — a larder only its line's colours open</Row>
+    </div>);
+}
+
+function StockPanel({ info }) {
+  if (!info) return null;
+  const entries = Object.entries(info.stock ?? {})
+    .sort((a, b) => Number(a[0]) - Number(b[0]));
+  const colourOf = k => {
+    const i = (info.kinds ?? []).indexOf(Number(k));
+    return i >= 0 ? (info.colours?.[i] ?? "#777") : "#777";
+  };
+  const total = entries.reduce((t, [, v]) => t + Number(v), 0);
+  return (
+    <div className="absolute top-2 right-3 z-20 bg-neutral-900/85 border
+                    border-neutral-700 rounded p-2 text-xs max-w-56">
+      <div className="opacity-60 mb-1">
+        world store · {total.toFixed(0)} units · {info.agentCount} agents</div>
+      {entries.length === 0 &&
+        <div className="opacity-50">the store is empty</div>}
+      <div className="flex flex-wrap gap-1">
+        {entries.map(([k, v]) => (
+          <span key={k} title={`kind ${k}`}
+                className="flex items-center gap-1 bg-neutral-800 rounded
+                           px-1.5 py-0.5">
+            <span className="w-2.5 h-2.5 rounded-full inline-block"
+                  style={{ background: colourOf(k) }} />
+            {Number(v).toFixed(0)}
+          </span>))}
+      </div>
+    </div>);
+}
+
 function AgentModal({ inspect, onClose }) {
   const [chat, setChat] = useState([]);
   const [beliefs, setBeliefs] = useState([]);
@@ -456,24 +545,36 @@ function AgentModal({ inspect, onClose }) {
             {inspect.dispositions && <>
               <h4 className="opacity-70 mb-1">Dispositions</h4>
               {Object.entries(inspect.dispositions).map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2"
-                     title={inspect.locus_help?.[k] ?? k}>
-                  <span className="w-28 truncate cursor-help
-                                   underline decoration-dotted
-                                   decoration-neutral-600">{k}</span>
+                <div key={k} className="flex items-center gap-2">
+                  <span className="w-28 truncate">
+                    <Tip text={inspect.locus_help?.[k]}>{k}</Tip></span>
                   <div className="flex-1 h-1.5 bg-neutral-700 rounded">
                     <div className="h-1.5 rounded bg-neutral-300"
                          style={{ width: `${(v / 10000) * 100}%` }} />
                   </div>
                   <span className="w-10 text-right opacity-60">
-                    {Math.round(v)}</span>
+                    {Math.round(v / 100)}%</span>
+                </div>))}
+              <h4 className="opacity-70 mt-3 mb-1">
+                <Tip text="The phenotype: what each budgeted locus EXPRESSES
+after the genome's budget is applied — the working value, not the raw gene.">
+                  Expression — the phenotype</Tip></h4>
+              {Object.entries(inspect.expressed ?? {}).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <span className="w-28 truncate">
+                    <Tip text={inspect.locus_help?.[k]}>{k}</Tip></span>
+                  <div className="flex-1 h-1.5 bg-neutral-700 rounded">
+                    <div className="h-1.5 rounded bg-sky-300/80"
+                         style={{ width: `${Math.min(100, v * 100)}%` }} />
+                  </div>
+                  <span className="w-10 text-right opacity-60">
+                    {Math.round(v * 100)}%</span>
                 </div>))}
               <h4 className="opacity-70 mt-3 mb-1">Faculties</h4>
               {Object.entries(inspect.faculties ?? {}).map(([k, v]) => (
-                <div key={k} className="flex justify-between"
-                     title={inspect.locus_help?.[k] ?? k}>
-                  <span className="cursor-help">{k}</span>
-                  <span className="opacity-60">{v.toFixed(3)}</span>
+                <div key={k} className="flex justify-between">
+                  <Tip text={inspect.locus_help?.[k]}>{k}</Tip>
+                  <span className="opacity-60">{Math.round(v * 100)}%</span>
                 </div>))}
             </>}
             {beliefs.length > 0 && <>
@@ -491,9 +592,10 @@ function AgentModal({ inspect, onClose }) {
                   {b.loci.map((l, j) => (
                     <div key={j} className="text-xs mt-1">
                       <span className="opacity-60">{l.locus}: </span>
-                      believes {Math.round(l.believed)}
+                      believes {Math.round((l.believed ?? 0) / 100)}%
                       <span className="opacity-60"> · truth </span>
-                      {l.actual != null ? Math.round(l.actual) : "?"}
+                      {l.actual != null
+                        ? `${Math.round(l.actual / 100)}%` : "?"}
                       <span className={
                         Math.abs((l.believed ?? 0) - (l.actual ?? 0)) > 2000
                           ? "text-amber-400" : "text-emerald-500"}>
@@ -600,6 +702,7 @@ function App() {
       .catch(() => {});
   }, [me?.authenticated]);
   const [agentList, setAgentList] = useState([]);
+  const [snapInfo, setSnapInfo] = useState(null);
   const [listOpen, setListOpen] = useState(false);
   const loadRef = useRef(null);
   const esRef = useRef(null);
@@ -624,6 +727,9 @@ function App() {
           canvas.setSnapshot(snap);
           setAgentList((snap.agents ?? []).map(a =>
             ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+          setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
+                        colours: snap.colours,
+                        agentCount: (snap.agents ?? []).length });
           setFlood(snap.flood_countdown ?? null);
           setLive(true);
           setStatus(`watching ${realm}`);
@@ -648,6 +754,9 @@ function App() {
           canvas.setSnapshot(snap);
           setAgentList((snap.agents ?? []).map(a =>
             ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+          setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
+                        colours: snap.colours,
+                        agentCount: (snap.agents ?? []).length });
           setFlood(snap.flood_countdown ?? null);
           setLive(true);
           setStatus(`live — ${realm}`);
@@ -808,6 +917,8 @@ whole game -- the commons market is how the far kinds arrive."
             {agentList.length === 0 &&
               <div className="px-3 py-2 opacity-60">nobody here</div>}
           </nav>)}
+        <StockPanel info={snapInfo} />
+        <Legend />
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}
           onInspect={async (uuid) => {

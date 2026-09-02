@@ -96,6 +96,8 @@ class Effects:
     # "collect", cache_key) — commons larders; the caller applies
     market_turn: bool = False                    # at the board with business:
     # the caller queues a structured market decision (genome-spec §4.5)
+    portage: tuple[str, str] | None = None       # ("take_up"|"set_down",
+    # site_key) — construction-spec §3.10–3.13; the caller applies
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -119,6 +121,11 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                        schedule=("decide", now + 15.0 / ts, agent.agent_uuid,
                                  {"pile_uuid": payload["pile_uuid"]}))
     if kind == "encounter":
+        if (ctx or {}).get("carrying_site"):
+            # Rule 3.12: carriers are occupied — no trading, no fighting,
+            # no courting until the construction is set down
+            return Effects(schedule=("decide", now + 120.0 / ts,
+                                     agent.agent_uuid, {}))
         other = payload["other"]
         # Rule 6.6/3.4: the other agent's COLOUR is visible, nothing else; the
         # agent's own OPINION of that uuid (if any) rides in the payload.
@@ -261,6 +268,33 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  ctx: dict | None = None) -> DecisionRequest:
     stock = stock or {}
     ctx = ctx or {}
+    carrying = ctx.get("carrying_site")
+    if carrying:
+        # Rule 3.12: the party moves as one body and does nothing else.
+        # The only doors out are a portal or the ground.
+        opts = ["set_down_construction"]
+        near_p = None
+        for pt in (portals or []):
+            if pt.get("to_world") and \
+                    (pt["x"] - agent.x) ** 2 + (pt["y"] - agent.y) ** 2 \
+                    < 0.03 ** 2:
+                near_p = pt
+                break
+        if near_p:
+            opts.insert(0, "take_portal")
+        elif any(pt.get("to_world") for pt in (portals or [])):
+            opts.insert(0, "carry_to_portal")
+        opts.append("wait")
+        return DecisionRequest(
+            agent_uuid=agent.agent_uuid, situation="carrying",
+            options=tuple(opts),
+            context={"cargo_total": agent.cargo_total(), "at_pile": None,
+                     "reachable": [], "site_carried": carrying,
+                     "site_name": ctx.get("carrying_name"),
+                     "portal_to": near_p.get("to_world") if near_p else None,
+                     "portal_xy": [near_p["x"], near_p["y"]] if near_p else None,
+                     "portal_colours": near_p.get("dest_colours")
+                     if near_p else None})
     at_pile = payload.get("pile_uuid")
     by_id = {p.pile_uuid: p for p in piles}
     options: list[str] = []
@@ -343,6 +377,16 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
             # my_open included: the board summons its listers -- a trade
             # completes hand-to-hand, so an absent lister closes nothing
             options.append("go_to_market")
+    # a completed construction within reach may be TAKEN UP (Rule 3.10) —
+    # it lifts only when the pledges span its full crew of distinct users
+    from . import construction as _c3
+    near_portable = next(
+        (s for s in ctx.get("sites", [])
+         if _c3.portable(s) and not s.get("carried")
+         and (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2 < REACH ** 2),
+        None)
+    if near_portable:
+        options.append("take_up_construction")
     # the water is coming (Rule 4.8): a boardable Ark changes everything
     ark = ctx.get("boardable_ark")
     if ark:
@@ -371,6 +415,11 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  if agent.explored else 0,
                  "unexplored_count": GRID_K * GRID_K - len(agent.explored),
                  "site_here": near_site["key"] if near_site else None,
+                 "portable_here": near_portable["key"] if near_portable else None,
+                 "portable_name": near_portable["name"] if near_portable else None,
+                 "portable_crew": (f"{len({p.get('user') for p in near_portable.get('porters', {}).values() if p.get('user')})}"
+                                   f"/{near_portable.get('required_users', 1)} users pledged")
+                 if near_portable else None,
                  "flood_in_s": ctx.get("flood_in_s"),
                  "ark_key": ark["key"] if ark else None,
                  "cache_here": near_cache["key"] if near_cache else None,
@@ -581,6 +630,43 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                      agent.agent_uuid, {}))
         tx, ty = standoff(agent.x, agent.y, mkt["x"], mkt["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale, pace)
+
+    if choice.option == "take_up_construction":
+        sites = {s["key"]: s for s in ctx.get("sites", [])}
+        key = payload.get("portable_here") or choice.target
+        if key not in sites:
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        s = sites[key]
+        if (s["x"] - agent.x) ** 2 + (s["y"] - agent.y) ** 2 > REACH ** 2:
+            tx, ty = standoff(agent.x, agent.y, s["x"], s["y"])
+            tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+            return _route_effects(agent, tx, ty, now, terrain,
+                                  "decide", {}, time_scale, pace)
+        return Effects(portage=("take_up", key),
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "set_down_construction":
+        key = payload.get("site_carried") or ctx.get("carrying_site") \
+            or choice.target
+        if not key:
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        return Effects(portage=("set_down", key),
+                       schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "carry_to_portal":
+        doors = [pt for pt in ctx.get("portals", []) if pt.get("to_world")]
+        if not doors:
+            return Effects(schedule=("decide", now + 600.0 / max(1.0, time_scale),
+                                     agent.agent_uuid, {}))
+        pt = min(doors, key=lambda q: (q["x"] - agent.x) ** 2
+                 + (q["y"] - agent.y) ** 2)
+        tx, ty = standoff(agent.x, agent.y, pt["x"], pt["y"])
         return _route_effects(agent, tx, ty, now, terrain,
                               "decide", {}, time_scale, pace)
 

@@ -9,7 +9,12 @@ spec:
   replicas: 2
   selector: { matchLabels: { app: genome-api } }
   template:
-    metadata: { labels: { app: genome-api } }
+    metadata:
+      labels: { app: genome-api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8800"
+        prometheus.io/path: /metrics
     spec:
       containers:
         - name: genome-api
@@ -112,7 +117,11 @@ spec:
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-tick-worker } }
   template:
-    metadata: { labels: { app: genome-tick-worker } }
+    metadata:
+      labels: { app: genome-tick-worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
     spec:
       containers:
         - name: genome-tick-worker
@@ -158,7 +167,11 @@ spec:
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-decision-worker } }
   template:
-    metadata: { labels: { app: genome-decision-worker } }
+    metadata:
+      labels: { app: genome-decision-worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
     spec:
       containers:
         - name: genome-decision-worker

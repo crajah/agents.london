@@ -193,6 +193,9 @@ class GenomeStore:
 
     async def record_decision(self, agent_uuid: str, payload: dict) -> None:
         """Append-only, never sampled (execution-spec §6)."""
+        from . import metrics
+        metrics.DECISIONS.labels(payload.get("situation", "?"),
+                                 payload.get("model", "?")).inc()
         a = _req(agent_uuid, "agent")
         pk = await self._upsert_by_key(DECISIONS, AGENTS_REALM, a, {}, space=a)             if await self._pk(DECISIONS, AGENTS_REALM, a) is None else             await self._pk(DECISIONS, AGENTS_REALM, a)
         await self._c.add_vertex_data(DECISIONS, realm=AGENTS_REALM,

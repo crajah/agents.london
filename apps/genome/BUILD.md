@@ -332,12 +332,12 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] Phase 7 assertions: a stranger's chat message joins the agent's bounded "heard" list, reaches the prompt marked as unverified claims, and displaces nothing the owner said; instruction vs assertion marked at send time in the UI (interface-spec 3.3)
 - [x] 4.3c note: survivors emerge where the ark rests — the host's world — which is current behaviour by construction (single-world voyages); stock manifest slots still open
 - [x] Phase 7 opening move: agent inspector is a modal with an INSTRUCTION chat — owner words become the top objective (10.1a) and persist in the chats table; strangers 403 until Phase 7 assertions land
-- [ ] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g)
-- [ ] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f)
-- [ ] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a)
-- [ ] Ark lands in the host's world; **foreign survivors emerge there** and must travel home (4.3c)
-- [ ] Carrier death sets the construction down in place, reclaimable by the right number of distinct users (3.12a)
-- [ ] Portage by that many **distinct users**; never dismantled into resources (3.10–3.13)
+- [x] Berths: one per agent (3.7c), exchangeable to anyone (3.7a/3.7d), tradeable during countdown (3.7b), **lost on death** (3.7g) — proven across the berth-exchange and regeneration slices above
+- [x] Berths arrive **unassigned**; a user's own agents contest them (3.7e); presence settles the remainder (3.7f) — allocation + scramble slices above
+- [x] **Boarding required** — a berth held but not reached saves nobody (4.10, 4.10a) — proximity-at-apply slice above; live-proven in genome_demo3
+- [x] Ark lands in the host's world; **foreign survivors emerge there** and must travel home (4.3c) — current behaviour by construction (single-world voyages)
+- [x] Carrier death sets the construction down in place, reclaimable by the right number of distinct users (3.12a) — regenerate() sets down where the party stands and opens every surviving porter's hands
+- [x] Portage by that many **distinct users**; never dismantled into resources (3.10–3.13) — take_up pledges (1h expiry) lift only when fresh pledges span the crew AND the porters stand at the site; carriers are occupied (no mining/trading/encounters), move via carry_to_portal, cross as ONE BODY (every porter at the door or the step refuses), and the construction arrives still aloft; set_down releases; no dismantle surface exists
 - [ ] Ark tree immutable (3.9a); user plans additive (`genome-spec.md` Rule 13.6c)
 - [ ] Plans are **trees**, authored conversationally in the world channel, buildable anywhere (13.6a, 13.6b, 13.6d)
 - [ ] Plan grammar cannot express an effect (`interface-spec.md` Rule 3.5, `genome-spec.md` Rule 13.7)

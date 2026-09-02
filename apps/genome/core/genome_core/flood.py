@@ -90,6 +90,8 @@ async def tick(store, realm: str, now: float) -> str | None:
 
 
 async def execute(store, realm: str, meta: dict, now: float) -> str:
+    from . import metrics
+    metrics.FLOODS.inc()
     """The water arrives."""
     client = store._c
     # who is aboard a completed Ark with a berth? (Rules 4.10/4.10a)

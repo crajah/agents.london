@@ -100,6 +100,29 @@ async def health():
     return {"status": "ok", "service": "genome-api"}
 
 
+# Telemetry (user directive): everything measurable lands in Prometheus and
+# is scraped by the cluster's telemetry stack (marty infra/telemetry).
+from genome_core import metrics as _metrics
+
+
+@app.middleware("http")
+async def _count_requests(request, call_next):
+    response = await call_next(request)
+    if not request.url.path.endswith(("/metrics", "/health")):
+        _metrics.HTTP.labels(request.method, str(response.status_code)).inc()
+    return response
+
+
+@app.get("/metrics", tags=["System"], include_in_schema=False)
+async def metrics_endpoint():
+    from fastapi.responses import Response
+    try:
+        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    except Exception:
+        return Response("", media_type="text/plain")
+
+
 # ---------------------------------------------------------------------------
 # Live streams (interface-spec 2.2: events on the wire, not frames). One
 # refresher task per realm serves EVERY viewer -- N tabs cost one snapshot
@@ -143,6 +166,7 @@ async def world_stream(realm: str):
 
     async def gen():
         st["subs"] += 1
+        _metrics.SSE_VIEWERS.inc()
         if st["task"] is None:
             st["task"] = _aio.create_task(_refresher(realm))
         try:
@@ -162,6 +186,7 @@ async def world_stream(realm: str):
                     yield f"data: {last}\n\n"
         finally:
             st["subs"] -= 1
+            _metrics.SSE_VIEWERS.dec()
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
