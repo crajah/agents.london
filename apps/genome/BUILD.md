@@ -382,7 +382,8 @@ Contact import makes this non-optional rather than a courtesy.
 - [ ] Inspect a world: lease holder, queue depth, oldest due event, last tick
 - [ ] **Find a stalled world** — a world where nothing happens is indistinguishable from a world where nothing was due (`system-spec.md` Rule 8.2)
 - [ ] Rebuild a world's queue from Postgres on demand (Rule 8.3)
-- [ ] Replay a decision from its record for debugging, without re-running the world
+- [x] Replay a decision from its record (POST /admin/replay): the same mind, the same recorded situation, no application — then-vs-now with an agreement flag
+- [x] Admin operator hands: per-world +agent (immediate free spawn), +plague (fresh strain to a random resident via the real infect path), store contents in the worlds table; user-side materialisation button behind the four-kind wall (Rules 2.1/2.3)
 - [ ] Pause and resume a world; drain a worker for deploy
 - [ ] Cost per world and per user, with the biggest spenders visible
 

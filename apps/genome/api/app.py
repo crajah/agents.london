@@ -609,6 +609,43 @@ async def admin_infect(realm: str, request: __import__("fastapi").Request):
             "contagion": round(strain["contagion"], 2)}
 
 
+@app.post("/admin/replay", tags=["Admin"])
+async def admin_replay(payload: dict,
+                       request: __import__("fastapi").Request):
+    """Phase 13: re-run a recorded decision from its record, WITHOUT
+    applying -- what would this agent's mind choose today, given exactly
+    what it saw then? Body: {agent, index} (index into newest-first
+    decisions, default 0)."""
+    from fastapi.responses import JSONResponse
+    from genome_core import engine
+    from genome_core.decider import llm_decider
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    agent = payload.get("agent", "")
+    idx = int(payload.get("index", 0))
+    recs = await snapshot.agent_decisions(app.state.pg, agent,
+                                          limit=idx + 1)
+    if len(recs) <= idx:
+        return JSONResponse({"error": "no such decision"}, status_code=404)
+    rec = recs[idx]
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": agent}, limit=1)
+    g = rows[0].payload.get("genotype") if rows else None
+    if not g or not rec.get("options"):
+        return JSONResponse({"error": "record not replayable"},
+                            status_code=400)
+    req2 = engine.DecisionRequest(
+        agent_uuid=agent, situation=rec.get("situation", "replay"),
+        options=tuple(rec["options"]),
+        context={"cargo_total": 0.0, "at_pile": None, "reachable": [],
+                 "portal_to": None, "portal_xy": None})
+    choice, model = llm_decider(req2, g)
+    return {"then": {"choice": rec.get("choice"),
+                     "model": rec.get("model"), "at": rec.get("at")},
+            "now": {"choice": choice.option, "model": model},
+            "agrees": choice.option == rec.get("choice")}
+
+
 @app.post("/admin/worlds/{realm}/pause", tags=["Admin"])
 async def admin_pause(realm: str, request: __import__("fastapi").Request):
     from fastapi.responses import JSONResponse

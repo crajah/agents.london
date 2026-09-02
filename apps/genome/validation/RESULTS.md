@@ -314,3 +314,24 @@ of phenotype — the same genotype behaves differently by which mind runs
 it — and every genotype-behaviour analysis must condition on model. Many
 loci show STEP rather than smooth response (a knee near 5000): dispositions
 read as thresholds, consistent with the earlier flash-lite finding.
+
+## The bazaar emerges
+
+Within a day of the marketplace and negotiation landing, the commons is a
+working economy with no further staging:
+
+- **A four-turn haggle completed organically**: agent-0c624 opened at 1.0
+  kind-5 for 1.0 kind-1; agent-8645 countered with 0.5 kind-9 for 0.5
+  kind-5; 0c624 counter-countered 0.4 kind-5 for 0.6 kind-9; 8645
+  accepted. Price discovery through alternating concessions -- the whole
+  execution-spec §7 arc, chosen freely at every turn.
+- **Six listings stand on the board at once**, including fractional
+  market-making (quarter-unit lots of kind 4 priced in kind 9 at varying
+  ratios -- someone is testing the price), a 6-for-4 bulk offer moving the
+  old robbery hoard toward the agent that wants it, and a 5-for-5 in kinds
+  the founding endowments never held: goods acquired through earlier
+  trades are being re-traded.
+- Free-spawned agents participate on equal terms; the first admin-seeded
+  strain (contagion 0.86) is loose in the same population that trades.
+  Commerce, contagion and haggling now run continuously, unattended, in
+  production.
