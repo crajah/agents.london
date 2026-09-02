@@ -294,6 +294,16 @@ async def main() -> None:
                 except Exception:
                     logger.exception("tick failed for %s", realm)
             await asyncio.gather(*(_tick(r) for r in realms if mine(r)))
+            if SHARD_INDEX == 0 and cycle % 5 == 0:
+                # the postman rides with shard 0 (system-spec §10): a no-op
+                # until GENOME_SMTP_HOST arrives, then the outbox drains
+                try:
+                    from genome_core import mailer
+                    n = await mailer.send_pending(client)
+                    if n:
+                        logger.info("outbox: %d sent", n)
+                except Exception:
+                    logger.exception("outbox drain failed")
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)

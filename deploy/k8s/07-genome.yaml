@@ -142,6 +142,21 @@ spec:
               value: "4"
             - name: GENOME_TOOLS_URL
               value: http://tool-registry-service:8002
+            - name: GENOME_SMTP_HOST
+              valueFrom:
+                secretKeyRef: { name: genome-smtp, key: host, optional: true }
+            - name: GENOME_SMTP_PORT
+              valueFrom:
+                secretKeyRef: { name: genome-smtp, key: port, optional: true }
+            - name: GENOME_SMTP_USER
+              valueFrom:
+                secretKeyRef: { name: genome-smtp, key: user, optional: true }
+            - name: GENOME_SMTP_PASS
+              valueFrom:
+                secretKeyRef: { name: genome-smtp, key: pass, optional: true }
+            - name: GENOME_SMTP_FROM
+              valueFrom:
+                secretKeyRef: { name: genome-smtp, key: from, optional: true }
             - name: POD_NAME
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }

@@ -224,7 +224,7 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [ ] Platform id = **hash of normalised email** from every route (`genome-spec.md` Rule 6.2i); OAuth extracts the email claim; direct entry accepted unverified (magic-link verification a hardening task)
 - [ ] **Invite by email** (Rule 6.2j): creates invitee world eagerly, writes outbox login link, links the two worlds' portals both ways, notifies both sides
 - [ ] **Notifications**: per-user feed with source × level config (`interface-spec.md` §7); always-important set per Rule 7.3; emit from genesis, invites, links, births, deaths, combat, transfers
-- [ ] **Outbox** (`system-spec.md` §10): durable rows, no-op sender until SMTP configured
+- [x] **Outbox** (`system-spec.md` §10): durable rows, and the SENDER now exists — the postman rides tick shard 0, a no-op until the optional genome-smtp secret (host/port/user/pass/from) arrives, then STARTTLS delivery with sent_at marking and a five-strikes failed_at give-up
 - [ ] Web: email-entry login, notification bell, per-source level settings
 
 ### 5.4 Onboarding — J1
