@@ -19,11 +19,18 @@ MARKET_REACH = 0.035
 
 
 async def board(client: Any, realm: str) -> list[dict]:
-    try:
-        rows = await client.get_vertices(TABLE, realm=realm)
-    except Exception:
-        return []
-    return [v.payload for v in rows]
+    """Only rows that still matter travel: open listings plus filled ones
+    awaiting collection -- history stays in the database."""
+    out = []
+    for status in ("open", "filled"):
+        try:
+            rows = await client.find_vertices(TABLE, realm=realm,
+                                              filters={"status": status},
+                                              limit=200)
+        except Exception:
+            continue
+        out.extend(v.payload for v in rows)
+    return out
 
 
 def open_listings(listings: list[dict]) -> list[dict]:

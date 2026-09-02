@@ -169,18 +169,14 @@ async def prune_done(store: GenomeStore, realm: str, now: float) -> int:
     The queue polls load whole tables; without pruning, memory grows with
     history and the workers OOM on schedule (observed twice). The decision
     RECORD lives in the decisions table and is never touched (Rule 6.1)."""
-    gone = 0
     try:
-        for v in await store._c.get_vertices("events", realm=realm):
-            pl = v.payload
-            done = pl.get("done_at")
-            if done and float(done) < now - PRUNE_AGE_S:
-                await store._c.delete_vertex("events", realm=realm,
-                                             vertex_id=str(v.id))
-                gone += 1
+        cutoff = drain._iso(now - PRUNE_AGE_S)
+        return await store._c.delete_vertices(
+            "events", realm=realm,
+            where=[("done_at", "not_null", None), ("done_at", "<", cutoff)])
     except Exception:
         logger.exception("prune failed for %s", realm)
-    return gone
+        return 0
 
 
 async def tick_once(store: GenomeStore, realm: str, decider,

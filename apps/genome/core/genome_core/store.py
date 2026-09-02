@@ -57,6 +57,8 @@ async def ensure_world_realm(client: Any, world_realm: str) -> None:
     for table in (WORLD_META, PILES, PORTALS, PRESENCE, "constructions",
                   "negotiations", "market_listings"):
         await client.create_vertex_table(table, realm=r)
+    for key in ("due_at", "done_at"):
+        await client.create_payload_index(EVENTS, realm=r, key=key)
     await client.create_vertex_table(EVENTS, realm=r,
                                      promoted_keys=("due_at", "done_at"))
 
@@ -66,6 +68,9 @@ async def ensure_agents_realm(client: Any) -> None:
     for table in (AGENTS, DECISIONS, "decision_queue", "trust",
                   "notifications", "outbox", "link_proposals", "chats"):
         await client.create_vertex_table(table, realm=AGENTS_REALM)
+    for key in ("done_at", "agent_uuid"):
+        await client.create_payload_index("decision_queue",
+                                          realm=AGENTS_REALM, key=key)
     await client.create_edge_table(OPINION, from_vertex_table=AGENTS,
                                   to_vertex_table=AGENTS, realm=AGENTS_REALM)
 
@@ -134,16 +139,14 @@ class GenomeStore:
             {"due_at": due_at, "kind": kind, "subject": subject,
              "payload": payload, "done_at": None})
 
-    async def due_events(self, world_realm: str, now: str) -> list:
-        # done_at filtered client-side: a None filter matches nothing in real
-        # post-graph (proven in-cluster). Promoted due_at enables a DB-side
-        # range query later if the scan ever matters.
-        rows = await self._c.get_vertices(
-            EVENTS, realm=_req(world_realm, "world realm"))
-        return sorted((v for v in rows
-                       if v.payload.get("done_at") is None
-                       and v.payload["due_at"] <= now),
-                      key=lambda v: v.payload["due_at"])
+    async def due_events(self, world_realm: str, now: str,
+                         limit: int = 500) -> list:
+        # post-graph >= 1.2.0: the range query the schema was shaped for --
+        # the table never travels, only the due slice, oldest first
+        return await self._c.find_vertices(
+            EVENTS, realm=_req(world_realm, "world realm"),
+            where=[("done_at", "is_null", None), ("due_at", "<=", now)],
+            order_by="due_at", limit=limit)
 
     async def complete_event(self, world_realm: str, event_id: str, now: str) -> None:
         r = _req(world_realm, "world realm")

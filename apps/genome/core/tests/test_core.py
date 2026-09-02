@@ -118,7 +118,7 @@ class _V:
 
 
 class _FakeClient:
-    """Mirrors post_graph 1.0.1 signatures; asserts realm on every call."""
+    """Mirrors post_graph 1.2.0 signatures; asserts realm on every call."""
     def __init__(self):
         self.calls = []
         self.vertices = {}
@@ -157,12 +157,59 @@ class _FakeClient:
         return [v for (t, r, _), v in self.vertices.items()
                 if t == table_name and r == realm]
 
-    async def find_vertices(self, table_name, realm, filters, limit=None, **kw):
+    @staticmethod
+    def _where_ok(payload, where):
+        for key, op, val in (where or []):
+            cur = payload.get(key)
+            if op == "is_null":
+                if cur is not None: return False
+            elif op == "not_null":
+                if cur is None: return False
+            elif op == "=":
+                if cur != val: return False
+            elif op == "!=":
+                if cur == val: return False
+            elif cur is None:
+                return False
+            elif op == "<" and not (cur < val): return False
+            elif op == "<=" and not (cur <= val): return False
+            elif op == ">" and not (cur > val): return False
+            elif op == ">=" and not (cur >= val): return False
+        return True
+
+    async def find_vertices(self, table_name, realm, filters=None,
+                            limit=None, where=None, order_by=None,
+                            descending=False, **kw):
         self._rec("find", realm, table=table_name)
         rows = [v for (t, r, _), v in self.vertices.items()
                 if t == table_name and r == realm
-                and all(v.payload.get(k) == fv for k, fv in filters.items())]
+                and all(v.payload.get(k) == fv
+                        for k, fv in (filters or {}).items())
+                and self._where_ok(v.payload, where)]
+        if order_by:
+            rows.sort(key=lambda v: v.payload.get(order_by),
+                      reverse=descending)
         return rows[:limit] if limit else rows
+
+    async def count_vertices(self, table_name, realm, filters=None,
+                             where=None, **kw):
+        return len(await self.find_vertices(table_name, realm,
+                                            filters=filters, where=where))
+
+    async def delete_vertices(self, table_name, realm, where, **kw):
+        assert where, "delete_vertices refuses an empty where"
+        gone = [k for (t, r, i), v in self.vertices.items()
+                if t == table_name and r == realm
+                and self._where_ok(v.payload, where)
+                for k in [(t, r, i)]]
+        for k in gone:
+            del self.vertices[k]
+        return len(gone)
+
+    async def create_payload_index(self, table_name, realm, key,
+                                   numeric=False):
+        self._rec("index", realm, table=table_name)
+        return f"idx_{table_name}_{key}"
 
     async def get_vertex(self, table_name, realm, vertex_id, strict=False):
         self._rec("get1", realm, table=table_name)

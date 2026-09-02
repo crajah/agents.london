@@ -493,15 +493,25 @@ async def admin_worlds(request: __import__("fastapi").Request):
         meta = await _dr._world_payload(store, realm)
         if not meta:
             return None
+        now_s = f"{now:020.3f}"
         try:
-            events = await app.state.pg.get_vertices("events", realm=realm)
+            pending_n = await app.state.pg.count_vertices(
+                "events", realm=realm,
+                where=[("done_at", "is_null", None)])
+            due_n = await app.state.pg.count_vertices(
+                "events", realm=realm,
+                where=[("done_at", "is_null", None),
+                       ("due_at", "<=", now_s)])
+            oldest = await app.state.pg.find_vertices(
+                "events", realm=realm,
+                where=[("done_at", "is_null", None),
+                       ("due_at", "<=", now_s)],
+                order_by="due_at", limit=1)
+            oldest_due_age = (now - float(oldest[0].payload["due_at"])
+                              if oldest else 0.0)
         except Exception:
-            events = []
-        pending = [v.payload for v in events
-                   if v.payload.get("done_at") is None]
-        due = [p for p in pending if float(p.get("due_at", 0)) <= now]
-        oldest_due_age = max((now - float(p["due_at"]) for p in due),
-                             default=0.0)
+            pending_n = due_n = 0
+            oldest_due_age = 0.0
         agents = [v.payload["key"] for v in await store.agents_in(realm)
                   if not v.payload["key"].startswith("user:")]
         listings = [l for l in await _mkt.board(app.state.pg, realm)
@@ -510,8 +520,8 @@ async def admin_worlds(request: __import__("fastapi").Request):
             "realm": realm,
             "paused": bool(meta.get("paused")),
             "agents": len(agents),
-            "events_pending": len(pending),
-            "events_due": len(due),
+            "events_pending": pending_n,
+            "events_due": due_n,
             "oldest_due_age_s": round(oldest_due_age, 1),
             "stalled": oldest_due_age > 300 and not meta.get("paused"),
             "flood_countdown_s": _fl.countdown_visible(meta, now),
@@ -525,15 +535,12 @@ async def admin_worlds(request: __import__("fastapi").Request):
     out = [r for r in await _aio.gather(*(_row(r) for r in realms)) if r]
     # decision throughput, last hour, from the queue ledger
     mix: dict[str, int] = {}
-    done_hour = 0
     try:
-        for v in await app.state.pg.get_vertices("decision_queue",
-                                                 realm="genome_agents"):
-            d = v.payload.get("done_at")
-            if d and float(d) > now - 3600:
-                done_hour += 1
+        done_hour = await app.state.pg.count_vertices(
+            "decision_queue", realm="genome_agents",
+            where=[("done_at", ">", f"{now - 3600:020.3f}")])
     except Exception:
-        pass
+        done_hour = 0
     return {"worlds": out, "decisions_last_hour": done_hour}
 
 

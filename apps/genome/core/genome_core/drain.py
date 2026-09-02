@@ -246,11 +246,11 @@ async def enqueue_decision(store: GenomeStore, world_realm: str,
     # repeatedly -- observed live, 167 deep with fourfold duplicates, every
     # one an LLM call. The situation string is exact, so a genuinely new
     # context still queues.
-    pending = await store._c.find_vertices(
-        DECISION_QUEUE, realm="genome_agents",
-        filters={"agent_uuid": req.agent_uuid,
-                 "situation": req.situation}, limit=20)
-    if any(v.payload.get("done_at") is None for v in pending):
+    if await store._c.count_vertices(
+            DECISION_QUEUE, realm="genome_agents",
+            filters={"agent_uuid": req.agent_uuid,
+                     "situation": req.situation},
+            where=[("done_at", "is_null", None)]):
         return
     await store._c.add_vertex(DECISION_QUEUE, realm="genome_agents",
         payload={"key": f"dq-{_u.uuid4().hex[:12]}",

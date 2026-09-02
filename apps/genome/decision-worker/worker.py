@@ -150,23 +150,19 @@ async def main() -> None:
         prune_at = 0.0
         while not stop.is_set():
             try:
-                rows = await client.get_vertices("decision_queue",
-                                                 realm=AGENTS_REALM)
+                rows = await client.find_vertices(
+                    "decision_queue", realm=AGENTS_REALM,
+                    where=[("done_at", "is_null", None)], limit=500)
                 items = [v for v in rows
-                         if v.payload.get("done_at") is None
-                         and mine(v.payload.get("agent_uuid", ""))]
+                         if mine(v.payload.get("agent_uuid", ""))]
                 if SHARD_INDEX == 0 and time.time() > prune_at:
                     # hourly ledger hygiene; one shard sweeps for all
                     prune_at = time.time() + 3600
-                    cutoff = time.time() - 86400
-                    n = 0
-                    for v in rows:
-                        d = v.payload.get("done_at")
-                        if d and float(d) < cutoff:
-                            await client.delete_vertex(
-                                "decision_queue", realm=AGENTS_REALM,
-                                vertex_id=str(v.id))
-                            n += 1
+                    cutoff = drain._iso(time.time() - 86400)
+                    n = await client.delete_vertices(
+                        "decision_queue", realm=AGENTS_REALM,
+                        where=[("done_at", "not_null", None),
+                               ("done_at", "<", cutoff)])
                     if n:
                         logger.info("pruned %d done queue rows", n)
             except Exception:
