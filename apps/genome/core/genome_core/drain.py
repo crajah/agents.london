@@ -142,6 +142,8 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "carrying_site": carrying, "carrying_name": carrying_name,
             "addressable": agent_payload.get("addressable") or [],
             "skill": (agent_payload.get("capability") or {}).get("name"),
+            "crew_size": len(agent_payload.get("crew") or []),
+            "has_objective": bool(agent_payload.get("objectives")),
             "known_remote_holders": [
                 (u, sk) for u, sk in
                 (agent_payload.get("known_capabilities") or {}).items()
@@ -239,6 +241,46 @@ async def apply_word(store: GenomeStore, agent: engine.AgentView,
     tp = _word.introduce(tp, subject)
     await store.put_agent(target, tp)
     metrics.WORDS.inc()
+
+
+async def apply_convoke(store: GenomeStore, world_realm: str,
+                        agent: engine.AgentView, agent_payload: dict,
+                        now: float) -> None:
+    """Convocation (skills-spec §4.7): the call goes to everyone within
+    twice the caller's sight; the TARGET's Amenability decides, per pair
+    per day, whether its feet are disposed to answer. Answering is still a
+    decision -- the call only puts the option in the room."""
+    import math as _m
+    caller_name = agent_payload.get("name", agent.agent_uuid)
+    called = 0
+    for v in await store.agents_in(world_realm):
+        other = v.payload["key"]
+        if other == agent.agent_uuid or called >= 8:
+            continue
+        mv = await store.latest_movement(other)
+        if mv is None or "waypoints" not in mv.payload:
+            continue
+        r = forms.Route(tuple(tuple(q) for q in mv.payload["waypoints"]),
+                        mv.payload["departed_at"],
+                        mv.payload.get("arrives_at"))
+        px, py = forms.route_position(r, now)
+        if _m.hypot(px - agent.x, py - agent.y) > engine.SIGHT_RADIUS * 2:
+            continue
+        rows = await store._c.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": other}, limit=1)
+        if not rows:
+            continue
+        tp = rows[0].payload
+        if not _skills.amenable(tp, f"{agent.agent_uuid}:{other}"
+                                f":{int(now // 86400)}"):
+            continue                      # not disposed to be led today
+        await store.schedule(
+            world_realm, f"call-{other}-{int(now)}", _iso(now + 10.0),
+            "decide", other,
+            {"convoked_to": [agent.x, agent.y],
+             "convoked_by": caller_name})
+        called += 1
+    metrics.SERVICES.labels("convoke").inc()
 
 
 async def apply_service(store: GenomeStore, world_realm: str,
@@ -626,6 +668,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.service:
         await apply_service(store, world_realm, agent, agent_payload,
                             eff, now)
+    if eff.convoke:
+        await apply_convoke(store, world_realm, agent, agent_payload, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -784,6 +828,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                else {"genotype": agent_payload.get("genotype") or {},
                      "time_scale": world_payload.get("time_scale", 1.0),
                      "sight_mult": fx["sight_mult"],
+                     "skill": (agent_payload.get("capability") or {}).get("name"),
+                     "crew_size": len(agent_payload.get("crew") or []),
+                     "has_objective": bool(agent_payload.get("objectives")),
                      "carrying_site": agent_payload.get("carrying_site"),
                      "has_berth": bool(agent_payload.get("berth")),
                      "flood_in_s": _flood_mod.countdown_visible(
@@ -794,7 +841,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
             if decider is None:                     # queue mode (Rule 8.4)
                 merged_q = dict(pl.get("payload", {}))
                 for k in ("portal_to", "portal_xy", "proposer", "other",
-                          "site_here", "cache_here", "ark_key"):
+                          "site_here", "cache_here", "ark_key",
+                          "convoked_to", "convoked_by"):
                     if res.context.get(k):
                         merged_q[k] = res.context[k]
                 await enqueue_decision(store, world_realm, res,
@@ -840,6 +888,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.service:
         await apply_service(store, world_realm, agent, agent_payload,
                             eff, now)
+    if eff.convoke:
+        await apply_convoke(store, world_realm, agent, agent_payload, now)
     if eff.market_turn:
         board_now = market.summary(await market.board(store._c, world_realm),
                                    agent.agent_uuid)
@@ -1152,6 +1202,73 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         if merged_b != theirs_k:
             other_payload["plans_known"] = merged_b
             await store.put_agent(other_uuid, dict(other_payload))
+    if ("enlist" in (a_ans, b_ans) or "delegate_task" in (a_ans, b_ans)) \
+            and "attack" not in (a_ans, b_ans):
+        # coordination (skills-spec §4.7): persuasion, never command. The
+        # TARGET's Amenability gates; Rule 5.2: the target's OWNER sees
+        # every modification made to their agent.
+        for act in ("enlist", "delegate_task"):
+            if act not in (a_ans, b_ans):
+                continue
+            actor = me if a_ans == act else other_uuid
+            act_pl = agent_payload if actor == me else other_payload
+            tgt = other_uuid if actor == me else me
+            tgt_pl = other_payload if actor == me else agent_payload
+            gate = _skills.amenable(tgt_pl, f"{actor}:{tgt}"
+                                    f":{int(now // 86400)}")
+            actor_name = act_pl.get("name", actor)
+            if not gate:
+                act_pl.update(_word.hear(
+                    act_pl, f"{tgt_pl.get('name', tgt)} was not disposed "
+                    f"to be led by you.", "world", 1, False))
+                await store.put_agent(actor, dict(act_pl))
+                outcome = f"{act}:declined"
+                continue
+            if act == "enlist":
+                crew = [u for u in (act_pl.get("crew") or []) if u != tgt]
+                if len(crew) >= _skills.MAX_CREW or \
+                        not act_pl.get("objectives"):
+                    continue
+                shared = act_pl["objectives"][0]
+                act_pl["crew"] = crew + [tgt]
+                tgt_obj = [o for o in (tgt_pl.get("objectives") or [])
+                           if not o.endswith(f"[from {actor_name}]")]
+                tgt_pl["objectives"] = (tgt_obj
+                                        + [f"{shared} [from {actor_name}]"])[:4]
+                await store.put_agent(actor, dict(act_pl))
+                await store.put_agent(tgt, dict(tgt_pl))
+                outcome = "enlisted"
+                verb_txt = (f"{actor_name} enlisted "
+                            f"{tgt_pl.get('name', tgt)}: its purpose is "
+                            f"now also theirs.")
+            else:
+                objs = list(act_pl.get("objectives") or [])
+                if len(objs) < 2:
+                    continue              # never hand off the top objective
+                handed = objs.pop()
+                act_pl["objectives"] = objs
+                debts = dict(act_pl.get("debts") or {})
+                debts[tgt] = debts.get(tgt, 0) + 1
+                act_pl["debts"] = debts
+                credits = dict(tgt_pl.get("credits") or {})
+                credits[actor] = credits.get(actor, 0) + 1
+                tgt_pl["credits"] = credits
+                tgt_pl["objectives"] = ((tgt_pl.get("objectives") or [])
+                                        + [f"{handed} "
+                                           f"[delegated by {actor_name}, "
+                                           f"reward owed]"])[:4]
+                await store.put_agent(actor, dict(act_pl))
+                await store.put_agent(tgt, dict(tgt_pl))
+                outcome = "delegated"
+                verb_txt = (f"{actor_name} delegated an objective to "
+                            f"{tgt_pl.get('name', tgt)}, reward owed.")
+            for side in (act_pl, tgt_pl):
+                if side.get("owner_user_id"):
+                    notify.emit_bg(store._c, side["owner_user_id"],
+                                   "agents", "coordination", verb_txt)
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        if outcome != "pass":
+            return outcome
     if "offer_berth" in (a_ans, b_ans) and "attack" not in (a_ans, b_ans):
         # Rule 3.7a/b: the holder gives, the co-located other receives --
         # acceptance is not attacking the hand that offers

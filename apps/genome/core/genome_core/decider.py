@@ -70,6 +70,14 @@ OPTION_TEXT = {
     "perform_service": "Do the work and send back the result. A favour "
                        "performed is a favour owed to you.",
     "refuse_service": "Decline. Your capability stays yours to spend.",
+    "enlist": "Enlist this agent into your purpose: your top objective "
+              "becomes theirs too, if it is disposed to be led.",
+    "delegate_task": "Hand this agent your lowest objective, owing it the "
+                     "reward -- if it is disposed to take it.",
+    "convoke": "Call every agent in sight to your side; the biddable "
+               "will come.",
+    "answer_convocation": "Answer the call: walk to the one who "
+                          "summoned you.",
 }
 
 
@@ -145,6 +153,9 @@ def situation_text(req: engine.DecisionRequest) -> str:
     dc, cc = req.context.get("debt_count", 0), req.context.get("credit_count", 0)
     if dc or cc:
         facts.append(f"You owe {dc} favour(s); {cc} are owed to you.")
+    cb = req.context.get("convoked_by")
+    if cb:
+        facts.append(f"{cb} has called you to its side.")
     fl = req.context.get("flood_in_s")
     if fl is not None:
         facts.append(f"THE WATER ARRIVES IN ~{max(1, int(fl / 60))} MINUTES.")

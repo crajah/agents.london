@@ -105,6 +105,8 @@ class Effects:
     service: tuple[str, str, str] | None = None  # (verb, counterparty,
     # skill): "request" from a known remote holder, or the holder's
     # "perform"/"refuse" answer (Rules 8.6-8.8); caller applies
+    convoke: bool = False                        # a Convocation holder calls
+    # the room to its side; the biddable answer (skills-spec §4.7)
     cargo_delta: dict[str, float] = field(default_factory=dict)
     done: bool = False
 
@@ -143,6 +145,12 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         if (ctx or {}).get("has_berth") and \
                 (ctx or {}).get("flood_in_s") is not None:
             enc_options.insert(0, "offer_berth")
+        sk = (ctx or {}).get("skill")
+        if sk == "Master Orchestrator" and \
+                (ctx or {}).get("crew_size", 0) < 6:
+            enc_options.insert(0, "enlist")
+        if sk == "Delegation" and (ctx or {}).get("has_objective"):
+            enc_options.insert(0, "delegate_task")
         scried = {}
         if (ctx or {}).get("skill") == "Scrying":
             # skills-spec 4.2: the encounter turns sequential for a scryer
@@ -456,6 +464,13 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     # perform -- the favour creates a relationship, not a purchase
     if ctx.get("known_remote_holders"):
         options.append("request_service")
+    # Convocation (skills-spec §4.7): with company in sight, the holder may
+    # call the room to its side
+    if ctx.get("skill") == "Convocation" and ctx.get("neighbours"):
+        options.append("convoke")
+    # a convocation ANSWERED: the call carries where to stand
+    if payload.get("convoked_to"):
+        options.append("answer_convocation")
     # agent-driven founding (user directive): ground may be broken by any
     # agent whose hold already serves the candidate's bill
     foundable = ctx.get("foundable") or []
@@ -498,6 +513,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                                      if pt.get("to_world")),
                  "debt_count": ctx.get("debt_count", 0),
                  "credit_count": ctx.get("credit_count", 0),
+                 "convoked_by": payload.get("convoked_by"),
+                 "convoked_to": payload.get("convoked_to"),
                  "foundable": foundable,
                  "sites_rising": [s["name"] for s in ctx.get("sites", [])
                                   if s.get("building_until")
@@ -743,6 +760,18 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
 
+    if choice.option == "convoke":
+        return Effects(convoke=True,
+                       schedule=("decide", now + 300.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "answer_convocation":
+        to = payload.get("convoked_to") or [0.5, 0.5]
+        tx, ty = standoff(agent.x, agent.y, float(to[0]), float(to[1]))
+        tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
+        return _route_effects(agent, tx, ty, now, terrain,
+                              "decide", {}, time_scale, pace)
+
     if choice.option == "request_service":
         holders = ctx.get("known_remote_holders") or []
         if not holders:
@@ -822,7 +851,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
                                   "proposer": payload.get("proposer", {})}))
 
     if choice.option in ("offer_trade", "propose_breeding", "attack",
-                         "ignore", "offer_berth"):
+                         "ignore", "offer_berth", "enlist",
+                         "delegate_task"):
         # resolution is pairwise and happens in the drain once BOTH have
         # answered; the engine only records intent
         return Effects(schedule=("encounter_answer", now, agent.agent_uuid,

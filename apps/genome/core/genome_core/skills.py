@@ -27,12 +27,38 @@ CATALOGUE: dict[str, str] = {
                  "it in.",
     "Appraisal": "You read true scarcity: asked, you can tell which kinds "
                  "run short in a world and which run deep.",
+    # coordination (skills-spec §4.7) -- Amenability gates every one of
+    # these on the TARGET's side: persuasion, never command
+    "Convocation": "You can call the agents around you to your side; the "
+                   "biddable among them come.",
+    "Delegation": "You can hand one of your objectives to a willing agent "
+                  "-- and owe it the favour of the reward.",
+    "Master Orchestrator": "You can enlist willing agents into your "
+                           "purpose: your top objective becomes theirs "
+                           "too, and a crew becomes possible.",
 }
+
+# Rule 5.3: rarity tracks systemic reach -- coordination skills touch other
+# minds, so they arrive far less often than a stronger pair of arms
+WEIGHTS = {"Convocation": 1, "Delegation": 1, "Master Orchestrator": 1}
+_COMMON_WEIGHT = 4
 
 # The skills a holder can perform AT A DISTANCE for another agent (Rule
 # 8.6). Everything else is a capability of the body: it travels with the
 # holder and cannot be posted.
 REMOTE = {"Chronicle", "Prospecting", "Appraisal"}
+
+MAX_CREW = 6                     # an orchestrator's reach has a ceiling
+
+
+def amenable(target_payload: dict, seed: str) -> bool:
+    """The gate on every coordination act (skills-spec §4.7): the TARGET's
+    Amenability decides, deterministically per (pair, day), whether it is
+    disposed to be led at all."""
+    from .genotype import norm
+    g = target_payload.get("genotype") or {}
+    p = norm("Amenability", g.get("Amenability", 5000.0))
+    return random.Random(f"amenable:{seed}").random() < p
 
 
 def roll_capability(agent_uuid: str) -> dict | None:
@@ -41,8 +67,10 @@ def roll_capability(agent_uuid: str) -> dict | None:
     r = random.Random(f"capability:{agent_uuid}")
     if r.random() >= 0.75:
         return None
-    name = r.choice(sorted(CATALOGUE))
-    return {"kind": "skill", "name": name}
+    bag = []
+    for name in sorted(CATALOGUE):
+        bag.extend([name] * WEIGHTS.get(name, _COMMON_WEIGHT))
+    return {"kind": "skill", "name": r.choice(bag)}
 
 
 def honesty_holds(holder_payload: dict, request_key: str) -> bool:

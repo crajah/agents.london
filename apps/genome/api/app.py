@@ -828,6 +828,42 @@ async def admin_replay(payload: dict,
             "agrees": choice.option == rec.get("choice")}
 
 
+@app.post("/admin/cure", tags=["Admin"])
+async def admin_cure(request: __import__("fastapi").Request):
+    """Purge the pathosphere (user directive 2026-09-02): every agent's
+    infections AND antigens cleared, every world's strain lineage wiped.
+    The epidemic starts over from the next portal roll -- history is kept,
+    so the record of what happened survives the reset."""
+    from fastapi.responses import JSONResponse
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    cured, realms = 0, {"genome_commons_0", "genome_demo", "genome_demo2",
+                        "genome_demo3"}
+    for v in await app.state.pg.get_vertices("agents",
+                                             realm="genome_agents"):
+        pl = v.payload
+        wr = pl.get("world_realm")
+        if wr and pl.get("key", "").startswith(("user:", "commons:")):
+            realms.add(wr)
+        if pl.get("infections") or pl.get("antigens"):
+            await app.state.pg.upsert_vertex(
+                "agents", realm="genome_agents", vertex_id=int(v.id),
+                space="default",
+                payload={**pl, "infections": [], "antigens": []})
+            cured += 1
+    wiped = 0
+    for r in realms:
+        rows = await app.state.pg.find_vertices("world_meta", realm=r,
+                                                filters={"key": r}, limit=1)
+        if rows and rows[0].payload.get("strains"):
+            await app.state.pg.upsert_vertex(
+                "world_meta", realm=r, vertex_id=int(rows[0].id),
+                space="default",
+                payload={**rows[0].payload, "strains": []})
+            wiped += 1
+    return {"ok": True, "cured": cured, "strains_wiped_in": wiped}
+
+
 @app.get("/admin/selection", tags=["Admin"])
 async def selection_differential(request: __import__("fastapi").Request):
     """Phase 6's selection-differential check (genotype-spec §3.8's

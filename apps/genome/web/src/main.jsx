@@ -131,8 +131,28 @@ function AdminPanel({ onClose }) {
             </div>
           </div>)}
         {worlds && <>
-          <div className="opacity-60 mb-1">
-            {worlds.decisions_last_hour} decisions in the last hour</div>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="opacity-60">
+              {worlds.decisions_last_hour} decisions in the last hour</span>
+            <span className="flex-1" />
+            <button className="px-2 py-1 rounded bg-rose-900
+                               hover:bg-rose-800 text-xs"
+                    title="Purge the pathosphere: clears every infection,
+every antigen and every world's strain lineage. The epidemic restarts
+from the next portal crossing."
+                    onClick={async () => {
+                      if (!confirm("Cure ALL infections and wipe every " +
+                                   "strain? The epidemic starts over."))
+                        return;
+                      const r = await fetch(`${API}/admin/cure`, {
+                        method: "POST", headers: hdrs });
+                      const d = await r.json();
+                      alert(d.ok
+                        ? `Cured ${d.cured} agents; strains wiped in ` +
+                          `${d.strains_wiped_in} worlds.`
+                        : (d.error ?? "failed"));
+                    }}>🧹 cure all plagues</button>
+          </div>
           <table className="w-full text-xs">
             <thead><tr className="opacity-50 text-left">
               <th className="py-1">world</th><th>agents</th><th>due</th>
