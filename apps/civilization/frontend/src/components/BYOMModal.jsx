@@ -103,13 +103,11 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
               const p = e.target.value;
               setProvider(p);
               if (p === 'OpenAI') setApiEndpoint('https://api.openai.com/v1');
-              else if (p === 'Anthropic') setApiEndpoint('https://api.anthropic.com/v1');
               else if (p === 'Groq') setApiEndpoint('https://api.groq.com/openai/v1');
               else if (p === 'Ollama') setApiEndpoint('http://localhost:11434/v1');
             }}
           >
             <MenuItem value="OpenAI">OpenAI</MenuItem>
-            <MenuItem value="Anthropic">Anthropic</MenuItem>
             <MenuItem value="Groq">Groq AI</MenuItem>
             <MenuItem value="Together">Together AI</MenuItem>
             <MenuItem value="Ollama">Ollama (Local / On-Prem)</MenuItem>
@@ -122,7 +120,7 @@ export default function BYOMModal({ open, onClose, state, onAddCustomModel }) {
           label="Model ID / Identifier"
           size="small"
           fullWidth
-          placeholder="e.g. gpt-4o-mini, claude-3-5-sonnet, llama-3.3-70b-versatile"
+          placeholder="e.g. gpt-4o-mini, deepseek-v3, llama-3.3-70b-versatile"
           value={customModelId}
           onChange={(e) => setCustomModelId(e.target.value)}
         />

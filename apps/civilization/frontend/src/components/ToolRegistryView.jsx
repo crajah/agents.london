@@ -48,7 +48,6 @@ export default function ToolRegistryView({ state, onAddTool, reloadToken = 0 }) 
   const availableModels = state.availableModels || [
     { id: 'gemini-1.5-pro', name: 'Google Gemini 1.5 Pro', provider: 'Google DeepMind', context_window: 1048576, status: 'ACTIVE' },
     { id: 'gpt-4o', name: 'OpenAI GPT-4o', provider: 'OpenAI', context_window: 128000, status: 'ACTIVE' },
-    { id: 'claude-3-5-sonnet', name: 'Anthropic Claude 3.5 Sonnet', provider: 'Anthropic', context_window: 200000, status: 'ACTIVE' },
     { id: 'mistral-large', name: 'Mistral Large 2', provider: 'Mistral AI', context_window: 128000, status: 'ACTIVE' },
     { id: 'llama-3-70b', name: 'Meta Llama 3 70B', provider: 'Meta AI', context_window: 8192, status: 'ACTIVE' }
   ];
