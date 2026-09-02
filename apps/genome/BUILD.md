@@ -54,23 +54,23 @@ phase is not done until the journeys it unblocks work end to end.
 No behaviour. Everything later assumes this shape.
 
 ### 0.1 Repository and services
-- [ ] `apps/genome/{tick-worker,decision-worker,api,web}` service skeletons
-- [ ] Add each to `deploy-gke.yml` build matrix **and** its manifest list — omitting either is a silent no-op, not an error (`system-spec.md` Rule 1.2)
-- [ ] Health endpoints, structured logging, Prometheus scrape targets
+- [x] `apps/genome/{tick-worker,decision-worker,api,web}` service skeletons
+- [x] Add each to `deploy-gke.yml` build matrix **and** its manifest list — omitting either is a silent no-op, not an error (`system-spec.md` Rule 1.2)
+- [x] Health endpoints, structured logging, Prometheus scrape targets
 
 ### 0.2 Storage shapes — on post-graph, never raw DDL (`system-spec.md` Rules 3.2a/3.2b)
 - [x] ~~SQL migration~~ — written, caught, deleted; post-graph owns all DDL
-- [ ] `ensure_world_realm` per world (`world_meta, piles, portals, events, presence`); `ensure_agents_realm` once (`agents, decisions`, edge `opinion_of`) — idempotent, post-graph owns DDL
-- [ ] Realms **one-to-one**: world = its own post-graph realm; agents realm = `genome_agents` with **agent-keyed spaces**; movement and decisions as **append-only vertex data**; presence lives in the world's realm (Rule 6.10)
-- [ ] **SCHEMA_PER_REALM is not set by genome** — services construct the client without it; the environment decides. Do not copy the registries' `"1"` default
+- [x] `ensure_world_realm` per world (`world_meta, piles, portals, events, presence`); `ensure_agents_realm` once (`agents, decisions`, edge `opinion_of`) — idempotent, post-graph owns DDL
+- [x] Realms **one-to-one**: world = its own post-graph realm; agents realm = `genome_agents` with **agent-keyed spaces**; movement and decisions as **append-only vertex data**; presence lives in the world's realm (Rule 6.10)
+- [x] **SCHEMA_PER_REALM is not set by genome** — services construct the client without it; the environment decides. Do not copy the registries' `"1"` default
 - [ ] Agent knowledge stores on **post-graph-rag**, agent-keyed spaces (`genome-spec.md` §8)
-- [ ] Later phases add their vertex/edge tables where the work lands: `objectives, negotiations` (6), `chats` (7), `infections, strains, antigens` (9), `constructions, plans, berths, ark_manifests` (10)
+- [x] Later phases add their vertex/edge tables where the work lands: `objectives, negotiations` (6), `chats` (7), `infections, strains, antigens` (9), `constructions, plans, berths, ark_manifests` (10)
 - [ ] Seed fixtures; ensure_schema idempotence test against the in-cluster DB (throwaway pod)
 
 ### 0.3 Realm scoping — the highest-risk primitive
-- [ ] Store layer where the **world space is a required argument**, never defaulted, never inferred from context
-- [ ] Lint or test that fails any query reaching storage without it
-- [ ] **Rationale:** realms are logical, not schemas (`genome-spec.md` Rule 3.5), so a read that forgets to scope is a cross-world leak rather than an empty result
+- [x] Store layer where the **world space is a required argument**, never defaulted, never inferred from context
+- [x] Lint or test that fails any query reaching storage without it
+- [x] **Rationale:** realms are logical, not schemas (`genome-spec.md` Rule 3.5), so a read that forgets to scope is a cross-world leak rather than an empty result
 
 **Done when:** migrations apply and roll back; a deliberately unscoped query fails a test.
 
@@ -81,29 +81,29 @@ No behaviour. Everything later assumes this shape.
 The bet the whole design rests on. Prove it before building on it.
 
 ### 1.1 Time and derivation
-- [ ] Position as a pure function of `movement` and wall-clock (`execution-spec.md` Rule 2.2)
-- [ ] Pile quantity closed form, clamped by the world ceiling (Rule 2.3, `genome-spec.md` Rules 4.13/4.14)
-- [ ] Property test: **nothing is written while an agent travels**
-- [ ] **Terrain generation**: impassable obstacles, fixed at creation, flood-surviving (`genome-spec.md` Rule 5.3)
-- [ ] **Pathfinding at decision time**: waypoint polylines around terrain (`execution-spec.md` Rule 2.1a); position piecewise along them (2.2)
-- [ ] **Contact = proximity sweep crossing the contact radius** (Rule 2.2a); no stepped physics server-side
-- [ ] Aggregate stock maintained incrementally on mine events, never recomputed
+- [x] Position as a pure function of `movement` and wall-clock (`execution-spec.md` Rule 2.2)
+- [x] Pile quantity closed form, clamped by the world ceiling (Rule 2.3, `genome-spec.md` Rules 4.13/4.14)
+- [x] Property test: **nothing is written while an agent travels**
+- [x] **Terrain generation**: impassable obstacles, fixed at creation, flood-surviving (`genome-spec.md` Rule 5.3)
+- [x] **Pathfinding at decision time**: waypoint polylines around terrain (`execution-spec.md` Rule 2.1a); position piecewise along them (2.2)
+- [x] **Contact = proximity sweep crossing the contact radius** (Rule 2.2a); no stepped physics server-side
+- [x] Aggregate stock maintained incrementally on mine events, never recomputed
 
 ### 1.2 Event queue
-- [ ] Redis Streams + consumer groups per world (`system-spec.md` Rule 8.1)
-- [ ] Worker leases N realms; lost lease reclaimed (Rule 4.1, Rule 8.2)
-- [ ] **Rebuild from Postgres** — flush Redis in a test and confirm the simulation resumes (Rule 8.3)
-- [ ] Events scheduled when the intent implying them is created (`execution-spec.md` Rule 3.2)
+- [x] Redis Streams + consumer groups per world (`system-spec.md` Rule 8.1) — SUPERSEDED: no Redis — Postgres range queries (post-graph 1.2.0) + crc32-sharded StatefulSet workers fill this role; events table IS the queue and rebuild-from-Postgres is trivially true
+- [x] Worker leases N realms; lost lease reclaimed (Rule 4.1, Rule 8.2) — SUPERSEDED: static crc32 realm-sharding across StatefulSet ordinals; dynamic leases return if shard imbalance ever bites
+- [x] **Rebuild from Postgres** — flush Redis in a test and confirm the simulation resumes (Rule 8.3) — SUPERSEDED with the queue: there is no cache to flush; Postgres is the only home of events
+- [x] Events scheduled when the intent implying them is created (`execution-spec.md` Rule 3.2)
 
 ### 1.3 The autonomy loop
-- [ ] arrival → decision request → intent → next event (Rule 4.1)
-- [ ] Decision requests go to a **separate unordered queue**; the world queue never blocks on inference (`system-spec.md` Rule 8.4)
-- [ ] Stub decider (uniform random) so the loop is provable without an LLM
-- [ ] Proximity sweep for encounters over a spatial index (`execution-spec.md` Rule 3.3)
+- [x] arrival → decision request → intent → next event (Rule 4.1)
+- [x] Decision requests go to a **separate unordered queue**; the world queue never blocks on inference (`system-spec.md` Rule 8.4)
+- [x] Stub decider (uniform random) so the loop is provable without an LLM
+- [x] Proximity sweep for encounters over a spatial index (`execution-spec.md` Rule 3.3)
 
 ### 1.4 The record
-- [ ] `decision` rows with full inputs, append-only, never sampled (Rule 6.1, `system-spec.md` Rule 6.1)
-- [ ] Kept separate from Prometheus/Loki retention (Rule 6.2)
+- [x] `decision` rows with full inputs, append-only, never sampled (Rule 6.1, `system-spec.md` Rule 6.1)
+- [x] Kept separate from Prometheus/Loki retention (Rule 6.2)
 
 **Done when:** a world of stub agents runs unattended for 24h, mining and depositing; killing a tick worker loses nothing; the decision record explains every action.
 
@@ -112,34 +112,34 @@ The bet the whole design rests on. Prove it before building on it.
 ## Phase 2 — Agents that think
 
 ### 2.1 ADK runtime on KAgent
-- [ ] Per-invocation runner, not a resident process (`execution-spec.md` Rules 1.1, 8.1)
+- [x] Per-invocation runner, not a resident process (`execution-spec.md` Rules 1.1, 8.1) — SUPERSEDED: the decision worker is the runner; kagent installed but CR-per-caste unused — revisit if multi-step deliberative decisions arrive
 - [ ] **Public kagent.dev** helm-installed (marty `infra/kagent`); custom `kagents.kagent.dev` CRD retired — done 2026-08-30
-- [ ] **Two `Agent` CRs, one per caste** — economy and deliberative deciders; never one per simulated agent (Rule 8.6)
-- [ ] `ModelConfig` → litellm OpenAI-compatible endpoint (Rule 8.2); telos + guardrails as system prompt; no reliance on kagent session memory (Rule 8.4)
-- [ ] Postgres remains system of record; session holds only the live exchange (Rule 8.4)
-- [ ] **Single constrained call** for ordinary decisions; multi-step reserved for the higher tier (Rule 8.3)
+- [x] **Two `Agent` CRs, one per caste** — economy and deliberative deciders; never one per simulated agent (Rule 8.6) — SUPERSEDED: direct litellm calls from the sharded decision worker proved simpler and screen-able; kagent CRs shelved
+- [x] `ModelConfig` → litellm OpenAI-compatible endpoint (Rule 8.2); telos + guardrails as system prompt; no reliance on kagent session memory (Rule 8.4) — SUPERSEDED with the kagent decision above
+- [x] Postgres remains system of record; session holds only the live exchange (Rule 8.4)
+- [x] **Single constrained call** for ordinary decisions; multi-step reserved for the higher tier (Rule 8.3)
 
 ### 2.2 Routing
-- [ ] All calls through the existing litellm proxy (Rule 8.2)
-- [ ] Tier selection per decision class (Rule 5.1, `genome-spec.md` Rule 12.16)
-- [ ] Per-agent model assignment at creation, one per tier (Rule 10.1)
-- [ ] Not heritable (10.2); survives regeneration (10.3); withdrawn model re-rolls (10.4)
+- [x] All calls through the existing litellm proxy (Rule 8.2)
+- [x] Tier selection per decision class (Rule 5.1, `genome-spec.md` Rule 12.16)
+- [x] Per-agent model assignment at creation, one per tier (Rule 10.1)
+- [x] Not heritable (10.2); survives regeneration (10.3); withdrawn model re-rolls (10.4)
 - [x] Pool screen re-run for the production trio (Rules 10.6/10.7): MiniMax 14/14, gpt-oss 14/14, DeepSeek 9/14 admitted-with-caveat (Reciprocity/Amenability flat) — 4,536 trials, tables in validation/results/
 
 ### 2.3 Genotype and prompt
-- [ ] Loci, normalisation, allocation budget (`genotype-spec.md` §3.10)
-- [ ] Prompt assembly showing **all** dispositions (validation method, `validation/README.md`)
-- [ ] Every locus drives a computed faculty (Rule 3.19)
-- [ ] **Self-knowledge in the prompt**: genotype, faculties, pools and maxima, cargo, objectives, opinions, preference weights (`genotype-spec.md` 6.6a)
-- [ ] Current **expression** shown alongside genotype, so infection and attrition are self-evident (6.6b)
-- [ ] **Never** how the agent appears to others — no appraised attractiveness (6.6c)
+- [x] Loci, normalisation, allocation budget (`genotype-spec.md` §3.10)
+- [x] Prompt assembly showing **all** dispositions (validation method, `validation/README.md`)
+- [x] Every locus drives a computed faculty (Rule 3.19)
+- [x] **Self-knowledge in the prompt**: genotype, faculties, pools and maxima, cargo, objectives, opinions, preference weights (`genotype-spec.md` 6.6a)
+- [x] Current **expression** shown alongside genotype, so infection and attrition are self-evident (6.6b)
+- [x] **Never** how the agent appears to others — no appraised attractiveness (6.6c)
 - [ ] **Fidelity, not rank**: Amenability expressed as how faithfully the top objective is served (`genome-spec.md` Rule 10.1d)
 
 ### 2.4 Opinions
-- [ ] EWMA with Vindictiveness decay (`genotype-spec.md` Rules 6.9, 6.10)
-- [ ] **Surprise-weighted update** `E' = E + K(S − σ(κ(E − θ)))` (Rule 6.10a)
-- [ ] General opinion seeds strangers, population mean at materialisation (6.9a/6.9b)
-- [ ] Colour **not** in the seed (6.9c)
+- [x] EWMA with Vindictiveness decay (`genotype-spec.md` Rules 6.9, 6.10)
+- [x] **Surprise-weighted update** `E' = E + K(S − σ(κ(E − θ)))` (Rule 6.10a)
+- [x] General opinion seeds strangers, population mean at materialisation (6.9a/6.9b)
+- [x] Colour **not** in the seed (6.9c)
 - [ ] Owner-sourced evidence decays faster, compounding per relay (6.10b)
 
 ### 2.5 Budget
