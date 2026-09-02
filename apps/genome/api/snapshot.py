@@ -95,6 +95,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
 
 async def _open_listings(client: Any, world_realm: str,
                          agents: list[dict]) -> list[dict]:
+    from genome_core import market as _mkt
     """The board with faces on it: every open listing carries its lister's
     NAME (user directive 2026-09-02), resolved from the room first and the
     agents realm for absentees."""
