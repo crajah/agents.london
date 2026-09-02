@@ -602,6 +602,7 @@ function App() {
   const [agentList, setAgentList] = useState([]);
   const [listOpen, setListOpen] = useState(false);
   const loadRef = useRef(null);
+  const esRef = useRef(null);
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
   const [menu, setMenu] = useState(null);         // {hit, x, y}
   const canvasApi = useRef(null);
@@ -634,10 +635,33 @@ function App() {
       };
       loadRef.current = load;
       setStatus(`loading ${realm}…`);
-      await load();
-      timer = setInterval(load, 5000);     // events feed replaces this later
+      await load();                        // instant paint + fallback path
+      // live stream: one server-side assembly serves every viewer; the
+      // 5s poll survives only as the fallback when the stream errors
+      let usePoll = false;
+      const es = new EventSource(`${API}/worlds/${realm}/stream`);
+      esRef.current = es;
+      es.onmessage = (ev) => {
+        if (dead) return;
+        try {
+          const snap = JSON.parse(ev.data);
+          canvas.setSnapshot(snap);
+          setAgentList((snap.agents ?? []).map(a =>
+            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+          setFlood(snap.flood_countdown ?? null);
+          setLive(true);
+          setStatus(`live — ${realm}`);
+        } catch { /* keepalive or partial frame */ }
+      };
+      es.onerror = () => {
+        if (dead || usePoll) return;
+        usePoll = true;                    // EventSource retries itself; we
+        timer = setInterval(load, 5000);   // also poll so nothing freezes
+        setStatus(`watching ${realm} (poll)`);
+      };
     })();
-    return () => { dead = true; clearInterval(timer); canvas?.destroy(); };
+    return () => { dead = true; clearInterval(timer);
+                   esRef.current?.close(); canvas?.destroy(); };
   }, [realm]);
 
   return (

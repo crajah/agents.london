@@ -92,13 +92,19 @@ async def work_one(store: GenomeStore, client, item) -> str:
         return outcome
     if pl["situation"] == "negotiate":
         from genome_core.decider import negotiate_decider
+        from genome_core import budget as bdg
         from genome_core import negotiation as nego
+        bucket = bdg.accrue(
+            bdg.Bucket(agent_payload.get("budget_level", bdg.CAPACITY),
+                       agent_payload.get("budget_at", now)), now)
+        can_counter = bucket.level >= 1.0
         action = offer = None
         model = "stub"
         if USE_LLM and g:
             action, offer, model = negotiate_decider(
                 req, g, seed=int(now),
-                objectives=agent_payload.get("objectives"))
+                objectives=agent_payload.get("objectives"),
+                can_counter=can_counter)
         if action is None:
             state = {"participants": [pl["agent_uuid"], ""],
                      "turns": ([{"offer": req.context["last_offer"]}]
@@ -106,6 +112,14 @@ async def work_one(store: GenomeStore, client, item) -> str:
                      "status": "open"}
             action, offer = nego.fallback_turn(
                 state, pl["agent_uuid"], req.context.get("my_cargo", {}))
+        if action == "counter":
+            bucket, _ = bdg.charge(bucket, "counter_offer", now)
+        if rows:
+            await client.upsert_vertex(
+                "agents", realm=AGENTS_REALM, vertex_id=int(rows[0].id),
+                space=pl["agent_uuid"],
+                payload={**agent_payload, "budget_level": bucket.level,
+                         "budget_at": bucket.updated_at})
         outcome = await drain.apply_negotiation_turn(
             store, pl["world_realm"], req.context["neg_key"],
             pl["agent_uuid"], action, offer, now)

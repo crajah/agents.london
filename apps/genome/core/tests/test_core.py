@@ -512,3 +512,30 @@ class TestCostRegression(unittest.TestCase):
         self.assertIsInstance(req, engine.DecisionRequest)
         # one request, one situation, no hidden second call in the shape
         self.assertTrue(req.options)
+
+
+class TestBudget(unittest.TestCase):
+    """execution-spec 5.2: counters are discretionary and charged; broke is
+    take-it-or-leave-it, never frozen."""
+
+    def test_accrual_caps_at_capacity(self):
+        from genome_core import budget as b
+        full = b.accrue(b.Bucket(0.0, 0.0), 100 * 86400.0)
+        self.assertEqual(full.level, b.CAPACITY)
+
+    def test_counter_charges_one(self):
+        from genome_core import budget as b
+        bk, ok = b.charge(b.Bucket(3.0, 0.0), "counter_offer", 0.0)
+        self.assertTrue(ok)
+        self.assertEqual(bk.level, 2.0)
+
+    def test_broke_cannot_counter_but_lives(self):
+        from genome_core import budget as b
+        bk, ok = b.charge(b.Bucket(0.2, 0.0), "counter_offer", 0.0)
+        self.assertFalse(ok)
+        self.assertEqual(bk.level, 0.2)       # nothing taken
+
+    def test_mechanical_kinds_free(self):
+        from genome_core import budget as b
+        bk, ok = b.charge(b.Bucket(0.0, 0.0), "arrival", 0.0)
+        self.assertTrue(ok)

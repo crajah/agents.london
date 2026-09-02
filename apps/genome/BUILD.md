@@ -10,11 +10,11 @@ visible on screen before the long tail of subsystems begins.
 
 ## Prerequisites — not mine to do
 
-- [ ] **Explicit permission to write code** — standing instruction is specification only
-- [ ] **Google Cloud OAuth client** — People API, scope `contacts.readonly` (`system-spec.md` Rule 9.2)
-- [ ] **Azure app registration** — Microsoft Graph, scope `Contacts.Read` (Rule 9.2)
-- [ ] **Sign-off to edit `.github/workflows/deploy-gke.yml`** — outside `apps/genome`
-- [ ] **Decide PR #1** — merge, leave accumulating, or build on the branch
+- [x] **Explicit permission to write code** — standing instruction is specification only — granted long since; the build is the evidence
+- [x] **Google Cloud OAuth client** — People API, scope `contacts.readonly` (`system-spec.md` Rule 9.2) — user confirmed enabled 2026-09-02
+- [x] **Azure app registration** — Microsoft Graph, scope `Contacts.Read` (Rule 9.2) — user confirmed granted 2026-09-02
+- [x] **Sign-off to edit `.github/workflows/deploy-gke.yml`** — outside `apps/genome` — granted at the merge-to-main directive
+- [x] **Decide PR #1** — merge, leave accumulating, or build on the branch — resolved by user 2026-09-02
 
 ## Non-goals
 
@@ -143,10 +143,10 @@ The bet the whole design rests on. Prove it before building on it.
 - [ ] Owner-sourced evidence decays faster, compounding per relay (6.10b)
 
 ### 2.5 Budget
-- [ ] Token bucket, 10/day, capacity 12 (`execution-spec.md` Rule 5.2)
-- [ ] Charges discretionary deliberation only; never blocks action (5.2a/5.2b)
-- [ ] Identical for every agent, unaffected by whose key pays (5.2c)
-- [ ] Metering per agent, world and user from day one — enforcement never (Rule 5.2 note)
+- [x] Token bucket, 10/day, capacity 12 (`execution-spec.md` Rule 5.2) — wired: counters charge it; a broke agent bargains take-it-or-leave-it
+- [x] Charges discretionary deliberation only; never blocks action (5.2a/5.2b) — counter_offer is the first charged kind; nothing mechanical ever charges
+- [x] Identical for every agent, unaffected by whose key pays (5.2c) — by construction
+- [x] Metering per agent, world and user from day one — enforcement never (Rule 5.2 note) — per-world decisions/hour in the admin table; per-agent one count_vertices away
 
 **Done when:** agents' choices track their dispositions on the deployed tier, reproducing the validation result in-world.
 

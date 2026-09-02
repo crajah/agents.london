@@ -99,6 +99,74 @@ async def health():
     return {"status": "ok", "service": "genome-api"}
 
 
+# ---------------------------------------------------------------------------
+# Live streams (interface-spec 2.2: events on the wire, not frames). One
+# refresher task per realm serves EVERY viewer -- N tabs cost one snapshot
+# assembly. The task starts with the first subscriber and dies with the
+# last; the poll endpoint below remains as the client's fallback.
+# ---------------------------------------------------------------------------
+import asyncio as _aio
+import json as _json
+
+_streams: dict = {}
+
+
+def _stream_state(realm: str):
+    st = _streams.get(realm)
+    if st is None:
+        st = _streams[realm] = {"subs": 0, "data": None,
+                                "cond": _aio.Condition(), "task": None}
+    return st
+
+
+async def _refresher(realm: str):
+    st = _stream_state(realm)
+    try:
+        while st["subs"] > 0:
+            try:
+                snap = await snapshot.world_snapshot(app.state.pg, realm)
+                st["data"] = _json.dumps(snap)
+            except Exception:
+                logger.exception("stream refresh failed for %s", realm)
+            async with st["cond"]:
+                st["cond"].notify_all()
+            await _aio.sleep(2.0)
+    finally:
+        st["task"] = None
+
+
+@app.get("/worlds/{realm}/stream", tags=["World"])
+async def world_stream(realm: str):
+    from fastapi.responses import StreamingResponse
+    st = _stream_state(realm)
+
+    async def gen():
+        st["subs"] += 1
+        if st["task"] is None:
+            st["task"] = _aio.create_task(_refresher(realm))
+        try:
+            last = None
+            if st["data"]:
+                last = st["data"]
+                yield f"data: {last}\n\n"   # instant first paint
+            while True:
+                try:
+                    async with st["cond"]:
+                        await _aio.wait_for(st["cond"].wait(), timeout=15.0)
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if st["data"] and st["data"] is not last:
+                    last = st["data"]
+                    yield f"data: {last}\n\n"
+        finally:
+            st["subs"] -= 1
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 @app.get("/worlds/{realm}/snapshot", tags=["World"])
 async def get_snapshot(realm: str):
     """Any world, read-only (genome-spec Rule 13.2). Observation confers
@@ -527,6 +595,10 @@ async def admin_worlds(request: __import__("fastapi").Request):
             "flood_countdown_s": _fl.countdown_visible(meta, now),
             "flood_count": meta.get("flood_count", 0),
             "open_listings": len(listings),
+            "decisions_last_hour": await app.state.pg.count_vertices(
+                "decision_queue", realm="genome_agents",
+                filters={"world_realm": realm},
+                where=[("done_at", ">", f"{now - 3600:020.3f}")]),
             "stock": {k: round(v, 1)
                       for k, v in (meta.get("stock") or {}).items()},
             "time_scale": meta.get("time_scale", 1.0),

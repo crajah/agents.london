@@ -51,6 +51,10 @@ kind: Service
 metadata:
   name: genome-api-service
   namespace: default
+  annotations:
+    # SSE streams are long-lived; the default 30s GCE backend timeout
+    # would sever them (the existing ws backendconfig holds 3600s)
+    cloud.google.com/backend-config: '{"default": "agents-london-ws-backendconfig"}'
 spec:
   selector: { app: genome-api }
   ports: [{ port: 80, targetPort: 8800 }]

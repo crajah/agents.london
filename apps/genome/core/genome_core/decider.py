@@ -133,7 +133,8 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
 
 def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
                       seed: int = 0, timeout: float = 120.0,
-                      objectives: list[str] | None = None
+                      objectives: list[str] | None = None,
+                      can_counter: bool = True
                       ) -> tuple[str, dict | None, str]:
     """One bargaining turn: returns (action, offer, model). The prompt shows
     the standing offer and the purse; the reply is a single JSON object.
@@ -153,8 +154,12 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
         f"You are bargaining, turn {ctx['turn']} of {ctx['max_turns']} -- "
         f"at turn {ctx['max_turns']} the talk dies with no deal.\n"
         f"You carry: {json.dumps(ctx.get('my_cargo', {}))}\n{last_txt}\n"
-        "Actions: propose (make an offer), counter (replace theirs), "
-        "accept (take their standing offer, binding), walk_away.\n"
+        + ("Actions: propose (make an offer), counter (replace theirs), "
+         "accept (take their standing offer, binding), walk_away.\n"
+         if can_counter else
+         "Your deliberation budget is SPENT (execution-spec 5.2): countering "
+         "is beyond you today. Actions: accept (binding) or walk_away -- "
+         "take it or leave it.\n") +
         "Decide quickly; a short answer is a good answer.\n"
         'Reply with JSON only: {"choice": "<action>", '
         '"give": {"<kind>": units}, "want": {"<kind>": units}}. '
@@ -176,6 +181,8 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
         s, e = text.index("{"), text.rindex("}")
         doc = json.loads(text[s:e + 1])
         action = str(doc.get("choice", "")).lower()
+        if action == "counter" and not can_counter:
+            action = "walk_away"           # the budget is not advisory
         if action in nego.ACTIONS:
             offer = {"give": doc.get("give") or {},
                      "want": doc.get("want") or {}}                 if action in ("propose", "counter") else None
