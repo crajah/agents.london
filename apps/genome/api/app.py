@@ -392,6 +392,80 @@ async def found_site(realm: str, payload: dict,
                                          x, y, meta.get("kinds", []))
 
 
+@app.post("/worlds/{realm}/channel", tags=["World"])
+async def world_channel(realm: str, payload: dict,
+                        request: __import__("fastapi").Request):
+    """The world channel (Rule 13.6b): the owner DESCRIBES a design in
+    prose; the model draws it as a strict tree; the grammar rejects anything
+    that is not pure structure (Rule 13.7). On success a drawing post rises
+    in the world for agents to find."""
+    from fastapi.responses import JSONResponse
+    from genome_core import drain, plans
+    from genome_core.store import GenomeStore
+    import json as _j
+    import random as _rnd
+    import urllib.request as _u
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    meta = await drain._world_payload(GenomeStore(app.state.pg), realm)
+    if not meta or meta.get("is_commons"):
+        return JSONResponse({"error": "no such world, or the commons"},
+                            status_code=403)
+    if meta.get("owner_user_id") != uid:
+        return JSONResponse({"error": "only the owner authors plans here"},
+                            status_code=403)
+    text = (payload.get("text") or "").strip()
+    if not text or len(text) > 2000:
+        return {"error": "describe the design in up to 2000 characters"}
+    sys_p = (
+        "You convert a described design into a build-plan tree. Reply with "
+        "ONLY a JSON object: {\"name\": <short name>, \"tree\": [nodes]}. "
+        "Each node: {\"item\": str, \"needs\": {\"<kind 0-19>\": units}, "
+        "\"after\": [item names it depends on], \"contributors\": int "
+        "1-8}. No other fields exist -- plans are structures and can have "
+        "no effects, powers or bonuses; silently drop any the user asked "
+        "for. Use only kinds 0-19 as string keys. If the message does not "
+        "describe a buildable design, reply {\"error\": \"<why>\"}.")
+    body = _j.dumps({
+        "model": os.getenv("GENOME_PLAN_MODEL", "DeepSeek-V3.2"),
+        "temperature": 0.2, "max_tokens": 900,
+        "messages": [{"role": "system", "content": sys_p},
+                     {"role": "user", "content": text}]}).encode()
+    rq = _u.Request(
+        os.getenv("GENOME_ROUTER_URL", "http://litellm-service")
+        + "/v1/chat/completions", data=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer "
+                 + os.getenv("GENOME_ROUTER_KEY", "")})
+    try:
+        raw = _j.loads(_u.urlopen(rq, timeout=60).read(1 << 20).decode())
+        reply = raw["choices"][0]["message"]["content"]
+        start, end = reply.index("{"), reply.rindex("}")
+        drawn = _j.loads(reply[start:end + 1])
+    except Exception as e:
+        return {"error": f"the drafting table jammed ({type(e).__name__}); "
+                "try rephrasing"}
+    if drawn.get("error"):
+        return {"error": drawn["error"]}
+    tree = drawn.get("tree")
+    err = plans.validate_tree(tree)
+    if err:
+        return {"error": err, "tree": tree}
+    res = await plans.author(app.state.pg, uid,
+                             drawn.get("name") or text[:40], tree)
+    if not res.get("ok"):
+        return res
+    rnd = _rnd.Random(res["plan_key"])
+    await plans.place_post(app.state.pg, realm, res["plan_key"],
+                           drawn.get("name") or text[:40],
+                           rnd.uniform(0.2, 0.8), rnd.uniform(0.2, 0.8))
+    return {"ok": True, "plan_key": res["plan_key"],
+            "name": drawn.get("name"), "tree": tree,
+            "note": "The drawing post is up. Agents that find it will "
+            "carry the design -- and may raise it in any world."}
+
+
 @app.post("/worlds/{realm}/ark/manifest", tags=["World"])
 async def ark_manifest(realm: str, payload: dict,
                        request: __import__("fastapi").Request):

@@ -339,9 +339,9 @@ Early payoff, and it tests interface assumptions against a real tick.
 - [x] Ark lands in the host's world; **foreign survivors emerge there** and must travel home (4.3c) — current behaviour by construction (single-world voyages)
 - [x] Carrier death sets the construction down in place, reclaimable by the right number of distinct users (3.12a) — regenerate() sets down where the party stands and opens every surviving porter's hands
 - [x] Portage by that many **distinct users**; never dismantled into resources (3.10–3.13) — take_up pledges (1h expiry) lift only when fresh pledges span the crew AND the porters stand at the site; carriers are occupied (no mining/trading/encounters), move via carry_to_portal, cross as ONE BODY (every porter at the door or the step refuses), and the construction arrives still aloft; set_down releases; no dismantle surface exists
-- [ ] Ark tree immutable (3.9a); user plans additive (`genome-spec.md` Rule 13.6c)
-- [ ] Plans are **trees**, authored conversationally in the world channel, buildable anywhere (13.6a, 13.6b, 13.6d)
-- [ ] Plan grammar cannot express an effect (`interface-spec.md` Rule 3.5, `genome-spec.md` Rule 13.7)
+- [x] Ark tree immutable (3.9a); user plans additive (Rule 13.6c) — canonical names come from TREE and only TREE; plan items live in their own namespace and CANNOT shadow a canonical building's effect (tested)
+- [x] Plans are **trees**, authored conversationally in the world channel, buildable anywhere (13.6a, 13.6b, 13.6d) — POST /worlds/{realm}/channel drafts prose into a strict tree via the router; a drawing post rises in the world; agents LEARN it standing there, GOSSIP it at peaceful encounters (cap 12), found its nodes leaves-first in ANY world; the drowned wake knowing nothing (13.8 strictly)
+- [x] Plan grammar cannot express an effect (Rule 13.7) — the node schema has four fields (item/needs/after/contributors); any other field is rejected at validation, and effects_from ignores plan-keyed sites entirely
 - [ ] Flood clock 15–30 days undisclosed; two-day countdown (`construction-spec.md` Rules 4.7, 4.8)
 - [ ] **Kills every agent present, native or visitor**; berth is the only exemption; those elsewhere untouched (4.9–4.11)
 - [ ] Partial hull persists across floods while building (4.4a); **a successful voyage spends the Ark** (4.4b); an unused Ark is not spent (4.4c)

@@ -133,7 +133,8 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "carrying_site": carrying, "carrying_name": carrying_name,
             "portals": world_payload.get("portals", []),
             "world_kinds": world_payload.get("kinds", []),
-            "foundable": construction.foundable_names(sites)
+            "foundable": (construction.foundable_names(sites)
+                          + await _plan_foundable(store, agent_payload, sites))
             if not world_payload.get("is_commons") else [],
             "neighbours": neighbours,
             "occupied": neighbours + [(pv.x, pv.y) for pv in pile_views],
@@ -148,6 +149,42 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "colour_pair": agent_payload.get("colour_pair"),
             "caches": [s for s in sites if s.get("name") == "cache"],
             **effects}
+
+
+async def _plan_foundable(store: GenomeStore, agent_payload: dict,
+                          sites: list[dict]) -> list[str]:
+    """Rule 13.6d: every drawing this head carries offers its next buildable
+    nodes, wherever the agent happens to stand."""
+    from . import plans as _plans
+    out = []
+    for key in (agent_payload.get("plans_known") or [])[:_plans.MAX_KNOWN]:
+        plan = await _plans.get_plan(store._c, key)
+        if plan:
+            out.extend(_plans.foundable_items(plan, sites))
+    return out
+
+
+async def learn_nearby_plans(store: GenomeStore, agent: engine.AgentView,
+                             agent_payload: dict, sites: list[dict]) -> None:
+    """Discovery (13.6): standing at a drawing post teaches the plan. The
+    knowledge is the agent's now -- the post can drown; the head cannot be
+    burgled (13.8)."""
+    from . import plans as _plans
+    known = list(agent_payload.get("plans_known") or [])
+    found = _plans.learnable(sites, agent.x, agent.y, known)
+    if not found:
+        return
+    for key, name in found:
+        if len(known) >= _plans.MAX_KNOWN:
+            break
+        known.append(key)
+        if agent_payload.get("owner_user_id"):
+            notify.emit_bg(store._c, agent_payload["owner_user_id"],
+                           "agents", "plan_learned",
+                           f"{agent_payload.get('name', agent.agent_uuid)} "
+                           f"studied the drawing for '{name}'.")
+    agent_payload["plans_known"] = known
+    await store.put_agent(agent.agent_uuid, dict(agent_payload))
 
 
 async def apply_found(store: GenomeStore, world_realm: str,
@@ -581,6 +618,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 engine.USER_CEILING_PER_KIND + fx["stock_ceiling_bonus"])
             outcome = "deposit"
     else:
+        if pl["kind"] in ("arrival", "decide"):
+            await learn_nearby_plans(store, agent, agent_payload, sites)
         ctx = (await engine_ctx(store, world_realm, world_payload,
                                 agent_payload, agent, pile_views, now,
                                 sites=sites)
@@ -904,6 +943,20 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
     other_view, _ = await load_agent(store, world_realm, other_uuid,
                                      world_realm, now)
     outcome = "pass"
+    if "attack" not in (a_ans, b_ans):
+        # Rule 13.6: designs pass between heads that met without violence --
+        # the third population spreads exactly here, agent to agent
+        from . import plans as _plans
+        mine_k = list(agent_payload.get("plans_known") or [])
+        theirs_k = list(other_payload.get("plans_known") or [])
+        merged_a = _plans.merge_known(mine_k, theirs_k)
+        merged_b = _plans.merge_known(theirs_k, mine_k)
+        if merged_a != mine_k:
+            agent_payload["plans_known"] = merged_a
+            await store.put_agent(me, dict(agent_payload))
+        if merged_b != theirs_k:
+            other_payload["plans_known"] = merged_b
+            await store.put_agent(other_uuid, dict(other_payload))
     if "offer_berth" in (a_ans, b_ans) and "attack" not in (a_ans, b_ans):
         # Rule 3.7a/b: the holder gives, the co-located other receives --
         # acceptance is not attacking the hand that offers
@@ -1273,6 +1326,8 @@ async def regenerate(store: GenomeStore, event_realm: str,
             pass
     await store.set_presence(home, a, True)
     reborn = {**agent_payload,
+              "plans_known": [],   # Rule 13.8 read strictly: knowledge
+              # survives in LIVING carriers; the dead wake knowing nothing
               "known_piles": [], "explored": [], "opinions": {},
               "victories": 0, "stamina": 1.0, "stamina_max": 1.0,
               "born_at": now, "infections": [], "antigens": []}

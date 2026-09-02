@@ -106,7 +106,8 @@ async def sites_in(client: Any, realm: str) -> list:
 async def completed_names(client: Any, realm: str) -> set[str]:
     return {v.payload["name"] for v in await sites_in(client, realm)
             if v.payload.get("complete") and not v.payload.get("destroyed")
-            and not v.payload.get("spent")}
+            and not v.payload.get("spent")
+            and not v.payload.get("plan_key")}
 
 
 def _prereqs(name: str) -> tuple:
@@ -119,10 +120,11 @@ def foundable_names(sites: list[dict]) -> list[str]:
     the convergence tier, complete AND huddled within ASSEMBLY_RADIUS of one
     another -- the drag-the-components-together rule), and no live duplicate
     already under way or standing."""
-    done = {s["name"]: s for s in sites
+    canon = [s for s in sites if not s.get("plan_key")]
+    done = {s["name"]: s for s in canon
             if s.get("complete") and not s.get("destroyed")
             and not s.get("spent")}
-    live = {s["name"] for s in sites
+    live = {s["name"] for s in canon
             if not s.get("destroyed") and not s.get("spent")}
     out = []
     for name in TREE:
@@ -148,6 +150,44 @@ async def found_site(client: Any, realm: str, user_id: str, name: str,
     no human hand needed) or by the owner through the API -- either way the
     tree itself never bends: names come from TREE and only from TREE
     (Rule 3.9a; user plans are ADDITIVE trees, arriving with 13.6)."""
+    if name.startswith("plan:"):
+        # Rule 13.6d: a known plan raises anywhere. The node's bill and crew
+        # were fixed at authoring; its tier is its depth in the tree.
+        from . import plans as _plans
+        try:
+            _, plan_key, item = name.split(":", 2)
+        except ValueError:
+            return {"error": "malformed plan reference"}
+        plan = await _plans.get_plan(client, plan_key)
+        if plan is None:
+            return {"error": "no such plan"}
+        node = next((n for n in plan.get("tree", [])
+                     if n["item"] == item), None)
+        if node is None:
+            return {"error": f"the plan has no item {item!r}"}
+        sites = [v.payload for v in await sites_in(client, realm)
+                 if not v.payload.get("destroyed")]
+        if name.replace("plan:", "", 1) and any(
+                s.get("plan_key") == plan_key and s.get("plan_item") == item
+                for s in sites):
+            return {"error": f"a {item} of this plan already stands here"}
+        done = {s.get("plan_item") for s in sites
+                if s.get("plan_key") == plan_key and s.get("complete")}
+        missing = [a for a in node.get("after", []) if a not in done]
+        if missing:
+            return {"error": f"requires completed: {', '.join(missing)}"}
+        site = {"key": f"site-{uuidlib.uuid4().hex[:10]}",
+                "name": item, "branch": "plan",
+                "tier": _plans.depth_of(plan["tree"], item),
+                "x": x, "y": y,
+                "needs": {k: float(u) for k, u in node["needs"].items()},
+                "delivered": {}, "contributors": {},
+                "required_users": int(node.get("contributors", 1)),
+                "plan_key": plan_key, "plan_item": item,
+                "complete": False, "founded_by": user_id,
+                "founded_at": time.time()}
+        await client.add_vertex(TABLE, realm=realm, payload=site)
+        return {"ok": True, "site": site["key"], "needs": site["needs"]}
     if name not in TREE:
         return {"error": f"no construction named {name}"}
     done_sites = {v.payload["name"]: v.payload
@@ -490,8 +530,8 @@ def effects_from(sites: list[dict]) -> dict:
     nothing stands; the commons founds nothing, so it stays neutral forever."""
     done = {s["name"] for s in sites
             if s.get("complete") and not s.get("destroyed")
-            and not s.get("spent")}
-    return {
+            and not s.get("spent") and not s.get("plan_key")}   # Rule 13.7:
+    return {  # a plan item named "toolhouse" is still just a structure
         # earth: keeping
         "stock_ceiling_bonus": 25.0 if "store" in done else 0.0,
         "defence_mult": 1.2 if "rampart" in done else 1.0,

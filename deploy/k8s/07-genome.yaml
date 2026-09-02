@@ -32,6 +32,11 @@ spec:
               value: https://agents.london/genome
             - name: GENOME_PATH_PREFIX
               value: /genome-api
+            - name: GENOME_ROUTER_URL
+              value: http://litellm-service
+            - name: GENOME_ROUTER_KEY
+              valueFrom:
+                secretKeyRef: { name: litellm-api-keys, key: GLOBAL_API_KEY }
             - name: GENOME_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:

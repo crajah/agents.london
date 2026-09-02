@@ -683,11 +683,13 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
             return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         # mechanical resolution, not strategy (the travel_to_site precedent):
-        # lowest tier first, preferring a bill the hold already serves
-        cand.sort(key=lambda n: _con.TREE[n]["tier"])
+        # lowest tier first, preferring a bill the hold already serves;
+        # plan items sort after the canonical tree
+        cand.sort(key=lambda n: _con.TREE[n]["tier"]
+                  if n in _con.TREE else 9)
         wk = [int(k) for k in (ctx.get("world_kinds") or [])]
-        serving = [n for n in cand
-                   if any(k in _con.resolve_cost(n, wk) for k in agent.cargo)]
+        serving = [n for n in cand if n in _con.TREE
+                   and any(k in _con.resolve_cost(n, wk) for k in agent.cargo)]
         return Effects(found=(serving or cand)[0],
                        schedule=("decide", now + 120.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))

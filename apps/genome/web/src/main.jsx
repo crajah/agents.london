@@ -389,7 +389,16 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
         <div className="px-3 py-1.5 opacity-50">
           opens only to its line's colours</div>
       </>}
-      {hit.type === "construction" && hit.data.name !== "cache" && <>
+      {hit.type === "construction" && hit.data.name === "plan_post" && <>
+        <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
+          drawing post</div>
+        <div className="px-3 py-1.5">“{hit.data.plan_name ?? "a design"}”
+          <div className="opacity-60">agents that stand here learn the
+            plan and may raise it in any world</div>
+        </div>
+      </>}
+      {hit.type === "construction" && hit.data.name !== "cache" &&
+       hit.data.name !== "plan_post" && <>
         <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
           {hit.data.kind === "ark" && hit.data.wreck ? "wreck of the Ark" :
             hit.data.kind === "ark" ? "the Ark" :
@@ -451,6 +460,65 @@ function Legend() {
       <Row icon={<span className="inline-block w-3 h-3 rotate-45
                                   bg-emerald-700/70" />}>
         cache — a larder only its line's colours open</Row>
+    </div>);
+}
+
+function PlanTable({ realm }) {
+  // Rule 13.6b: plans are authored conversationally, not through a form --
+  // this is a conversation with the drafting table, retried in prose
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const send = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/worlds/${realm}/channel`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }) });
+      setResult(await r.json());
+    } catch (e) { setResult({ error: String(e) }); }
+    setBusy(false);
+  };
+  return (
+    <div className="absolute bottom-10 right-3 z-20 text-xs">
+      <button onClick={() => setOpen(o => !o)}
+              className="px-2 py-1 bg-neutral-900/85 border
+                         border-neutral-700 rounded"
+              title="Describe a design; agents that find the drawing may
+raise it in any world. Plans are structures only -- no effects.">
+        📐 draw a plan</button>
+      {open && (
+        <div className="mt-1 w-80 bg-neutral-900/95 border
+                        border-neutral-700 rounded p-2">
+          <textarea className="w-full h-20 bg-neutral-800 rounded p-2"
+                    placeholder="e.g. A windmill: sails of 6 units of kind 4,
+on a tower of 10 of kind 16, two users for the tower…"
+                    value={text} onChange={e => setText(e.target.value)} />
+          <div className="flex justify-between items-center mt-1">
+            <span className="opacity-50">structures only — effects are
+              silently dropped</span>
+            <button onClick={send} disabled={busy}
+                    className="px-2 py-1 bg-emerald-700 rounded">
+              {busy ? "drafting…" : "draft"}</button>
+          </div>
+          {result?.error && (
+            <div className="text-amber-400 mt-1">{result.error} — rephrase
+              and draft again.</div>)}
+          {result?.ok && (
+            <div className="mt-1">
+              <div className="text-emerald-400">“{result.name}” posted.</div>
+              {result.tree.map(n => (
+                <div key={n.item} className="opacity-80">
+                  {n.item}: {Object.entries(n.needs).map(([k, u]) =>
+                    `${u}×kind${k}`).join(", ")}
+                  {n.after?.length ? ` (after ${n.after.join(", ")})` : ""}
+                  {n.contributors > 1 ? ` · ${n.contributors} users` : ""}
+                </div>))}
+            </div>)}
+        </div>)}
     </div>);
 }
 
@@ -1043,6 +1111,8 @@ whole game -- the commons market is how the far kinds arrive."
           </nav>)}
         <StockPanel info={snapInfo} />
         <MarketPanel info={snapInfo} />
+        {me?.authenticated && realm === me.world_realm &&
+          <PlanTable realm={realm} />}
         <FloodWave active={floodAnim} />
         <Legend />
         <Ticker realm={realm} />
