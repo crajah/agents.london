@@ -81,10 +81,8 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "stock": meta.get("stock", {}),
             "muster_points": meta.get("muster_points", []),
             "market": meta.get("market"),
-            "market_open": [{"key": l["key"], "give": l["give"],
-                             "want": l["want"]}
-                            for l in await _mkt.board(client, world_realm)
-                            if l.get("status") == "open"],
+            "market_open": await _open_listings(client, world_realm,
+                                                agents),
             "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "flood_countdown": _flood.countdown_visible(meta, _time.time()),
@@ -93,6 +91,28 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                        ("pile_uuid", "kind", "x", "y", "qty_at",
                         "measured_at", "rate", "cap")} for p in piles],
             "agents": agents}
+
+
+async def _open_listings(client: Any, world_realm: str,
+                         agents: list[dict]) -> list[dict]:
+    """The board with faces on it: every open listing carries its lister's
+    NAME (user directive 2026-09-02), resolved from the room first and the
+    agents realm for absentees."""
+    names = {a.get("agent_uuid"): a.get("name") for a in agents}
+    out = []
+    for l in await _mkt.board(client, world_realm):
+        if l.get("status") != "open":
+            continue
+        lister = l.get("lister")
+        name = names.get(lister)
+        if name is None and lister:
+            rows = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                              filters={"key": lister},
+                                              limit=1)
+            name = rows[0].payload.get("name") if rows else None
+        out.append({"key": l["key"], "give": l["give"], "want": l["want"],
+                    "by": name or (lister or "?")[:14], "lister": lister})
+    return out
 
 
 async def agent_inspect(client: Any, agent_uuid: str) -> dict:
@@ -127,6 +147,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     now = _t.time()
     out["infections"] = [
         {"strain_uuid": (i.get("strain") or {}).get("strain_uuid"),
+         "signature": (i.get("strain") or {}).get("signature"),
          "caught_at": i.get("caught_at"),
          "detected": bool(i.get("detected_at") and
                           i["detected_at"] <= now)}
@@ -134,6 +155,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     out["infection_history"] = payload.get("infection_history") or []
     out["antigens"] = [
         {"strain_uuid": a.get("strain_uuid"),
+         "vector": a.get("vector"),
          "made_at": a.get("made_at"),
          "potency": max(0.0, 1.0 - a.get("decay_rate", 0.0)
                         * (now - a.get("made_at", now)))}

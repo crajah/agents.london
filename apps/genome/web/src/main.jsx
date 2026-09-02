@@ -305,7 +305,19 @@ function Ticker({ realm }) {
     </div>);
 }
 
-function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
+function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
+                      info }) {
+  const colourOf = k => {
+    const i = (info?.kinds ?? []).indexOf(Number(k));
+    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
+  };
+  const KChip = ({ k, u }) => (
+    <span className="inline-flex items-center gap-1 bg-neutral-700/70
+                     rounded px-1 mr-1">
+      <span className="w-2 h-2 rounded-full inline-block"
+            style={{ background: colourOf(k) }} />
+      {Number(u).toFixed(0)}×{k}
+    </span>);
   const { hit, x, y } = menu;
   const Item = ({ children, onClick }) => (
     <button onClick={onClick}
@@ -356,11 +368,13 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel }) {
           {hit.data.listings.length === 1 ? "" : "s"}</div>
         {hit.data.listings.slice(0, 6).map(l => (
           <div key={l.key} className="px-3 py-1 text-xs">
-            gives {Object.entries(l.give).map(([k, u]) =>
-              `${u}× kind ${k}`).join(", ")}
+            <span className="opacity-80">{l.by ?? "someone"}</span>
+            <span className="opacity-60"> gives </span>
+            {Object.entries(l.give).map(([k, u]) =>
+              <KChip key={k} k={k} u={u} />)}
             <span className="opacity-60"> for </span>
             {Object.entries(l.want).map(([k, u]) =>
-              `${u}× kind ${k}`).join(", ")}
+              <KChip key={k} k={k} u={u} />)}
           </div>))}
         {hit.data.listings.length === 0 &&
           <div className="px-3 py-1.5 opacity-60">the board is bare</div>}
@@ -553,6 +567,7 @@ function MarketPanel({ info }) {
             <div className="opacity-50">the board is bare</div>}
           {listings.map(l => (
             <div key={l.key} className="py-1 border-t border-neutral-800">
+              <div className="opacity-70 truncate">{l.by ?? "someone"}</div>
               <span className="opacity-60">gives </span>
               {Object.entries(l.give ?? {}).map(([k, u]) =>
                 <Chip key={k} k={k} u={u} />)}
@@ -629,6 +644,21 @@ function StockPanel({ info }) {
           </span>))}
       </div>
     </div>);
+}
+
+function StrainStrip({ vec, dead }) {
+  // the pathogen's face: its 6-dim signature as a colour strip; an
+  // antigen's vector rendered the same way, so a match is VISIBLE
+  if (!vec?.length) return null;
+  return (
+    <span className={"inline-flex h-3 rounded-sm overflow-hidden ml-1 " +
+                     "align-middle" + (dead ? " opacity-30 grayscale" : "")}
+          title={vec.map(v => v.toFixed(2)).join(" ")}>
+      {vec.map((v, i) => (
+        <span key={i} className="w-3 h-3 inline-block"
+              style={{ background:
+                `hsl(${Math.round(v * 300)}, 70%, 45%)` }} />))}
+    </span>);
 }
 
 function AgentModal({ inspect, onClose }) {
@@ -800,16 +830,39 @@ side of the capability economy.">born plain</span>}
               {inspect.infections?.map((i, k) => (
                 <div key={"inf" + k} className="text-red-400 text-xs">
                   ● infected — {i.strain_uuid ?? "unknown strain"}
+                  <StrainStrip vec={i.signature} />
                   {i.detected ? " (detected)" : " (undetected)"}
                 </div>))}
               {inspect.infection_history?.map((h, k) => (
                 <div key={"his" + k} className="opacity-50 text-xs">
                   ○ survived {h.strain_uuid ?? "a strain"}
+                  {(() => {
+                    const ag = inspect.antigens?.find(a =>
+                      a.strain_uuid === h.strain_uuid);
+                    return ag ? " — countered by its antigen below" : "";
+                  })()}
                 </div>))}
-              {inspect.antigens?.map((a, k) => (
-                <div key={"ant" + k} className="text-emerald-500/80 text-xs">
-                  ◆ antigen{a.strain_uuid ? ` vs ${a.strain_uuid}` : ""}
-                  {" · potency "}{Math.round((a.potency ?? 0) * 100)}%
+              {(inspect.antigens ?? [])
+                .filter(a => (a.potency ?? 0) > 0.05).map((a, k) => (
+                <div key={"ant" + k} className="text-emerald-500/80 text-xs
+                                                flex items-center gap-1">
+                  ◆ antigen<StrainStrip vec={a.vector} />
+                  <span className="opacity-70">
+                    counters {a.strain_uuid ?? "an unknown strain"}</span>
+                  <span className="flex-1 h-1 bg-neutral-700 rounded
+                                   max-w-16">
+                    <span className="block h-1 rounded bg-emerald-500"
+                          style={{ width:
+                            `${Math.round((a.potency ?? 0) * 100)}%` }} />
+                  </span>
+                  {Math.round((a.potency ?? 0) * 100)}%
+                </div>))}
+              {(inspect.antigens ?? [])
+                .filter(a => (a.potency ?? 0) <= 0.05).map((a, k) => (
+                <div key={"spent" + k} className="opacity-40 text-xs">
+                  ◇ spent antigen<StrainStrip vec={a.vector} dead />
+                  <span> once countered {a.strain_uuid ?? "a strain"} —
+                    faded, the door is open again</span>
                 </div>))}
             </>}
             {inspect.decisions?.length > 0 && <>
@@ -1126,7 +1179,8 @@ whole game -- the commons market is how the far kinds arrive."
         <FloodWave active={floodAnim} />
         <Legend />
         <Ticker realm={realm} />
-        {menu && <EntityMenu menu={menu} onClose={() => setMenu(null)}
+        {menu && <EntityMenu menu={menu} info={snapInfo}
+          onClose={() => setMenu(null)}
           onInspect={async (uuid) => {
             setMenu(null);
             // open at once with what we know; details stream in — a failed
