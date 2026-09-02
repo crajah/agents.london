@@ -20,7 +20,7 @@ spec:
             - secretRef: { name: oidc-auth-secret }
           env:
             - name: POSTGRES_HOST
-              value: postgres-service
+              value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: GENOME_REDIRECT_BASE
               value: https://agents.london/genome-api
             - name: GENOME_WEB_BASE
@@ -121,7 +121,7 @@ spec:
             - secretRef: { name: postgres-secrets }
           env:
             - name: POSTGRES_HOST
-              value: postgres-service
+              value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
@@ -167,7 +167,7 @@ spec:
             - secretRef: { name: postgres-secrets }
           env:
             - name: POSTGRES_HOST
-              value: postgres-service
+              value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: SHARD_COUNT
               value: "4"
             - name: POD_NAME

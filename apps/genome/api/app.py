@@ -44,7 +44,8 @@ DB_URI = os.getenv(
 def make_client() -> AsyncPostGraph:
     """SCHEMA_PER_REALM is deliberately NOT passed (user decision, recorded in
     genome_core/store.py): the environment and post-graph's default decide."""
-    return AsyncPostGraph(dsn=DB_URI, pool_min_size=1, pool_max_size=5)
+    return AsyncPostGraph(dsn=DB_URI, pool_min_size=1, pool_max_size=5,
+                          statement_cache_size=0)  # pgbouncer transaction mode
 
 
 @asynccontextmanager

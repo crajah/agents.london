@@ -152,8 +152,8 @@ async def work_one(store: GenomeStore, client, item) -> str:
 
 
 async def main() -> None:
-    client = AsyncPostGraph(dsn=dsn(), pool_min_size=1,
-                            pool_max_size=4)   # SCHEMA_PER_REALM unset
+    client = AsyncPostGraph(dsn=dsn(), pool_min_size=1, pool_max_size=4,
+                            statement_cache_size=0)  # pgbouncer; SCHEMA_PER_REALM unset
     await client.connect()
     store = GenomeStore(client)
     stop = asyncio.Event()
