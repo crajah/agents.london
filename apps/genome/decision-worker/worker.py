@@ -153,7 +153,7 @@ async def work_one(store: GenomeStore, client, item) -> str:
 
 async def main() -> None:
     client = AsyncPostGraph(dsn=dsn())   # SCHEMA_PER_REALM deliberately unset
-    await client.connect()
+    await client.connect(min_size=1, max_size=4)
     store = GenomeStore(client)
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):

@@ -50,7 +50,7 @@ def make_client() -> AsyncPostGraph:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = make_client()
-    await client.connect()
+    await client.connect(min_size=1, max_size=5)
     app.state.pg = client
     try:
         await store.ensure_agents_realm(client)

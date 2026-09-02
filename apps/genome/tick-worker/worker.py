@@ -244,7 +244,7 @@ async def main() -> None:
     if not REALMS:
         raise SystemExit("set GENOME_REALMS")
     client = AsyncPostGraph(dsn=dsn())   # SCHEMA_PER_REALM deliberately unset
-    await client.connect()
+    await client.connect(min_size=1, max_size=4)
     store = GenomeStore(client)
     decider = make_decider(USE_LLM) if INLINE else None
     stop = asyncio.Event()
