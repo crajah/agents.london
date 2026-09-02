@@ -107,7 +107,7 @@ spec:
   # replica k owns realms where crc32(realm) % SHARD_COUNT == k: static
   # sharding, no coordination -- worlds are independent by construction.
   # Scaling out = raise replicas AND SHARD_COUNT together.
-  replicas: 2
+  replicas: 4
   serviceName: genome-tick-worker-hs
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-tick-worker } }
@@ -125,7 +125,7 @@ spec:
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
-              value: "2"
+              value: "4"
             - name: POD_NAME
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }
@@ -153,7 +153,7 @@ metadata:
 spec:
   # replica k owns agents where crc32(uuid) % SHARD_COUNT == k -- no two
   # replicas ever answer for the same agent.
-  replicas: 2
+  replicas: 4
   serviceName: genome-decision-worker-hs
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-decision-worker } }
@@ -169,7 +169,7 @@ spec:
             - name: POSTGRES_HOST
               value: postgres-service
             - name: SHARD_COUNT
-              value: "2"
+              value: "4"
             - name: POD_NAME
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }
