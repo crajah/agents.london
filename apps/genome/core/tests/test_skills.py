@@ -20,7 +20,8 @@ class TestBirthRoll(unittest.TestCase):
             r = S.roll_capability(f"a{i}")
             if r is not None:
                 self.assertEqual(set(r), {"kind", "name"})
-                self.assertIn(r["name"], S.CATALOGUE)
+                pool = S.CATALOGUE if r["kind"] == "skill" else S.TOOLS
+                self.assertIn(r["name"], pool)
 
     def test_deterministic_per_agent(self):
         self.assertEqual(S.roll_capability("x"), S.roll_capability("x"))
@@ -52,3 +53,26 @@ class TestSelfKnowledge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestToolLottery(unittest.TestCase):
+    def test_rule_1_1_one_class_or_the_other(self):
+        from collections import Counter
+        kinds = Counter()
+        for i in range(4000):
+            r = S.roll_capability(f"tl{i}")
+            if r:
+                kinds[r["kind"]] += 1
+                if r["kind"] == "tool":
+                    self.assertIn(r["name"], S.TOOLS)
+        self.assertAlmostEqual(
+            kinds["tool"] / (kinds["tool"] + kinds["skill"]),
+            S.TOOL_SHARE, delta=0.05)
+
+    def test_tools_are_remote_capable_by_definition(self):
+        for name in S.TOOLS:
+            self.assertTrue(S.remote_capable(name))
+
+    def test_withdrawn_tool_still_describes_without_crashing(self):
+        d = S.describe({"capability": {"kind": "tool", "name": "Ghost"}})
+        self.assertIn("withdrawn", d)

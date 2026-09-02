@@ -140,6 +140,8 @@ spec:
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
               value: "4"
+            - name: GENOME_TOOLS_URL
+              value: http://tool-registry-service:8002
             - name: POD_NAME
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }
@@ -188,6 +190,8 @@ spec:
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: SHARD_COUNT
               value: "4"
+            - name: GENOME_TOOLS_URL
+              value: http://tool-registry-service:8002
             - name: POD_NAME
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }

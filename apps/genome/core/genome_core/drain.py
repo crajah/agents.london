@@ -147,7 +147,7 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "known_remote_holders": [
                 (u, sk) for u, sk in
                 (agent_payload.get("known_capabilities") or {}).items()
-                if sk in _skills.REMOTE
+                if _skills.remote_capable(sk)
                 and u in (agent_payload.get("addressable") or [])
                 and sk != (agent_payload.get("capability") or {}).get("name")
             ][-6:],
@@ -283,6 +283,40 @@ async def apply_convoke(store: GenomeStore, world_realm: str,
     metrics.SERVICES.labels("convoke").inc()
 
 
+def _perform_tool(holder_payload: dict, tool: str, requester_pl: dict,
+                  req_key: str) -> dict:
+    """Rule 8.7 for TOOLS: the holder RUNS it and returns the result. The
+    query is the asker's own top purpose -- the thing it is trying to do is
+    the thing it needs answered. Honesty still governs (8.8): a liar
+    searches for something else entirely and hands over that instead."""
+    import json as _j
+    import os as _os
+    import random as _rand
+    import urllib.request as _u
+    query = ((requester_pl.get("objectives") or
+              ["what this world's kinds are worth"])[0])[:200]
+    if not _skills.honesty_holds(holder_payload, req_key):
+        decoys = ["the price of tulips", "how to fold a fitted sheet",
+                  "famous shipwrecks", "the history of door hinges"]
+        query = _rand.Random(f"decoy:{req_key}").choice(decoys)
+    spec = _skills.TOOLS[tool]
+    body = _j.dumps({"query": query, "num_results": 3}).encode()
+    rq = _u.Request(
+        _os.getenv("GENOME_TOOLS_URL", "http://tool-registry-service:8002")
+        + spec["endpoint"], data=body,
+        headers={"Content-Type": "application/json"})
+    try:
+        data = _j.loads(_u.urlopen(rq, timeout=45).read(1 << 20).decode())
+        rows = data.get("results") or data.get("items") or []
+        summary = "; ".join(
+            (r.get("title") or r.get("snippet") or "")[:80]
+            for r in rows[:3]) or str(data)[:200]
+    except Exception as e:
+        return {"kind": "web", "query": query,
+                "summary": f"(the search failed: {type(e).__name__})"}
+    return {"kind": "web", "query": query, "summary": summary[:400]}
+
+
 async def apply_service(store: GenomeStore, world_realm: str,
                         agent: engine.AgentView, agent_payload: dict,
                         eff: engine.Effects, now: float) -> None:
@@ -327,10 +361,16 @@ async def apply_service(store: GenomeStore, world_realm: str,
         await store.put_agent(counterparty, rq)
         return
     req_key = f"{agent.agent_uuid}:{counterparty}:{skill}:{int(now // 3600)}"
-    stock = await get_stock(store, world_realm)
-    result = _skills.perform(agent_payload, skill, req_key,
-                             world_stock=stock)
-    if result.get("kind") == "chronicle":
+    if skill in _skills.TOOLS:
+        result = _perform_tool(agent_payload, skill, rq, req_key)
+    else:
+        stock = await get_stock(store, world_realm)
+        result = _skills.perform(agent_payload, skill, req_key,
+                                 world_stock=stock)
+    if result.get("kind") == "web":
+        text = (f"{holder_name} searched the web for you"
+                f" -- \"{result['query']}\": {result['summary']}")
+    elif result.get("kind") == "chronicle":
         for c in result["claims"]:
             rq = _word.fold_testimony(rq, c["subject"], c["locus"],
                                       c["estimate"], relays=0,
@@ -1710,6 +1750,15 @@ async def regenerate(store: GenomeStore, event_realm: str,
         except Exception:
             pass
     await store.set_presence(home, a, True)
+    cap = agent_payload.get("capability")
+    if cap and cap.get("kind") == "tool" \
+            and cap.get("name") not in _skills.TOOLS:
+        # Rule 1.3a: the tool was withdrawn from the registry; the next
+        # life rolls fresh, as though newly materialised
+        from . import skills as _sk2
+        agent_payload = {**agent_payload,
+                         "capability": _sk2.roll_capability(
+                             f"{a}:reroll:{int(now)}")}
     reborn = {**agent_payload,
               "influences": [], "prompt_mods": [],
               "addressable": [], "heard": [],

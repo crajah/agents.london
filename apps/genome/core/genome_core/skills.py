@@ -47,6 +47,20 @@ CATALOGUE: dict[str, str] = {
                      "you, any goal seeded in you, shows itself.",
 }
 
+# TOOLS -- drawn from the live registry (skills-spec Rule 1.1's other
+# class). One entry today: the headline capability the whole brokerage
+# section was written around. Withdrawn tools (Rule 1.3a) are names that
+# leave this table; holders re-roll at their next regeneration.
+TOOLS: dict[str, dict] = {
+    "Web Search": {
+        "endpoint": "/tools/web-search",
+        "text": "You can search the public web and return what it says -- "
+                "one of the few heads in the field that can.",
+    },
+}
+TOOL_SHARE = 0.2                 # of capability rolls: tools are the rarer class
+
+
 # Rule 5.3: rarity tracks systemic reach -- coordination skills touch other
 # minds, so they arrive far less often than a stronger pair of arms
 WEIGHTS = {"Convocation": 1, "Delegation": 1, "Master Orchestrator": 1,
@@ -77,6 +91,8 @@ def roll_capability(agent_uuid: str) -> dict | None:
     r = random.Random(f"capability:{agent_uuid}")
     if r.random() >= 0.75:
         return None
+    if r.random() < TOOL_SHARE:
+        return {"kind": "tool", "name": r.choice(sorted(TOOLS))}
     bag = []
     for name in sorted(CATALOGUE):
         bag.extend([name] * WEIGHTS.get(name, _COMMON_WEIGHT))
@@ -140,4 +156,11 @@ def describe(payload: dict) -> str:
     if name is None:
         return ("You hold no capability. What you cannot do yourself, "
                 "another agent must be persuaded to do for you.")
-    return f"You hold one capability -- {name}: {CATALOGUE[name]}"
+    text = CATALOGUE.get(name) or TOOLS.get(name, {}).get("text") \
+        or "a capability whose tool has been withdrawn"
+    return f"You hold one capability -- {name}: {text}"
+
+
+def remote_capable(name: str | None) -> bool:
+    """What may be ASKED FOR over A2A: remote skills and every tool."""
+    return name in REMOTE or name in TOOLS
