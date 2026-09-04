@@ -164,7 +164,7 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
                                    "colour_pair": om.get("colour_pair"),
                                    "cargo": o_cargo,   # revealed only to a
                                    # Scrying holder (skills-spec 4.2)
-                                   "infected": bool(om.get("infected"))},
+                                   "infected": bool(om.get("infections"))},
                          "opinion": (metas[me].get("opinions", {})
                                      .get(other))})
             hits += 1

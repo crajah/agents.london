@@ -1153,6 +1153,16 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     await store.put_agent(agent.agent_uuid,
                           {**agent_payload, "transfer_counter": counter,
                            "last_transfer": assertion["doc"]})
+    # the traveller must WAKE where it lands: the origin void-sweep above
+    # (correctly) killed the post-transfer decide that take_portal scheduled
+    # in the world being left, and nothing else asked the destination to
+    # think -- so every arrival slept on its portal until the heal backstop
+    # found it (user report 2026-09-04: doors crowded with sleepers; one
+    # agent had crossed 439 times, mostly asleep between)
+    dest_ts = max(1.0, dest_meta.get("time_scale", 1.0))
+    await store.schedule(to_world, f"land-{agent.agent_uuid}-{int(now)}",
+                         _iso(now + 30.0 / dest_ts), "decide",
+                         agent.agent_uuid, {})
     if dest_meta.get("is_commons"):
         # remember the way in (Rule 6.2g); the portal position it used is the
         # return destination

@@ -140,7 +140,8 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "capability": payload.get("capability"),
            "influences": payload.get("influences") or [],
            "prompt_mods": payload.get("prompt_mods") or [],
-           "infected": bool(payload.get("infected"))}
+           "infected": bool(payload.get("infections"))}   # CURRENT
+    # infections only -- a survivor wears its history, never the mark
     if g:
         out["dispositions"] = {d: g[d] for d in DISPOSITIONS if d in g}
         out["faculties"] = faculties(g)
