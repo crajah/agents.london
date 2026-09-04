@@ -270,10 +270,10 @@ async def _apply(founder_id: str, decision: Dict[str, Any], org_id: str,
             delta = {"high": -5.0, "medium": -2.0, "low": -0.5}.get(severity, -1.0)
             res = await _registry("POST", f"/agents/{agent_id}/audit",
                                   json={"org_id": org_id, "project_id": project_id,
-                                        "auditor_agent_id": "proving-ground",
+                                        "auditor_id": "proving-ground",
                                         "passed_compliance": False,
                                         "reputation_delta": delta,
-                                        "notes": str(finding.get("defect"))[:500]})
+                                        "audit_notes": str(finding.get("defect"))[:500]})
             cycle.effects.append({
                 "action": "REPUTATION_ADJUSTED" if res is not None and res.status_code == 200
                           else "AUDIT_FAILED",

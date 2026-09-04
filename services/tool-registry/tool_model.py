@@ -287,6 +287,15 @@ def validate_registration(identity: ToolIdentity, version: ToolVersionSpec,
                 f"Rule 4.2: this content is already published as version {other}; "
                 f"reuse it, or change what actually determines behaviour")
 
+    # Rejection 7a — a CREDENTIALED tool may not point outside the
+    # cluster at all (audit 2026-09-04): secret_ref + external endpoint is
+    # an exfiltration machine whatever the declared side_effects.
+    if getattr(version.auth, "secret_ref", None) \
+            and _is_external(version.endpoint_url):
+        raise RegistrationError(
+            f"endpoint {version.endpoint_url!r} leaves the cluster and the "
+            f"tool carries a credential reference; credentials never travel "
+            f"to external endpoints")
     # Rejection 7 — an outward-facing endpoint declared as a read.
     if version.side_effects == "read" and _is_external(version.endpoint_url):
         raise RegistrationError(
@@ -301,9 +310,11 @@ def _is_external(url: str) -> bool:
     if not lowered.startswith(("http://", "https://")):
         return False        # non-HTTP transports are judged by their own rules
     host = lowered.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-    return not (host.endswith(".svc.cluster.local") or host.endswith(".local")
+    # only the cluster's own DNS zone and loopback count as internal;
+    # bare .local / .internal are resolvable by whoever runs the resolver
+    return not (host.endswith(".svc.cluster.local")
                 or host in ("localhost", "127.0.0.1", "::1")
-                or host.endswith(".internal"))
+                or (host.endswith("-service") and "." not in host))
 
 
 def validate_arguments(arguments: Dict[str, Any],

@@ -291,14 +291,24 @@ async def verify_agent(req: VerifySignatureRequest):
         raise HTTPException(status_code=404, detail=f"Agent '{req.agent_id}' not found.")
 
     computed_digest = hashlib.sha256(req.payload_text.encode()).hexdigest()
-    expected_sig = f"ed25519:{computed_digest}"
-    is_valid = (agent.get("public_key") == req.public_key) and (
-        req.signature == expected_sig or req.signature == agent.get("signature"))
+    # HONESTY (audit 2026-09-04): what is checked here is a sha256 payload
+    # checksum against the registered key STRING -- anyone holding the
+    # payload can construct a passing value. That is integrity plus key
+    # match, NOT a cryptographic signature; the response says so, and
+    # "verified" is reserved for the day real Ed25519 verification lands.
+    checksum_ok = req.signature in (f"ed25519:{computed_digest}",
+                                    agent.get("signature"))
+    key_match = agent.get("public_key") == req.public_key
     return {
         "agent_id": req.agent_id,
-        "verified": is_valid,
+        "verified": False,
+        "verification": "checksum-only",
+        "checksum_ok": bool(checksum_ok),
+        "key_match": bool(key_match),
         "computed_digest": computed_digest,
         "registered_public_key": agent.get("public_key"),
+        "note": "sha256 payload checksum, not an Ed25519 signature check; "
+                "do not treat as cryptographic proof",
     }
 
 

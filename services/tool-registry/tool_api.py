@@ -574,10 +574,16 @@ def resolve_secret(secret_ref: Dict[str, str]) -> Optional[str]:
     """
     name = (secret_ref or {}).get("name", "")
     key = (secret_ref or {}).get("key", "")
-    if key and os.getenv(key):
+    # Only allowlisted environment names resolve (audit 2026-09-04): the
+    # unrestricted os.getenv(key) let a registered tool name ANY variable
+    # -- OPENAI_API_KEY, POSTGRES_PASSWORD -- and ship it to its endpoint.
+    allowed = {n.strip() for n in os.getenv(
+        "TOOL_SECRET_ALLOWLIST",
+        "TAVILY_API_KEY,SERPER_API_KEY,RAPIDAPI_KEY").split(",") if n.strip()}
+    if key and key in allowed and os.getenv(key):
         return os.getenv(key)
     combined = f"{name}_{key}".upper().replace("-", "_")
-    if os.getenv(combined):
+    if combined in allowed and os.getenv(combined):
         return os.getenv(combined)
     if name and key:
         path = pathlib.Path("/var/run/secrets") / name / key

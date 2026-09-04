@@ -20,14 +20,12 @@ from pydantic import BaseModel, Field
 try:
     from backend.env_config import (
         DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
-        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
-        RAG_MODEL, require_env,
+        require_env,
     )
 except ImportError:  # started with backend/ as the working directory
     from env_config import (
         DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
-        JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
-        RAG_MODEL, require_env,
+        require_env,
     )
 try:
     from backend.civilization_factory import get_civilization_engine
@@ -112,7 +110,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # "*" with credentials is rejected by browsers and advertises intent
+    # to accept any origin (audit 2026-09-04); the real origins are few
+    allow_origins=[o.strip() for o in os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "https://agents.london,http://localhost:5173,http://localhost:3000"
+    ).split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -2092,23 +2095,30 @@ def get_civilization_events(org_id: str, project_id: str, limit: int = Query(50)
 # AGENT IMMUTABLE VERSION CONTROL & DATA TABLE RETRIEVAL ENDPOINTS
 # =========================================================================
 @app.get("/api/projects/{project_id}/agents/{agent_id}/versions")
-async def get_agent_version_history(project_id: str, agent_id: str):
+async def get_agent_version_history(project_id: str, agent_id: str,
+                                    org_id: str = Query(DEFAULT_ORG_ID)):
     """Retrieves all immutable append-only version records for an agent in post-graph."""
-    records = await civilization_engine.get_agent_version_history(project_id, agent_id)
+    records = await civilization_engine.get_agent_version_history(
+        project_id, agent_id, org_id=org_id)
     return {"project_id": project_id, "agent_id": agent_id, "versions_count": len(records), "versions": records}
 
 @app.get("/api/projects/{project_id}/agents/{agent_id}/versions/latest")
-async def get_latest_agent_version(project_id: str, agent_id: str):
+async def get_latest_agent_version(project_id: str, agent_id: str,
+                                   org_id: str = Query(DEFAULT_ORG_ID)):
     """Retrieves the latest immutable data record (version) for an agent."""
-    record = await civilization_engine.get_latest_agent_version(project_id, agent_id)
+    record = await civilization_engine.get_latest_agent_version(
+        project_id, agent_id, org_id=org_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"No version records found for agent '{agent_id}' in project '{project_id}'")
     return {"project_id": project_id, "agent_id": agent_id, "latest_version": record}
 
 @app.get("/api/projects/{project_id}/agents/{agent_id}/versions/{version_id}")
-async def get_agent_version_by_id(project_id: str, agent_id: str, version_id: str):
+async def get_agent_version_by_id(project_id: str, agent_id: str,
+                                  version_id: str,
+                                  org_id: str = Query(DEFAULT_ORG_ID)):
     """Queries a specific data entry by its sequential data_id (version number)."""
-    record = await civilization_engine.get_agent_version_by_id(project_id, version_id)
+    record = await civilization_engine.get_agent_version_by_id(
+        project_id, version_id, org_id=org_id)
     if not record:
         raise HTTPException(status_code=404, detail=f"Version data_id '{version_id}' not found in project '{project_id}'")
     return {"project_id": project_id, "agent_id": agent_id, "version_id": version_id, "version": record}
@@ -2448,7 +2458,7 @@ async def dispatch_a2a_agent_message(
 
     # The event stream is a record of what happened, published after the fact
     # rather than in place of it.
-    redis_bus.publish_event("org_global", req.project_id, {
+    redis_bus.publish_event(org_id, req.project_id, {
         "event": "a2a_message_dispatched",
         "sender": req.sender_agent_id,
         "target": req.target_agent_id,
@@ -2565,15 +2575,11 @@ async def create_document_space(project_id: str, space_name: str = Query(...),
                 return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry service: {e}")
-
-    return {
-        "key": f"{project_id}:{space_name}",
-        "project_id": project_id,
-        "space_name": space_name,
-        "description": description or "Document space",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "document_count": 0
-    }
+    # No fabricated space: the registry did not create it, so nobody is
+    # told it exists (audit 2026-09-04 -- the siblings already 502).
+    raise HTTPException(status_code=502,
+                        detail="document registry unreachable; the space "
+                               "was not created")
 
 @app.get("/api/projects/{project_id}/spaces")
 async def list_document_spaces(project_id: str, org_id: str = Query(DEFAULT_ORG_ID)):
@@ -2586,20 +2592,8 @@ async def list_document_spaces(project_id: str, org_id: str = Query(DEFAULT_ORG_
                 return res.json()
     except Exception as e:
         logger.warning(f"Error calling document-registry service: {e}")
-
-    return {
-        "project_id": project_id,
-        "spaces": [
-            {
-                "key": f"{project_id}:default",
-                "project_id": project_id,
-                "space_name": "default",
-                "description": "Default workspace document repository",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "document_count": 0
-            }
-        ]
-    }
+    raise HTTPException(status_code=502,
+                        detail="document registry unreachable")
 
 @app.get("/api/projects/{project_id}/documents")
 async def list_project_documents(project_id: str, space_name: Optional[str] = None,
@@ -2618,6 +2612,25 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
         logger.warning(f"Error calling document-registry documents list: {e}")
 
     return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
+
+@app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
+class UploadTextBody(BaseModel):
+    document_name: str
+    content: str
+    org_id: str = DEFAULT_ORG_ID
+
+
+@app.post("/api/projects/{project_id}/spaces/{space_name}/documents/"
+          "upload-text-body")
+async def upload_document_text_body(project_id: str, space_name: str,
+                                    body: UploadTextBody):
+    """JSON-body variant: a document in a query string truncates at proxy
+    URL limits and lands in every access log (audit 2026-09-04). The query
+    variant survives for existing callers; this is the one to use."""
+    return await upload_document_text(project_id, space_name,
+                                      body.document_name, body.content,
+                                      body.org_id)
+
 
 @app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
 async def upload_document_text(project_id: str, space_name: str,
@@ -2793,7 +2806,10 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             await websocket.send_text(json.dumps({"type": "ack", "message": "connected", "received": data}))
     except WebSocketDisconnect:
-        ACTIVE_CONNECTIONS.remove(websocket)
+        pass
+    finally:
+        if websocket in ACTIVE_CONNECTIONS:
+            ACTIVE_CONNECTIONS.remove(websocket)
         logger.info("WebSocket client disconnected.")
 
 async def broadcast_ws_event(event_dict: Dict[str, Any]):
