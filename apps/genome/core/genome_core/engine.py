@@ -121,7 +121,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
     around the decision: genotype, neighbour positions, occupied spots,
     muster points — loaded by the caller, never fetched here."""
     if kind == "arrival":
-        return _decide_here(agent, piles, payload, stock, portals, ctx)
+        return _decide_here(agent, piles, payload, stock, portals, ctx, now)
     if kind == "mining_done":
         # mechanical: the decision was taken when mining began; the next
         # decision is a fresh event a minute on, never at the same instant
@@ -220,7 +220,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
                      "at_pile": None, "reachable": [],
                      "portal_to": None, "portal_xy": None})
     if kind == "decide":
-        return _decide_here(agent, piles, payload, stock, portals, ctx)
+        return _decide_here(agent, piles, payload, stock, portals, ctx, now)
     raise ValueError(f"unknown event kind {kind!r}")
 
 
@@ -314,7 +314,8 @@ def nearest_muster(muster: list[dict], x: float, y: float) -> tuple[float, float
 def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                  stock: dict[str, float] | None = None,
                  portals: list[dict] | None = None,
-                 ctx: dict | None = None) -> DecisionRequest:
+                 ctx: dict | None = None,
+                 now: float = 0.0) -> DecisionRequest:
     stock = stock or {}
     ctx = ctx or {}
     carrying = ctx.get("carrying_site")
@@ -450,6 +451,15 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     g = ctx.get("genotype") or {}
     _steps_through = _norm("Teleport Affinity",
                            g.get("Teleport Affinity", 5000.0)) >= 0.15
+    # the legs remember the passage: for a world-hour after a crossing the
+    # doors are not offered at all. Without this, arrivals woke ON a
+    # portal, chose the free instant act again, and the population
+    # teleport-looped instead of walking (user report 2026-09-04:
+    # "not a single agent is moving")
+    _lta = ctx.get("last_transfer_at", 0.0)
+    _cooled = (_lta <= 0.0) or (now - _lta) \
+        >= 3600.0 / max(1.0, ctx.get("time_scale", 1.0))
+    _steps_through = _steps_through and _cooled
     if near_portal:
         # Teleport Affinity (genotype disposition): some agents simply will
         # not step through. Below the floor the option is never offered —

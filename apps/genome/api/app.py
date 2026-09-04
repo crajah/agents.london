@@ -1002,10 +1002,17 @@ async def my_materialize(request: __import__("fastapi").Request):
     rich = sorted((k for k, v in stock.items() if v >= 2.0),
                   key=lambda k: -stock[k])
     if len(rich) < 4:
+        near = sorted(((k, v) for k, v in stock.items() if 0 < v < 2.0),
+                      key=lambda kv: -kv[1])[:3]
         return JSONResponse(
-            {"error": f"materialisation needs 2 units in each of FOUR "
-             f"kinds; your store has {len(rich)} kind(s) that deep. "
-             f"The commons market is how the far kinds arrive."},
+            {"error": f"materialisation needs 2 units DEPOSITED in each of "
+             f"FOUR kinds -- piles on the map do not count until mined and "
+             f"deposited at a muster flag. Your store qualifies in "
+             f"{len(rich)}: {', '.join('kind ' + k for k in rich)}."
+             + (f" Closest: "
+                + ", ".join(f"kind {k} at {v:.1f}" for k, v in near) + "."
+                if near else "")
+             + " The commons market is how the far kinds arrive."},
             status_code=400)
     for k in rich[:4]:
         stock[k] -= 2.0

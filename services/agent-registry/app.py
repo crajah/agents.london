@@ -135,6 +135,18 @@ tags_metadata = [
     {"name": "System", "description": "Health check and microservice status endpoints."},
 ]
 
+
+def _internal_ok(request) -> None:
+    """If PLATFORM_INTERNAL_TOKEN is set, mutating routes require it in
+    X-Internal-Token -- these services are internal plumbing and should
+    not be writable by whatever can reach the port (audit 2026-09-04).
+    Unset = open, for compatibility until the secret rolls out."""
+    tok = os.getenv("PLATFORM_INTERNAL_TOKEN", "")
+    if tok and request.headers.get("x-internal-token") != tok:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403,
+                            detail="internal surface; token required")
+
 app = FastAPI(
     title="Agent Registry & Ontological Microservice",
     description="""
@@ -221,7 +233,8 @@ async def health_check():
 # ------------------------------------------------------- legacy registration
 
 @app.post("/agents/register", tags=["Agent Registration"])
-async def register_agent(req: AgentRegistrationRequest):
+async def register_agent(req: AgentRegistrationRequest, request: Request = None):
+    _internal_ok(request)
     """Register an agent. Unchanged contract, backed by the graph (§13.3).
 
     The request and response shapes are exactly what they were; underneath, the
@@ -313,7 +326,8 @@ async def verify_agent(req: VerifySignatureRequest):
 
 
 @app.post("/agents/{agent_id}/audit", tags=["Agent Registration"])
-async def audit_agent(agent_id: str, req: AuditRequest):
+async def audit_agent(agent_id: str, req: AuditRequest, request: Request = None):
+    _internal_ok(request)
     """Record an oversight audit and move the reputation score.
 
     An identity update, not a new version (§4.2): auditing an agent does not
@@ -340,7 +354,8 @@ async def audit_agent(agent_id: str, req: AuditRequest):
 
 
 @app.post("/agents/{agent_id}/allocate-tokens", tags=["Agent Registration"])
-async def allocate_tokens(agent_id: str, req: TokenAllocationRequest):
+async def allocate_tokens(agent_id: str, req: TokenAllocationRequest, request: Request = None):
+    _internal_ok(request)
     client = _client()
     agent = await legacy_shim.load_agent(client, req.org_id, agent_id, req.project_id)
     if agent is None:

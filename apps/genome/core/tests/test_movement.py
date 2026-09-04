@@ -2,6 +2,10 @@
 Teleport Affinity gate — the movement-dynamics directive, proven pure."""
 import unittest
 
+import pathlib
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
 from genome_core import engine, styles, worldgen
 from genome_core.engine import AgentView, Choice, PileView
 

@@ -158,6 +158,7 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "time_scale": world_payload.get("time_scale", 1.0),
             "carrying_site": carrying, "carrying_name": carrying_name,
             "addressable": agent_payload.get("addressable") or [],
+            "last_transfer_at": agent_payload.get("last_transfer_at", 0.0),
             "skill": (agent_payload.get("capability") or {}).get("name"),
             "crew_size": len(agent_payload.get("crew") or []),
             "has_objective": bool(agent_payload.get("objectives")),
@@ -1036,6 +1037,12 @@ async def _portage_group_cross(store: GenomeStore, origin_realm: str,
             dest_xy = pt.get("dest_xy")
             break
     dest_xy = dest_xy or [0.5, 0.5]
+    # arrivals step OFF the portal, deterministically aside -- waking ON it
+    # re-offered the door every time
+    import math as _m
+    _ang = _m.tau * (int(counter) % 12) / 12.0
+    dest_xy = [min(0.95, max(0.05, dest_xy[0] + 0.045 * _m.cos(_ang))),
+               min(0.95, max(0.05, dest_xy[1] + 0.045 * _m.sin(_ang)))]
     await construction.portage_cross(store._c, origin_realm, to_world,
                                      site, dest_xy)
     for porter in site.get("porters", {}):
@@ -1103,6 +1110,12 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
             dest_xy = pt.get("dest_xy")
             break
     dest_xy = dest_xy or [0.5, 0.5]
+    # arrivals step OFF the portal, deterministically aside -- waking ON it
+    # re-offered the door every time
+    import math as _m
+    _ang = _m.tau * (int(counter) % 12) / 12.0
+    dest_xy = [min(0.95, max(0.05, dest_xy[0] + 0.045 * _m.cos(_ang))),
+               min(0.95, max(0.05, dest_xy[1] + 0.045 * _m.sin(_ang)))]
     # A crossing interrupts the life left behind: pending events in the
     # origin realm and undecided queue items for this agent are void -- they
     # reference a world the agent is no longer in. Observed live: stale
@@ -1160,6 +1173,7 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
                                   f"{strain['strain_uuid']} at the {end} portal.")
     await store.put_agent(agent.agent_uuid,
                           {**agent_payload, "transfer_counter": counter,
+                           "last_transfer_at": now,
                            "last_transfer": assertion["doc"]})
     # the traveller must WAKE where it lands: the origin void-sweep above
     # (correctly) killed the post-transfer decide that take_portal scheduled
