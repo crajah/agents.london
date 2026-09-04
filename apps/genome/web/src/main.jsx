@@ -5,6 +5,15 @@ import { createWorldCanvas } from "./world/canvas.js";
 
 const API = import.meta.env.VITE_GENOME_API ?? "";
 
+// The A100 palette (genome-spec Rule 4.9): kind k ALWAYS wears A100[k],
+// in every world. The per-world colourOf mapping this replaces knew only
+// the world's own two kinds and painted the other eighteen grey.
+const A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF",
+              "#82B1FF", "#80D8FF", "#84FFFF", "#A7FFEB", "#B9F6CA",
+              "#CCFF90", "#F4FF81", "#FFFF8D", "#FFE57F", "#FFD180",
+              "#FF9E80", "#D7CCC8", "#CFD8DC", "#F5F5F5", "#B2FFFF"];
+const kindColour = (k) => A100[Number(k)] ?? "#777";
+
 function Bell() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -402,10 +411,7 @@ function Ticker({ realm }) {
 
 function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
                       info }) {
-  const colourOf = k => {
-    const i = (info?.kinds ?? []).indexOf(Number(k));
-    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
-  };
+  const colourOf = kindColour;
   const KChip = ({ k, u }) => (
     <span className="inline-flex items-center gap-1 bg-neutral-700/70
                      rounded px-1 mr-1" title={`kind ${k}`}>
@@ -577,10 +583,7 @@ function Legend() {
 }
 
 function PlanTable({ realm, info }) {
-  const colourOf = k => {
-    const i = (info?.kinds ?? []).indexOf(Number(k));
-    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
-  };
+  const colourOf = kindColour;
   // Rule 13.6b: plans are authored conversationally, not through a form --
   // this is a conversation with the drafting table, retried in prose
   const [open, setOpen] = useState(false);
@@ -646,10 +649,7 @@ on a tower of 10 of kind 16, two users for the tower…"
 function MarketPanel({ info }) {
   const [open, setOpen] = useState(false);
   const listings = info?.listings ?? [];
-  const colourOf = k => {
-    const i = (info?.kinds ?? []).indexOf(Number(k));
-    return i >= 0 ? (info?.colours?.[i] ?? "#777") : "#777";
-  };
+  const colourOf = kindColour;
   const Chip = ({ k, u }) => (
     <span className="inline-flex items-center gap-1 bg-neutral-800 rounded
                      px-1 py-0.5 mr-1" title={`kind ${k}`}>
@@ -728,10 +728,7 @@ function StockPanel({ info }) {
   if (!info) return null;
   const entries = Object.entries(info.stock ?? {})
     .sort((a, b) => Number(a[0]) - Number(b[0]));
-  const colourOf = k => {
-    const i = (info.kinds ?? []).indexOf(Number(k));
-    return i >= 0 ? (info.colours?.[i] ?? "#777") : "#777";
-  };
+  const colourOf = kindColour;
   const total = entries.reduce((t, [, v]) => t + Number(v), 0);
   return (
     <div className="absolute top-2 right-3 z-20 bg-neutral-900/85 border
