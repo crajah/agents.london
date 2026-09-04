@@ -907,6 +907,14 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                               pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):
             if decider is None:                     # queue mode (Rule 8.4)
+                # the mind is off to the queue; the body wanders its style
+                # until the thought returns (free tier -- no LLM, no event)
+                if res.situation.startswith("at_") \
+                        and not agent_payload.get("carrying_site"):
+                    dr = engine.drift_route(agent, ctx, terrain, now)
+                    if dr:
+                        await store.set_movement(agent.agent_uuid,
+                                                 {**dr, "cargo": agent.cargo})
                 merged_q = dict(pl.get("payload", {}))
                 for k in ("portal_to", "portal_xy", "proposer", "other",
                           "site_here", "cache_here", "ark_key",

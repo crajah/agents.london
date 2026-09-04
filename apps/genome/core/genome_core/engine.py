@@ -536,6 +536,46 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                                   and not s.get("destroyed")]})
 
 
+def drift_route(agent: AgentView, ctx: dict, terrain: list,
+                now: float) -> dict | None:
+    """Wander-while-thinking (free tier): a decision in the queue means the
+    MIND is busy for minutes -- the LLM cadence, not the world's -- while
+    the body stood parked (user report 2026-09-04: a still canvas).
+    Movement is free (execution-spec 5.1), so the body drifts in its own
+    movement style until the thought returns: a slow, obstacle-aware amble
+    paced to roughly fill the thinking gap. Deterministic per (agent,
+    moment); pure; the caller persists."""
+    from . import styles as stylemod
+    g = ctx.get("genotype") or {}
+    env = {"neighbours": ctx.get("neighbours", []),
+           "explored_frac": len(agent.explored) / (GRID_K * GRID_K)
+           if agent.explored else 0.0}
+    seed = f"drift:{agent.agent_uuid}:{int(now)}"
+    style = stylemod.pick_style(g, env, seed)
+    tx, ty = stylemod.target_for(style, agent.x, agent.y,
+                                 agent.explored, env, seed)
+    # a short leg: cap the amble so the next real decision never fights a
+    # long phantom journey
+    import math as _m
+    dx, dy = tx - agent.x, ty - agent.y
+    d = _m.hypot(dx, dy)
+    if d < 1e-6:
+        return None
+    cap = min(d, 0.12)
+    tx = agent.x + dx / d * cap
+    ty = agent.y + dy / d * cap
+    tx = min(0.95, max(0.05, tx))
+    ty = min(0.95, max(0.05, ty))
+    pts = pathmod.find_path(terrain, agent.x, agent.y, tx, ty)
+    if pts is None:
+        pts = [(agent.x, agent.y), (tx, ty)]
+    length = sum(_m.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+    # amble pace: ~3 minutes to walk 0.12 units -- thinking speed
+    duration = max(20.0, length / 0.12 * 180.0)
+    return {"waypoints": [list(q) for q in pts], "departed_at": now,
+            "arrives_at": now + duration}
+
+
 def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
                    terrain: list[dict], arrival_kind: str,
                    arrival_payload: dict, time_scale: float = 1.0,
