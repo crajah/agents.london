@@ -141,6 +141,17 @@ app = FastAPI(
 )
 
 
+def _internal_ok(request: Request) -> None:
+    """If DOCREG_INTERNAL_TOKEN is set, the org_id surface requires it --
+    the /my/* routes are user-facing via authority tokens; these are the
+    internal plumbing and should not be reachable by whoever can reach
+    the port (audit 2026-09-04). Unset = open, for compatibility."""
+    tok = os.getenv("DOCREG_INTERNAL_TOKEN", "")
+    if tok and request.headers.get("x-internal-token") != tok:
+        raise HTTPException(status_code=403,
+                            detail="internal surface; token required")
+
+
 def _client():
     client = getattr(app.state, "pg_client", None)
     if client is None:
@@ -237,18 +248,24 @@ async def my_list_documents(request: Request, project_id: str,
           tags=["My Documents"])
 async def my_upload_text(request: Request, space_name: str, body: dict):
     realm = _granted_docs_realm(request)
-    req = UploadTextRequest(org_id=realm,
-                            project_id=body.get("project_id", "default"),
-                            space_name=space_name,
-                            document_name=body["document_name"],
-                            content=body["content"],
-                            category=body.get("category", "unstructured"))
+    try:
+        req = UploadTextRequest(org_id=realm,
+                                project_id=body.get("project_id", "default"),
+                                space_name=space_name,
+                                document_name=body["document_name"],
+                                content=body["content"],
+                                category=body.get("category", "unstructured"))
+    except KeyError as e:
+        raise HTTPException(status_code=422,
+                            detail=f"missing field {e.args[0]!r}") from e
     return await upload_document_text(space_name, req)
 
 
 @app.post("/my/query", tags=["My Documents"])
 async def my_query(request: Request, body: dict):
     realm = _granted_docs_realm(request)
+    if "query" not in body:
+        raise HTTPException(status_code=422, detail="missing field 'query'")
     req = RAGQueryRequest(org_id=realm,
                           project_id=body.get("project_id", "default"),
                           document_space=body.get("document_space"),
@@ -346,6 +363,10 @@ async def _ingest(key: SpaceKey, filename: str, data: bytes, text: str,
     """
     client = _client()
     digest = content_hash(data)
+    # Retain the extracted text (capped) so /reindex can actually recover
+    # a failed index -- without it every reindex 409ed forever (audit
+    # 2026-09-04) and the only remedy was re-upload.
+    retained_text = text[:524288] if text else ""
 
     # Rule 5.6 — identical bytes in the same document space is a no-op.
     duplicate = await doc_store.find_by_hash(
@@ -364,9 +385,10 @@ async def _ingest(key: SpaceKey, filename: str, data: bytes, text: str,
         metadata = doc_rag.metadata_for(key, filename, doc_id, digest, source, category)
         outcome = await doc_rag.index(rag, key, text, metadata)
 
-    entry = catalogue_entry(key=key, filename=filename, digest=digest, size=len(data),
-                            extraction=extraction, index=outcome,
-                            content_type=content_type)
+    entry = catalogue_entry(key=key, filename=filename, digest=digest,
+                            size=len(data), extraction=extraction,
+                            index=outcome, content_type=content_type)
+    entry["_text"] = retained_text
     saved = await doc_store.save_document(client, key, entry)
     saved.pop("_pk", None)
 
@@ -498,6 +520,7 @@ async def upload_multiple_document_files(space_name: str,
             failed.append({"filename": filename, "stage": "indexing",
                            "error": document["index"].get("error"),
                            "catalogued": True})
+            continue                      # catalogued, not a success
         succeeded.append(document)
 
     indexed = [d for d in succeeded if d.get("index", {}).get("status") == INDEXED
