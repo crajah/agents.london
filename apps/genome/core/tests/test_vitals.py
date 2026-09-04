@@ -46,6 +46,17 @@ class TestIncapacitation(unittest.TestCase):
             {"stamina": 0.0, "stamina_max": 0.0}, 1.0))
 
 
+class TestWorldClock(unittest.TestCase):
+    def test_recovery_scales_with_the_world(self):
+        p = {"genotype": {"reStamina": 1.0, "Immune Vigilance": 0.0},
+             "stamina": 0.0, "stamina_at": 0.0, "stamina_max": 1.0}
+        real = V.stamina_now(p, 3600.0)
+        demo = V.stamina_now(p, 3600.0, time_scale=60.0)
+        self.assertGreater(demo, real * 30)     # an hour heals a demo day
+        self.assertFalse(V.incapacitated(p, 3600.0, time_scale=60.0))
+        self.assertTrue(V.incapacitated(p, 3600.0))
+
+
 class TestMana(unittest.TestCase):
     def test_attack_price_exists_and_recovers(self):
         p = {"genotype": {"reMana": 1.0}, "mana": 1.0, "mana_at": 0.0}

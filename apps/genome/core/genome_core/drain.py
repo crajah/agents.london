@@ -797,7 +797,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                 cause=pl["payload"].get("cause", "longevity"))
 
     if pl["kind"] in ("decide", "arrival") \
-            and _vitals.incapacitated(agent_payload, now):
+            and _vitals.incapacitated(agent_payload, now,
+                                      world_payload.get("time_scale", 1.0)):
         # Rule 9.3e: the body lies where it fell until the pool refills;
         # nothing is asked of the mind meanwhile
         await store.complete_event(world_realm, pl["key"], _iso(now))
@@ -1432,19 +1433,21 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
             else (agent, agent_payload)
         # Rule 9.3d: pressing an attack SPENDS Mana; an empty pool (or an
         # incapacitated body, 9.3e) cannot press one -- the moment passes
-        if _vitals.incapacitated(att_p, now) or \
-                _vitals.mana_now(att_p, now) < _vitals.MANA_ATTACK_COST:
+        _wts = (await _world_payload(store, world_realm)).get("time_scale",
+                                                              1.0)
+        if _vitals.incapacitated(att_p, now, _wts) or \
+                _vitals.mana_now(att_p, now, _wts) < _vitals.MANA_ATTACK_COST:
             await store.complete_event(world_realm, pl["key"], _iso(now))
             return "attack:fizzled"
         att_p.update(_vitals.set_mana(
-            att_p, _vitals.mana_now(att_p, now)
+            att_p, _vitals.mana_now(att_p, now, _wts)
             - _vitals.MANA_ATTACK_COST, now))
         await store.put_agent(att_uuid, dict(att_p))
         f_att = combat.Fighter(att_v.agent_uuid, att_p["genotype"],
-                               _vitals.stamina_now(att_p, now),
+                               _vitals.stamina_now(att_p, now, _wts),
                                att_p.get("stamina_max", 1.0), att_v.cargo)
         f_dfd = combat.Fighter(dfd_v.agent_uuid, dfd_p["genotype"],
-                               _vitals.stamina_now(dfd_p, now),
+                               _vitals.stamina_now(dfd_p, now, _wts),
                                dfd_p.get("stamina_max", 1.0), dfd_v.cargo)
         cfx = await construction.world_effects(store._c, world_realm)
         ward = 1.2 if (dfd_p.get("capability") or {}).get("name") \
@@ -1489,12 +1492,12 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         loser_uuid = dfd_v.agent_uuid if res["winner"] == att_v.agent_uuid \
             else att_v.agent_uuid
         lose_p.update(_vitals.set_stamina(
-            lose_p, _vitals.stamina_now(lose_p, now)
+            lose_p, _vitals.stamina_now(lose_p, now, _wts)
             + res["loser_stamina_delta"], now))
         await store.put_agent(loser_uuid, dict(lose_p))
         new_max = win_p.get("stamina_max", 1.0) - res["winner_max_burn"]
         win_p.update(_vitals.set_stamina(
-            win_p, _vitals.stamina_now(win_p, now)
+            win_p, _vitals.stamina_now(win_p, now, _wts)
             + res["winner_stamina_delta"], now))
         await store.put_agent(res["winner"],
                               {**win_p, "stamina_max": max(0.0, new_max),

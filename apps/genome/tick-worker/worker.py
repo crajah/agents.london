@@ -111,6 +111,7 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
     agent, schedule an encounter for pairs in contact. A pair cools down so a
     lingering pair does not re-collide every tick."""
     from genome_core import drain as _d, forms as _f
+    wmeta = await _d._world_payload(store, realm)
     positions = {}
     metas = {}
     for v in await store.agents_in(realm):
@@ -143,8 +144,8 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
                                           metas[src], metas[dst], now)
                 if strain:
                     infected = _pg.infect(metas[dst], strain, now,
-                                          time_scale=meta.get("time_scale",
-                                                              1.0))
+                                          time_scale=wmeta.get("time_scale",
+                                                               1.0))
                     await store.put_agent(dst, infected)
                     metas[dst] = infected
                     if infected.get("owner_user_id"):
