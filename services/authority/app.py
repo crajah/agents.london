@@ -102,12 +102,18 @@ def _verify_state(raw: str) -> dict | None:
     return None
 
 
-def mint(sub: str, provider: str, grants: list | None = None) -> str:
+def mint(sub: str, provider: str, grants: list | None = None,
+         email: str | None = None) -> str:
+    """The email rides as a CLAIM in a 15-minute same-site token -- transit,
+    not storage; the authority itself keeps nothing. Apps that key tenancy
+    off the address (civilization) read it; apps that key off the hash
+    (genome) ignore it."""
     now = int(time.time())
-    return jwt.encode(
-        {"iss": BASE, "sub": sub, "iat": now, "exp": now + TOKEN_TTL,
-         "provider": provider, "grants": grants or []},
-        _key, algorithm="RS256", headers={"kid": KID})
+    doc = {"iss": BASE, "sub": sub, "iat": now, "exp": now + TOKEN_TTL,
+           "provider": provider, "grants": grants or []}
+    if email:
+        doc["email"] = normalise_email(email)
+    return jwt.encode(doc, _key, algorithm="RS256", headers={"kid": KID})
 
 
 def verify(token: str) -> dict | None:
@@ -194,7 +200,7 @@ async def callback(provider: str, code: str = "", state: str = "",
     if not email:
         return JSONResponse({"error": "provider withheld the email claim"},
                             status_code=400)
-    token = mint(user_id_from_email(email), provider)
+    token = mint(user_id_from_email(email), provider, email=email)
     dest = doc.get("r") or "/"
     sep = "&" if "?" in dest else "?"
     resp = RedirectResponse(dest + sep + "authority_token=" + token)
@@ -220,7 +226,7 @@ async def refresh(request: Request):
     if not claims:
         return JSONResponse({"error": "invalid token"}, status_code=401)
     return {"token": mint(claims["sub"], claims.get("provider", "?"),
-                          claims.get("grants"))}
+                          claims.get("grants"), claims.get("email"))}
 
 
 @app.post("/exchange")

@@ -432,6 +432,49 @@ async def verify_google_oauth_token(req: VerifyGoogleTokenRequest):
             "token_info": token_info
         }
 
+class AuthoritySessionRequest(BaseModel):
+    token: str
+
+
+_authority_jwks_client = None
+
+
+@app.post("/api/auth/authority/session")
+async def create_authority_session(req: AuthoritySessionRequest):
+    """The platform front door's JWT (agents.london/authority) is as good
+    as a provider id_token: verified against the authority's own JWKS, the
+    email claim carries what tenancy needs, and all doors land a person in
+    the same organisation by the same rule (F.5)."""
+    global _authority_jwks_client
+    import jwt as _jwt
+    from jwt import PyJWKClient
+    jwks_url = os.getenv("AUTHORITY_JWKS_URL",
+                         "http://authority-service:8810/jwks.json")
+    issuer = os.getenv("AUTHORITY_ISSUER",
+                       "https://agents.london/authority")
+    if _authority_jwks_client is None:
+        _authority_jwks_client = PyJWKClient(jwks_url, cache_keys=True)
+    try:
+        key = _authority_jwks_client.get_signing_key_from_jwt(req.token).key
+        claims = _jwt.decode(req.token, key, algorithms=["RS256"],
+                             issuer=issuer,
+                             options={"require": ["exp", "iss", "sub"]})
+    except Exception as e:
+        raise HTTPException(status_code=401,
+                            detail=f"Invalid authority token: {e}") from e
+    email = claims.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="This authority token carries no email claim, and "
+                   "tenancy is derived from the address.")
+    tenancy = resolve_tenancy_from_email(email)
+    return {"status": "verified", "verified": True, "method": "authority",
+            "email": email, "org_id": tenancy["org_id"],
+            "user_id": tenancy["user_id"],
+            "authority_sub": claims["sub"]}
+
+
 class VerifyMicrosoftTokenRequest(BaseModel):
     id_token: Optional[str] = None
     code: Optional[str] = None

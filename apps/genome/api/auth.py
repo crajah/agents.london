@@ -126,3 +126,34 @@ def user_id_from(provider: str, userinfo: dict) -> str:
     # person via another door will NOT converge; surfaced in /me as unlinked
     sub = userinfo.get("sub")
     return f"{provider}:{hashlib.sha256(str(sub).encode()).hexdigest()[:16]}"
+
+
+# --- authority acceptance (Phase B, 2026-09-04) -------------------------
+# The platform front door mints RS256 JWTs whose sub is THE SAME Rule 6.2i
+# hash this file computes -- so accepting one is verification plus nothing.
+AUTHORITY_JWKS = os.getenv("AUTHORITY_JWKS_URL",
+                           "http://authority-service:8810/jwks.json")
+AUTHORITY_ISS = os.getenv("AUTHORITY_ISSUER",
+                          "https://agents.london/authority")
+_jwks_client = None
+
+
+def verify_authority(token: str) -> str | None:
+    """Returns the platform user id from a valid authority JWT, else None.
+    Key fetch is cached by PyJWKClient; the authority stays out of the
+    request path."""
+    global _jwks_client
+    if not token:
+        return None
+    try:
+        import jwt as _jwt
+        from jwt import PyJWKClient
+        if _jwks_client is None:
+            _jwks_client = PyJWKClient(AUTHORITY_JWKS, cache_keys=True)
+        key = _jwks_client.get_signing_key_from_jwt(token).key
+        claims = _jwt.decode(token, key, algorithms=["RS256"],
+                             issuer=AUTHORITY_ISS,
+                             options={"require": ["exp", "iss", "sub"]})
+        return claims.get("sub")
+    except Exception:
+        return None

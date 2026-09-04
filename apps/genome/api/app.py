@@ -261,7 +261,15 @@ async def email_verify(token: str):
 
 
 def _uid(request) -> str | None:
-    return auth_mod.verify_cookie(request.cookies.get("genome_session", ""))
+    uid = auth_mod.verify_cookie(request.cookies.get("genome_session", ""))
+    if uid:
+        return uid
+    # Phase B: the platform front door's JWT is as good as our own cookie
+    # -- same identity hash, verified locally against the authority's JWKS
+    h = request.headers.get("authorization", "")
+    tok = h[7:] if h.lower().startswith("bearer ") \
+        else request.cookies.get("authority_token", "")
+    return auth_mod.verify_authority(tok)
 
 
 @app.post("/invites", tags=["Social"])
