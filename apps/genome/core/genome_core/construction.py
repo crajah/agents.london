@@ -63,6 +63,55 @@ CONTRIBUTORS["foundation"] = 3           # capstone, though tier 4 in earth
 
 TABLE = "constructions"
 
+# Nothing founded may overlap anything standing (user directive
+# 2026-09-04): sites, piles, muster flags and the market all keep this
+# distance; a crowded candidate spot walks a deterministic spiral out.
+SITE_SPACING = 0.05
+
+
+def clear_spot(x: float, y: float, points: list[tuple],
+               min_d: float = SITE_SPACING,
+               seed: str = "") -> tuple[float, float]:
+    import math as _m
+    import random as _r
+    if all((x - px) ** 2 + (y - py) ** 2 >= min_d * min_d
+           for px, py in points):
+        return x, y
+    a0 = _r.Random(f"spot:{seed}").uniform(0, 2 * _m.pi)
+    for ring in range(1, 9):
+        rad = min_d * (0.9 + 0.55 * ring)
+        for i in range(10):
+            a = a0 + i * _m.pi / 5 + ring * 0.3
+            cx = min(0.95, max(0.05, x + rad * _m.cos(a)))
+            cy = min(0.95, max(0.05, y + rad * _m.sin(a)))
+            if all((cx - px) ** 2 + (cy - py) ** 2 >= min_d * min_d
+                   for px, py in points):
+                return cx, cy
+    return x, y                            # a map this full keeps its pile-up
+
+
+async def obstacle_points(client: Any, realm: str) -> list[tuple]:
+    """Everything standing that placement must respect."""
+    pts = []
+    for v in await sites_in(client, realm):
+        if not v.payload.get("destroyed"):
+            pts.append((v.payload["x"], v.payload["y"]))
+    try:
+        for v in await client.get_vertices("piles", realm=realm):
+            pts.append((v.payload["x"], v.payload["y"]))
+    except Exception:
+        pass
+    rows = await client.find_vertices("world_meta", realm=realm,
+                                      filters={"key": realm}, limit=1)
+    meta = rows[0].payload if rows else {}
+    for m in meta.get("muster_points", []) or []:
+        pts.append((m["x"], m["y"]))
+    if meta.get("market"):
+        pts.append((meta["market"]["x"], meta["market"]["y"]))
+    for pt in meta.get("portals", []) or []:
+        pts.append((pt["x"], pt["y"]))         # teleport points stand clear too
+    return pts
+
 # User directive 2026-09-02: a filled, fully-crewed site RISES over time --
 # longer the higher the tier, never so long the watch goes stale. Divided by
 # the world's time_scale like every other duration.
@@ -176,6 +225,8 @@ async def found_site(client: Any, realm: str, user_id: str, name: str,
         missing = [a for a in node.get("after", []) if a not in done]
         if missing:
             return {"error": f"requires completed: {', '.join(missing)}"}
+        x, y = clear_spot(x, y, await obstacle_points(client, realm),
+                          seed=f"{realm}:{plan_key}:{item}")
         site = {"key": f"site-{uuidlib.uuid4().hex[:10]}",
                 "name": item, "branch": "plan",
                 "tier": _plans.depth_of(plan["tree"], item),
@@ -213,6 +264,8 @@ async def found_site(client: Any, realm: str, user_id: str, name: str,
         if v.payload["name"] == name and not v.payload.get("complete") \
                 and not v.payload.get("destroyed"):
             return {"error": f"a {name} is already under way here"}
+    x, y = clear_spot(x, y, await obstacle_points(client, realm),
+                      seed=f"{realm}:{name}:{user_id}")
     site = {
         "key": f"site-{uuidlib.uuid4().hex[:10]}",
         "name": name, "branch": TREE[name]["branch"],
@@ -336,15 +389,21 @@ async def finalize(client: Any, realm: str, site_key: str, now: float) -> dict:
                                            filters={"key": realm}, limit=1)
         kinds = (wrows[0].payload.get("kinds") if wrows else None) or []
         rng = _r.Random(f"orchard:{realm}:{site['key']}")
+        planted = await obstacle_points(client, realm)
         for i, kind in enumerate(kinds):
             ang = rng.uniform(0, 6.28318)
+            px, py = clear_spot(
+                min(0.95, max(0.05, site["x"] + 0.05 * (1 + i)
+                              * __import__("math").cos(ang))),
+                min(0.95, max(0.05, site["y"] + 0.05 * (1 + i)
+                              * __import__("math").sin(ang))),
+                planted, seed=f"orchard:{site['key']}:{i}")
+            planted.append((px, py))
             await client.add_vertex("piles", realm=realm, payload={
                 "key": f"pile-orchard-{site['key']}-{i}",
                 "kind": int(kind),
-                "x": min(0.95, max(0.05, site["x"] + 0.05 * (1 + i)
-                                   * __import__("math").cos(ang))),
-                "y": min(0.95, max(0.05, site["y"] + 0.05 * (1 + i)
-                                   * __import__("math").sin(ang))),
+                "x": px,
+                "y": py,
                 "qty_at": 15.0, "measured_at": now,
                 "rate": 0.0015, "cap": 30.0, "qty_origin": 15.0})
     if site["name"] == "observatory":
@@ -602,6 +661,9 @@ async def build_cache(client: Any, realm: str, agent_payload: dict,
     caches = await caches_in(client, realm)
     if not cache_spot_clear(caches, x, y):
         return {"error": "too close to another cache"}
+    x, y = clear_spot(x, y, await obstacle_points(client, realm),
+                      min_d=CACHE_SPACING,
+                      seed=f"cache:{agent_payload.get('key', '')}")
     import uuid as _u
     site = {"key": f"cache-{_u.uuid4().hex[:10]}",
             "name": "cache", "branch": "commons", "tier": 1,

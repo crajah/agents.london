@@ -107,6 +107,8 @@ async def place_post(client: Any, realm: str, plan_key: str,
     STRUCTURE (complete from birth, confers nothing, drowns with the world);
     the knowledge it teaches is what survives (13.8)."""
     from . import construction as C
+    x, y = C.clear_spot(x, y, await C.obstacle_points(client, realm),
+                        seed=f"post:{plan_key}")
     site = {"key": f"post-{uuidlib.uuid4().hex[:10]}", "name": POST_NAME,
             "branch": "plan", "tier": 1, "x": x, "y": y,
             "needs": {}, "delivered": {}, "contributors": {},

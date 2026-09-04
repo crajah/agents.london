@@ -538,8 +538,12 @@ def _route_effects(agent: AgentView, tx: float, ty: float, now: float,
     is simply nearer. Real worlds run at 1.0; analyses must exclude scaled
     worlds (the same discipline as founding centres, Rule 3.2b)."""
     pts = pathmod.find_path(terrain, agent.x, agent.y, tx, ty)
-    if pts is None:                      # worldgen guarantees this cannot happen
-        raise RuntimeError("unroutable destination")
+    if pts is None:
+        # crowded navigation obstacles (piles, sites, portals) can in
+        # principle wall a corner off; the journey degrades to the straight
+        # line rather than crashing the worker -- terrain alone guaranteed
+        # routability, obstacles are a comfort on top
+        pts = [(agent.x, agent.y), (tx, ty)]
     route = forms.Route(tuple(pts), now)
     # Dwell floor: no journey resolves in under two minutes. Without it, two
     # adjacent piles produce an arrival->decide->travel loop at LLM cost every

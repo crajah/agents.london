@@ -130,6 +130,13 @@ async def link_worlds(client: Any, realm_a: str, realm_b: str) -> bool:
     sa, sb = _free_slot(meta_a), _free_slot(meta_b)
     if not (sa and sb):
         return False
+    from genome_core import construction as _con
+    sa = dict(zip(("x", "y"), _con.clear_spot(
+        sa["x"], sa["y"], await _con.obstacle_points(client, realm_a),
+        min_d=0.04, seed=f"portal:{realm_a}:{realm_b}")))
+    sb = dict(zip(("x", "y"), _con.clear_spot(
+        sb["x"], sb["y"], await _con.obstacle_points(client, realm_b),
+        min_d=0.04, seed=f"portal:{realm_b}:{realm_a}")))
     pa = {"x": sa["x"], "y": sa["y"], "to_world": realm_b,
           "dest_xy": [sb["x"], sb["y"]], "dest_colours": meta_b.get("colours")}
     pb = {"x": sb["x"], "y": sb["y"], "to_world": realm_a,
@@ -234,7 +241,11 @@ async def link_to_commons(client: Any, realm: str) -> bool:
     if not any(p.get("to_world") == COMMONS
                for p in meta.get("portals", [])):
         slots = meta.get("portal_slots") or [{"x": 0.15, "y": 0.15}]
-        s0 = slots[0]
+        from genome_core import construction as _con
+        s0 = dict(zip(("x", "y"), _con.clear_spot(
+            slots[0]["x"], slots[0]["y"],
+            await _con.obstacle_points(client, realm),
+            min_d=0.04, seed=f"door:{realm}")))
         cmeta0 = await drain._world_payload(store, COMMONS)
         portal = {"x": s0["x"], "y": s0["y"], "to_world": COMMONS,
                   "dest_xy": commons_rim_xy(realm, cmeta0.get("portals", [])),

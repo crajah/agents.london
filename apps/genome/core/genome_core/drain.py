@@ -99,6 +99,23 @@ async def _positions_of_others(store: GenomeStore, world_realm: str,
     return out
 
 
+def nav_obstacles(terrain: list, piles_meta: dict, sites: list,
+                  world_payload: dict) -> list:
+    """The map's furniture as circular obstacles (user directive
+    2026-09-04): an agent walks AROUND a pile, a building or a teleport
+    point, never over it. Radii sit under the approach standoffs so every
+    walk-up target stays reachable (endpoints are forgiven by the
+    pathfinder regardless)."""
+    out = list(terrain)
+    out += [{"x": m["x"], "y": m["y"], "r": 0.010}
+            for m in piles_meta.values()]
+    out += [{"x": s["x"], "y": s["y"], "r": 0.016}
+            for s in sites if s.get("complete") and not s.get("carried")]
+    out += [{"x": pt["x"], "y": pt["y"], "r": 0.010}
+            for pt in world_payload.get("portals", []) or []]
+    return out
+
+
 async def engine_ctx(store: GenomeStore, world_realm: str,
                      world_payload: dict, agent_payload: dict,
                      agent: engine.AgentView, pile_views: list,
@@ -680,7 +697,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
             m["rate"] * fx["regen_mult"], m["cap"]), now))   # a Grove renews
         for k, m in piles_meta.items()]
     world_payload = await _world_payload(store, world_realm)
-    terrain = world_payload.get("terrain", [])
+    terrain = nav_obstacles(world_payload.get("terrain", []), piles_meta,
+                            sites, world_payload)
     await store.record_decision(agent_uuid, {
         "at": _iso(now), "situation": req_situation,
         "options": req_options, "choice": choice.option,
@@ -760,7 +778,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
             m["rate"] * fx["regen_mult"], m["cap"]), now))   # a Grove renews
         for k, m in piles_meta.items()]
     world_payload = await _world_payload(store, world_realm)
-    terrain = world_payload.get("terrain", [])
+    terrain = nav_obstacles(world_payload.get("terrain", []), piles_meta,
+                            sites, world_payload)
     portals = world_payload.get("portals", [])
     if world_payload.get("is_commons") and not portals:
         # 6.2g revised (user directive): links are two-way and the commons
