@@ -202,7 +202,7 @@ def _granted_docs_realm(request: Request) -> str:
                             detail=f"Invalid authority token: {e}") from e
     for g in claims.get("grants") or []:
         realm = g.get("realm", "")
-        if realm.startswith("docs--"):
+        if realm.startswith("docs_"):
             return realm
     raise HTTPException(status_code=403,
                         detail="This token grants no docs realm; exchange "

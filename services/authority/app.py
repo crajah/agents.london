@@ -231,8 +231,11 @@ async def refresh(request: Request):
 
 import re as _re
 
-APP_RE = _re.compile(r"^[a-z][a-z0-9-]{1,23}$")
-SPACE_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
+# post-graph realms are SQL-adjacent identifiers: [A-Za-z0-9_] only, so
+# the namespace uses underscores throughout (the -- draft died on the
+# validator at first contact with storage, 2026-09-04)
+APP_RE = _re.compile(r"^[a-z][a-z0-9_]{1,23}$")
+SPACE_RE = _re.compile(r"^[a-z0-9][a-z0-9_]{0,23}$")
 EXCHANGE_TTL = int(os.getenv("AUTHORITY_EXCHANGE_TTL", "300"))
 
 
@@ -240,8 +243,8 @@ EXCHANGE_TTL = int(os.getenv("AUTHORITY_EXCHANGE_TTL", "300"))
 async def exchange(request: Request):
     """Phase C: a service presents the user's token and asks for a realm.
     The FIRST policy is a namespace convention, and it is stateless on
-    purpose: the realm `{app}--{sub}` (plus an optional `--{space}`) is the
-    user's own ground in that app -- docs--u:abc123--contracts -- and
+    purpose: the realm `{app}_{sub}` (plus an optional `_{space}`) is the
+    user's own ground in that app -- docs_u_abc123_contracts -- and
     OWNERSHIP of one's own namespace needs no grant table. The scoped
     token that comes back lives five minutes and names exactly one realm;
     the service enforces the claim at its own boundary, post-graph stays
@@ -265,7 +268,8 @@ async def exchange(request: Request):
         return JSONResponse(
             {"error": "space must be 1-24 chars of [a-z0-9-]"},
             status_code=400)
-    realm = f"{app_name}--{claims['sub']}" + (f"--{space}" if space else "")
+    sub_id = claims["sub"].replace(":", "_")
+    realm = f"{app_name}_{sub_id}" + (f"_{space}" if space else "")
     now = int(time.time())
     scoped = jwt.encode(
         {"iss": BASE, "sub": claims["sub"], "iat": now,
