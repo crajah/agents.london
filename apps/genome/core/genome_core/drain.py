@@ -461,8 +461,10 @@ async def apply_portage(store: GenomeStore, world_realm: str,
     metrics.PORTAGE.labels(op).inc()
     me_uid = agent_payload.get("owner_user_id", "")
     if op == "take_up":
-        res = await construction.take_up(store._c, world_realm, key, me_uid,
-                                         agent.agent_uuid, now)
+        res = await construction.take_up(
+            store._c, world_realm, key, me_uid, agent.agent_uuid, now,
+            time_scale=(await _world_payload(store, world_realm))
+            .get("time_scale", 1.0))
         if not res.get("carried"):
             return
         site = res["site"]
@@ -679,7 +681,8 @@ async def enqueue_decision(store: GenomeStore, world_realm: str,
 async def apply_decided(store: GenomeStore, world_realm: str,
                         agent_uuid: str, choice: engine.Choice,
                         model: str, req_situation: str, req_options: list,
-                        event_payload: dict, now: float) -> str:
+                        event_payload: dict, now: float,
+                        prompt: dict | None = None) -> str:
     """The decision worker's half: record, apply, persist — the same
     persistence path the inline drain used, so behaviour is identical."""
     agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
@@ -702,7 +705,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     await store.record_decision(agent_uuid, {
         "at": _iso(now), "situation": req_situation,
         "options": req_options, "choice": choice.option,
-        "model": model, "tier": "economy" if model != "stub" else "stub"})
+        "model": model, "tier": "economy" if model != "stub" else "stub",
+        **({"prompt": prompt} if prompt else {})})
     ctx = await engine_ctx(store, world_realm, world_payload, agent_payload,
                            agent, pile_views, now, sites=sites)
     eff = engine.apply_choice(choice, agent, pile_views, now,
@@ -802,8 +806,10 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         # Rule 9.3e: the body lies where it fell until the pool refills;
         # nothing is asked of the mind meanwhile
         await store.complete_event(world_realm, pl["key"], _iso(now))
+        _uts = max(1.0, world_payload.get("time_scale", 1.0))
         await store.schedule(world_realm, f"up-{agent_uuid}-{int(now)}",
-                             _iso(now + 900.0), "decide", agent_uuid, {})
+                             _iso(now + 900.0 / _uts), "decide",
+                             agent_uuid, {})
         return "incapacitated"
 
     if pl["kind"] == "construction_done":
@@ -876,7 +882,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         else:
             eff = engine.on_deposit_arrival(
                 agent, stock, now,
-                engine.USER_CEILING_PER_KIND + fx["stock_ceiling_bonus"])
+                engine.USER_CEILING_PER_KIND + fx["stock_ceiling_bonus"],
+                time_scale=world_payload.get("time_scale", 1.0))
             outcome = "deposit"
     else:
         if pl["kind"] in ("arrival", "decide"):
@@ -1222,6 +1229,8 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         return f"encounter_wait({my_answer})"
 
     a_ans, b_ans = answers.get(me), answers.get(other_uuid)
+    _wts = max(1.0, (await _world_payload(store, world_realm))
+               .get("time_scale", 1.0))
     _, other_payload = await load_agent(store, world_realm, other_uuid,
                                         world_realm, now)
     other_view, _ = await load_agent(store, world_realm, other_uuid,
@@ -1433,8 +1442,6 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
             else (agent, agent_payload)
         # Rule 9.3d: pressing an attack SPENDS Mana; an empty pool (or an
         # incapacitated body, 9.3e) cannot press one -- the moment passes
-        _wts = (await _world_payload(store, world_realm)).get("time_scale",
-                                                              1.0)
         if _vitals.incapacitated(att_p, now, _wts) or \
                 _vitals.mana_now(att_p, now, _wts) < _vitals.MANA_ATTACK_COST:
             await store.complete_event(world_realm, pl["key"], _iso(now))
@@ -1530,7 +1537,8 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         recipient = other_uuid if proposer == me else me
         prop_pl = agent_payload if proposer == me else other_payload
         recip_pl = other_payload if proposer == me else agent_payload
-        await store.schedule(world_realm, f"prop-{pair_key}", _iso(now + 30.0),
+        await store.schedule(world_realm, f"prop-{pair_key}",
+                             _iso(now + 30.0 / _wts),
                              "mating_proposal", recipient,
                              {"proposer": {"agent_uuid": proposer,
                                            "colour_pair": prop_pl.get("colour_pair"),
@@ -1548,13 +1556,14 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         state = nego.open_state(opener, respondent, now)
         await store._c.add_vertex("negotiations", realm=world_realm,
                                   payload={"key": key, **state})
-        await store.schedule(world_realm, f"ng-{key}-0", _iso(now + 5.0),
+        await store.schedule(world_realm, f"ng-{key}-0",
+                             _iso(now + 5.0 / _wts),
                              "negotiate", opener, {"neg_key": key})
         outcome = "negotiation:opened"
     # both resume their lives
     for u in (me, other_uuid):
         await store.schedule(world_realm, f"post-enc-{u}-{int(now)}",
-                             _iso(now + 60.0), "decide", u, {})
+                             _iso(now + 60.0 / _wts), "decide", u, {})
     await store.complete_event(world_realm, pl["key"], _iso(now))
     return outcome
 
@@ -1619,6 +1628,8 @@ async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
     my_view, my_pl = await load_agent(store, world_realm, me,
                                       world_realm, now)
     other_uuid = nego.other(st, me)
+    _nts = max(1.0, (await _world_payload(store, world_realm))
+               .get("time_scale", 1.0))
     ot_view, ot_pl = await load_agent(store, world_realm, other_uuid,
                                       world_realm, now)
     st2, out = nego.apply_turn(st, me, action, offer,
@@ -1629,8 +1640,8 @@ async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
     if out["kind"] == "continue":
         await store.schedule(world_realm,
                              f"ng-{neg_key}-{len(st2['turns'])}",
-                             _iso(now + 5.0), "negotiate", other_uuid,
-                             {"neg_key": neg_key})
+                             _iso(now + 5.0 / _nts), "negotiate",
+                             other_uuid, {"neg_key": neg_key})
         return f"negotiate:{action}"
     if out["kind"] == "exchange":
         for uuid_, view in ((me, my_view), (other_uuid, ot_view)):
@@ -1650,12 +1661,12 @@ async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
                            "A bargain was struck and executed.")
         for u in (me, other_uuid):
             await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
-                                 _iso(now + 30.0), "decide", u, {})
+                                 _iso(now + 30.0 / _wts), "decide", u, {})
         return "negotiate:bargain_struck"
     # dead: both resume their lives
     for u in (me, other_uuid):
         await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
-                             _iso(now + 30.0), "decide", u, {})
+                             _iso(now + 30.0 / _wts), "decide", u, {})
     return f"negotiate:dead({out.get('why', '?')})"
 
 
@@ -1710,6 +1721,8 @@ async def consummate(store: GenomeStore, world_realm: str,
             "alive": True, "home_realm": home,
             "capability": _sk.roll_capability(child_uuid),   # rolled FRESH:
             # capability is luck, never inheritance (skills-spec 1.2)
+            "generation": max(parent_pl.get("generation", 1),
+                              mate_pl.get("generation", 1)) + 1,
             "name": name,
             "parents": [a_view.agent_uuid, b_view.agent_uuid],
             "genotype": cg,
@@ -1725,7 +1738,10 @@ async def consummate(store: GenomeStore, world_realm: str,
         await store.set_movement(child_uuid,
             {"waypoints": [[engine.HOME_XY[0], engine.HOME_XY[1]]],
              "departed_at": now, "arrives_at": now, "cargo": {}})
-        await store.schedule(home, f"born-{child_uuid}", _iso(now + 60.0),
+        _bts = max(1.0, (await _world_payload(store, home))
+                   .get("time_scale", 1.0))
+        await store.schedule(home, f"born-{child_uuid}",
+                             _iso(now + 60.0 / _bts),
                              "decide", child_uuid, {})
         rows = await store._c.find_vertices("agents", realm="genome_agents",
                                             filters={"key": child_uuid}, limit=1)
@@ -1757,8 +1773,10 @@ async def schedule_perish(store: GenomeStore, agent_uuid: str,
     """Rule 7.2's clock starts at (re)birth. Perish is scheduled in the HOME
     realm -- death finds an agent wherever it stands, but the home world keeps
     the appointment."""
-    due = now + lifespan_seconds(agent_payload["genotype"])
     home = agent_payload.get("home_realm")
+    _lts = max(1.0, (await _world_payload(store, home))
+               .get("time_scale", 1.0))
+    due = now + lifespan_seconds(agent_payload["genotype"]) / _lts
     await store.schedule(home, f"perish-{agent_uuid}-{int(due)}", _iso(due),
                          "perish", agent_uuid, {"cause": "longevity"})
     await store.put_agent(agent_uuid, {**agent_payload, "perishes_at": due})
@@ -1863,6 +1881,9 @@ async def regenerate(store: GenomeStore, event_realm: str,
                           f"{agent_payload.get('name', a)} perished "
                           f"({cause}) and woke at home, its earned life lost.")
     due = await schedule_perish(store, a, reborn, now)
-    await store.schedule(home, f"rebirth-{a}-{int(now)}", _iso(now + 60.0),
+    _rts = max(1.0, (await _world_payload(store, home))
+               .get("time_scale", 1.0))
+    await store.schedule(home, f"rebirth-{a}-{int(now)}",
+                         _iso(now + 60.0 / _rts),
                          "decide", a, {})
     return f"regenerated:{cause}"

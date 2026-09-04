@@ -83,8 +83,11 @@ async def work_one(store: GenomeStore, client, item) -> str:
         outcome = await drain.apply_market_turn(
             store, pl["world_realm"], pl["agent_uuid"], action,
             det.get("listing"), det.get("give"), det.get("want"), now)
+        from genome_core.decider import LAST_PROMPT as _LP
         await store.record_decision(pl["agent_uuid"], {
             "at": drain._iso(now), "situation": "market",
+            **({"prompt": _LP.get()} if model != "stub" and _LP.get()
+               else {}),
             "options": list(req.options), "choice": action,
             "detail": det, "model": model, "tier": "deliberative"})
         await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
@@ -96,9 +99,11 @@ async def work_one(store: GenomeStore, client, item) -> str:
         from genome_core.decider import negotiate_decider
         from genome_core import budget as bdg
         from genome_core import negotiation as nego
+        _wm = await drain._world_payload(store, pl["world_realm"])
         bucket = bdg.accrue(
             bdg.Bucket(agent_payload.get("budget_level", bdg.CAPACITY),
-                       agent_payload.get("budget_at", now)), now)
+                       agent_payload.get("budget_at", now)), now,
+            time_scale=_wm.get("time_scale", 1.0))
         can_counter = bucket.level >= 1.0
         action = offer = None
         model = "stub"
@@ -125,8 +130,11 @@ async def work_one(store: GenomeStore, client, item) -> str:
         outcome = await drain.apply_negotiation_turn(
             store, pl["world_realm"], req.context["neg_key"],
             pl["agent_uuid"], action, offer, now)
+        from genome_core.decider import LAST_PROMPT as _LP
         await store.record_decision(pl["agent_uuid"], {
             "at": drain._iso(now), "situation": "negotiate",
+            **({"prompt": _LP.get()} if model != "stub" and _LP.get()
+               else {}),
             "options": list(req.options), "choice": action,
             "offer": offer, "model": model, "tier": "deliberative"})
         await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
@@ -148,9 +156,11 @@ async def work_one(store: GenomeStore, client, item) -> str:
                                     influences=agent_payload.get("influences"))
     else:
         choice, model = engine.stub_decider(req, int(now)), "stub"
+    from genome_core.decider import LAST_PROMPT
     outcome = await drain.apply_decided(
         store, pl["world_realm"], pl["agent_uuid"], choice, model,
-        pl["situation"], pl["options"], pl.get("event_payload", {}), now)
+        pl["situation"], pl["options"], pl.get("event_payload", {}), now,
+        prompt=LAST_PROMPT.get() if model != "stub" else None)
     await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
                                vertex_id=int(item.id),
                                payload={**pl, "done_at": drain._iso(now),

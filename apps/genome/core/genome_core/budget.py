@@ -24,8 +24,9 @@ class Bucket:
     updated_at: float          # seconds
 
 
-def accrue(b: Bucket, now: float) -> Bucket:
-    dt_days = max(0.0, now - b.updated_at) / 86400.0
+def accrue(b: Bucket, now: float,
+           time_scale: float = 1.0) -> Bucket:
+    dt_days = max(0.0, now - b.updated_at) * max(1.0, time_scale) / 86400.0
     return Bucket(min(CAPACITY, b.level + ACCRUAL_PER_DAY * dt_days), now)
 
 

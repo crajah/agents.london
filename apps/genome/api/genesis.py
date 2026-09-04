@@ -62,6 +62,7 @@ async def ensure_user_world(client: Any, user_id: str,
     from genome_core import skills as _sk
     payload = {"alive": True, "home_realm": realm, "owner_user_id": user_id,
                "capability": _sk.roll_capability(a),   # skills-spec 1.1
+               "generation": 1,
                "name": worldgen.founder_name(seed),
                "genotype": g, "colour_pair": w["colours"],
                "identity": ident,

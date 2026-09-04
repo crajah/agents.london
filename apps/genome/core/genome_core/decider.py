@@ -28,6 +28,10 @@ KEY = os.getenv("GENOME_ROUTER_KEY") or os.getenv("GLOBAL_API_KEY") or ""
 # decision so token spend lands against the right realm (Phase 13/14 cost
 # attribution); "?" for callers that never set it
 WORLD_CTX = contextvars.ContextVar("genome_world", default="?")
+# the exact prompts behind the LAST decision this task made -- the worker
+# reads it after a decider returns and files it with the record, so the
+# experimental record shows not just WHAT was chosen but what the mind SAW
+LAST_PROMPT = contextvars.ContextVar("genome_last_prompt", default=None)
 
 
 def _count_tokens(data: dict, model: str) -> None:
@@ -224,11 +228,13 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
                                  influences=influences)
     usr_p = prompt.user_prompt(situation_text(req),
                                {k: OPTION_TEXT.get(k, k) for k in req.options})
+    LAST_PROMPT.set({"system": sys_p[:4000], "user": usr_p[:2000]})
     from .models import UNBUDGETED
     from .models import temperament
     req_body = {"model": model, "temperature": temperament(req.agent_uuid),
                 "messages": [{"role": "system", "content": sys_p},
                              {"role": "user", "content": usr_p}]}
+    LAST_PROMPT.set({"system": sys_p[:4000], "user": usr_p[:2000]})
     if model not in UNBUDGETED:
         req_body["max_tokens"] = 24        # budgeted models stay terse; the
         # flat-rate pair runs UNCAPPED (user decision)
@@ -294,6 +300,7 @@ def negotiate_decider(req: engine.DecisionRequest, genotype: dict,
                 "temperature": temperament(req.agent_uuid),
                 "messages": [{"role": "system", "content": sys_p},
                              {"role": "user", "content": usr_p}]}
+    LAST_PROMPT.set({"system": sys_p[:4000], "user": usr_p[:2000]})
     if model not in UNBUDGETED:
         req_body["max_tokens"] = 200
     rq = urllib.request.Request(
@@ -358,6 +365,7 @@ def market_decider(req: engine.DecisionRequest, genotype: dict,
                 "temperature": temperament(req.agent_uuid),
                 "messages": [{"role": "system", "content": sys_p},
                              {"role": "user", "content": usr_p}]}
+    LAST_PROMPT.set({"system": sys_p[:4000], "user": usr_p[:2000]})
     if model not in UNBUDGETED:
         req_body["max_tokens"] = 200
     rq = urllib.request.Request(

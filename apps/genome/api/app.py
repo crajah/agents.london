@@ -602,8 +602,10 @@ async def agent_chat(agent_uuid: str, payload: dict,
     if not rows:
         return JSONResponse({"error": "no such agent"}, status_code=404)
     apl = rows[0].payload
-    if apl.get("owner_user_id") == uid:
-        # instruction (13.5): the owner's words become the top objective
+    if apl.get("owner_user_id") == uid or _admin_ok(request):
+        # instruction (13.5): the owner's words become the top objective.
+        # ONLY the home world's owner -- or an admin -- ever reaches this
+        # branch (user directive 2026-09-04); every other voice is evidence.
         objectives = [text] + [o for o in apl.get("objectives", [])
                                if o != text]
         await app.state.pg.upsert_vertex("agents", realm="genome_agents",

@@ -79,6 +79,7 @@ async def spawn_free_agent(store, realm: str, meta: dict,
     from . import skills as _sk
     payload = {"alive": True, "home_realm": realm, "owner_user_id": None,
                "capability": _sk.roll_capability(a),   # skills-spec 1.1
+               "generation": 1,
                "spawned_free": True,
                "name": worldgen.founder_name(seed),
                "genotype": g, "colour_pair": meta.get("colours"),

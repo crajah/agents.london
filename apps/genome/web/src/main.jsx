@@ -14,6 +14,21 @@ const A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF",
               "#FF9E80", "#D7CCC8", "#CFD8DC", "#F5F5F5", "#B2FFFF"];
 const kindColour = (k) => A100[Number(k)] ?? "#777";
 
+// every agent name wears its lineage: the world colour pair, then the
+// generation, then the name (user directive 2026-09-04)
+function AgentTag({ a }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {(a.colour_pair ?? []).map((c, i) => (
+        <span key={i} className="w-2.5 h-2.5 rounded-full inline-block"
+              style={{ background: c }} />))}
+      {a.generation &&
+        <span className="text-[10px] opacity-60 font-mono">
+          G{a.generation}</span>}
+      <span>{a.name ?? a.agent_uuid}</span>
+    </span>);
+}
+
 function Bell() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -432,10 +447,10 @@ function EntityMenu({ menu, onClose, onInspect, onFollow, onTravel,
          onMouseLeave={onClose}>
       {hit.type === "agent" && <>
         <div className="px-3 py-1.5 opacity-60 border-b border-neutral-700">
-          {hit.data.name ?? hit.data.agent_uuid}
+          <AgentTag a={hit.data} />
           {hit.data.infected && <span className="text-red-400"> · infected</span>}
         </div>
-        <Item onClick={() => onInspect(hit.data.agent_uuid)}>Inspect genotype</Item>
+        <Item onClick={() => onInspect(hit.data.agent_uuid)}>Inspect</Item>
         <Item onClick={() => onFollow(hit.data.agent_uuid)}>Follow</Item>
       </>}
       {hit.type === "pile" && (() => {
@@ -803,6 +818,9 @@ function AgentModal({ inspect, onClose }) {
           {(inspect.colour_pair ?? []).map(c =>
             <span key={c} className="w-4 h-4 rounded-full inline-block"
                   style={{ background: c }} />)}
+          {inspect.generation &&
+            <span className="text-xs opacity-60 font-mono">
+              G{inspect.generation}</span>}
           <strong className="text-base">
             {inspect.name ?? inspect.agent_uuid}</strong>
           {inspect.infected &&
@@ -840,9 +858,19 @@ side of the capability economy.">born plain</span>}
                           onClick={() => setLocusInfo(null)}>✕</button>
                 </span>
               </div>
-              <div className="opacity-80">
-                {locusInfo.text ?? "No description recorded for this locus."}
-              </div>
+              {locusInfo.rows
+                ? <div className="max-h-80 overflow-y-auto text-xs space-y-1">
+                    {locusInfo.rows.map(([k, v], i) => (
+                      <div key={i}>
+                        <span className="opacity-50">{k}: </span>
+                        {typeof v === "string"
+                          ? <span className="whitespace-pre-wrap">{v}</span>
+                          : v}
+                      </div>))}
+                  </div>
+                : <div className="opacity-80">
+                    {locusInfo.text ?? "No description recorded."}
+                  </div>}
             </div>
           </div>)}
         <div className="flex-1 min-h-0 flex">
@@ -953,11 +981,29 @@ side of the capability economy.">born plain</span>}
               inspect.antigens?.length > 0) && <>
               <h4 className="opacity-70 mt-3 mb-1">Health record</h4>
               {inspect.infections?.map((i, k) => (
-                <div key={"inf" + k} className="text-red-400 text-xs">
+                <button key={"inf" + k} className="block text-left
+                             text-red-400 text-xs underline
+                             decoration-dotted"
+                  onClick={() => setLocusInfo({
+                    name: i.strain_uuid ?? "unknown strain",
+                    rows: [
+                      ["signature", <StrainStrip vec={i.signature} />],
+                      ["caught", i.caught_at
+                        ? new Date(i.caught_at * 1000).toLocaleString() : "?"],
+                      ["detected", i.detected ? "yes" : "not yet"],
+                      ["synthesis completes", i.synth_done_at
+                        ? new Date(i.synth_done_at * 1000).toLocaleString()
+                        : "?"],
+                      ["contagion", i.contagion?.toFixed?.(2) ?? "?"],
+                      ["warps expression", Object.entries(i.mods ?? {})
+                        .map(([l, f]) =>
+                          `${l} ${f > 0 ? "+" : ""}${Math.round(f * 100)}%`)
+                        .join(", ") || "unknown"],
+                    ]})}>
                   ● infected — {i.strain_uuid ?? "unknown strain"}
                   <StrainStrip vec={i.signature} />
                   {i.detected ? " (detected)" : " (undetected)"}
-                </div>))}
+                </button>))}
               {inspect.infection_history?.map((h, k) => (
                 <div key={"his" + k} className="opacity-50 text-xs">
                   ○ survived {h.strain_uuid ?? "a strain"}
@@ -969,8 +1015,24 @@ side of the capability economy.">born plain</span>}
                 </div>))}
               {(inspect.antigens ?? [])
                 .filter(a => (a.potency ?? 0) > 0.05).map((a, k) => (
-                <div key={"ant" + k} className="text-emerald-500/80 text-xs
-                                                flex items-center gap-1">
+                <button key={"ant" + k} className="flex text-left
+                             text-emerald-500/80 text-xs items-center gap-1
+                             underline decoration-dotted"
+                  onClick={() => setLocusInfo({
+                    name: `antigen vs ${a.strain_uuid ?? "?"}`,
+                    value: `${Math.round((a.potency ?? 0) * 100)}%`,
+                    rows: [
+                      ["vector", <StrainStrip vec={a.vector} />],
+                      ["counters", a.strain_uuid ?? "an unknown strain"],
+                      ["made", a.made_at
+                        ? new Date(a.made_at * 1000).toLocaleString() : "?"],
+                      ["decays", a.decay_rate
+                        ? `${(a.decay_rate * 86400 * 100).toFixed(2)}%/day`
+                        : "?"],
+                      ["how it works", "coverage: each dimension of the " +
+                       "vector shields the matching dimension of a strain " +
+                       "signature; overlap above 55% blocks infection"],
+                    ]})}>
                   ◆ antigen<StrainStrip vec={a.vector} />
                   <span className="opacity-70">
                     counters {a.strain_uuid ?? "an unknown strain"}</span>
@@ -981,7 +1043,7 @@ side of the capability economy.">born plain</span>}
                             `${Math.round((a.potency ?? 0) * 100)}%` }} />
                   </span>
                   {Math.round((a.potency ?? 0) * 100)}%
-                </div>))}
+                </button>))}
               {(inspect.antigens ?? [])
                 .filter(a => (a.potency ?? 0) <= 0.05).map((a, k) => (
                 <div key={"spent" + k} className="opacity-40 text-xs">
@@ -993,12 +1055,25 @@ side of the capability economy.">born plain</span>}
             {inspect.decisions?.length > 0 && <>
               <h4 className="opacity-70 mt-3 mb-1">Recent decisions</h4>
               {inspect.decisions.map((d, i) => (
-                <div key={i}
-                     className="mb-1.5 pb-1.5 border-b border-neutral-800">
+                <button key={i}
+                     className="block w-full text-left mb-1.5 pb-1.5
+                                border-b border-neutral-800
+                                hover:bg-neutral-800/50"
+                  onClick={() => setLocusInfo({
+                    name: `${d.choice} (${d.model})`,
+                    rows: [
+                      ["situation", d.situation ?? "?"],
+                      ["options", (d.options ?? []).join(", ")],
+                      ["chose", d.choice],
+                      ["system prompt", d.prompt?.system ??
+                       "(not recorded -- prompts are kept from 2026-09-04)"],
+                      ["user prompt", d.prompt?.user ?? ""],
+                    ]})}>
                   <div className="font-medium">{d.choice}</div>
                   <div className="opacity-50 text-xs">
-                    of {(d.options ?? []).join(", ")} · {d.model}</div>
-                </div>))}
+                    of {(d.options ?? []).join(", ")} · {d.model}
+                    {d.prompt && " · 📜"}</div>
+                </button>))}
             </>}
           </div>
           <div className="w-1/2 flex flex-col">
@@ -1102,7 +1177,8 @@ function App() {
           if (dead) return;
           canvas.setSnapshot(snap);
           setAgentList((snap.agents ?? []).map(a =>
-            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected,
+               colour_pair: a.colour_pair, generation: a.generation })));
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
@@ -1131,7 +1207,8 @@ function App() {
           const snap = JSON.parse(ev.data);
           canvas.setSnapshot(snap);
           setAgentList((snap.agents ?? []).map(a =>
-            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected })));
+            ({ uuid: a.agent_uuid, name: a.name, infected: a.infected,
+               colour_pair: a.colour_pair, generation: a.generation })));
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
@@ -1291,7 +1368,9 @@ whole game -- the commons market is how the far kinds arrive."
                 className="block w-full text-left px-3 py-1.5
                            hover:bg-neutral-700 focus:bg-neutral-700"
                 onClick={() => canvasApi.current?.follow(a.uuid)}>
-                {a.name ?? a.uuid}
+                <AgentTag a={{ name: a.name, agent_uuid: a.uuid,
+                               colour_pair: a.colour_pair,
+                               generation: a.generation }} />
                 {a.infected && <span className="text-red-400"> · infected</span>}
               </button>))}
             {agentList.length === 0 &&

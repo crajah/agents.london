@@ -19,13 +19,31 @@ A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF", "#82B1FF",
         "#F5F5F5", "#B2FFFF"]  # 20th: Light Cyan (user decision)
 
 MIN_SPACING = 0.08
-FIRST_NAMES = ["Asha", "Bren", "Cato", "Dara", "Eryn", "Falk", "Gale", "Hesper",
-               "Iris", "Joss", "Kiva", "Lorn", "Mira", "Noor", "Orin", "Pia",
-               "Quill", "Rune", "Sable", "Tarn"]
-SURNAMES = ["Ashfall", "Brightwater", "Coldmere", "Dunhollow", "Emberlee",
-            "Fenwick", "Greyvale", "Hollowell", "Ironwood", "Kestrel",
-            "Larkspur", "Mosswood", "Nightvale", "Oakhurst", "Pryor",
-            "Quickstep", "Ravenshaw", "Stonebrook", "Thornbury", "Wrenfield"]
+FIRST_NAMES = [
+    "Asha", "Bren", "Cato", "Dara", "Eryn", "Falk", "Gale", "Hesper",
+    "Iris", "Joss", "Kiva", "Lorn", "Mira", "Noor", "Orin", "Pia",
+    "Quill", "Rune", "Sable", "Tarn",
+    "Alba", "Birch", "Cove", "Dew", "Ember", "Fife", "Gorse", "Hale",
+    "Ilka", "Juno", "Kael", "Lark", "Moss", "Nyra", "Oleander", "Perry",
+    "Qadira", "Reed", "Senna", "Thistle", "Ulla", "Vesper", "Wren",
+    "Xanthe", "Yarrow", "Zephyr", "Amos", "Briar", "Cedar", "Dahlia",
+    "Elm", "Fern", "Grove", "Hazel", "Indigo", "Jasper", "Koa", "Linden",
+    "Marlow", "Nettle", "Oriel", "Pike", "Quince", "Rowan", "Sorrel",
+    "Teal", "Umber", "Vale", "Willow", "Yew"]
+SURNAMES = [
+    "Ashfall", "Brightwater", "Coldmere", "Dunhollow", "Emberlee",
+    "Fenwick", "Greyvale", "Hollowell", "Ironwood", "Kestrel",
+    "Larkspur", "Mosswood", "Nightvale", "Oakhurst", "Pryor",
+    "Quickstep", "Ravenshaw", "Stonebrook", "Thornbury", "Wrenfield",
+    "Aldergate", "Blackbriar", "Cinderfell", "Dovewick", "Eastmarsh",
+    "Farrowdown", "Gladehart", "Hawthorne", "Islegrove", "Junipers",
+    "Kilnworth", "Lowbridge", "Marrowick", "Northreach", "Otterby",
+    "Pinewatch", "Quernstone", "Redmoor", "Saltwick", "Tanglewood",
+    "Underhill", "Veilwater", "Westfall", "Yarrowgate", "Ashenford",
+    "Briarholm", "Cloudrest", "Dampfield", "Elderbrook", "Foxglove",
+    "Gullswater", "Heathersedge", "Ivyholt", "Jackdaw", "Kingsmere",
+    "Longfen", "Mistleford", "Nettlebank", "Oxwold", "Puddlefoot",
+    "Rookery", "Shadowmere", "Tidewell", "Vantage", "Whistledown"]
 
 
 def _spaced_points(r: random.Random, n: int) -> list[tuple[float, float]]:

@@ -43,6 +43,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                 "colour_pair": payload.get("colour_pair"),
                 "name": payload.get("name"),
                 "infected": bool(payload.get("infections")),
+                "generation": payload.get("generation", 1),
                 "movement": intent}
     agents = list(await _aio.gather(*(_one_agent(u) for u in present)))
     import time as _time
@@ -138,6 +139,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
            "capability": payload.get("capability"),
+           "generation": payload.get("generation", 1),
            "influences": payload.get("influences") or [],
            "prompt_mods": payload.get("prompt_mods") or [],
            "infected": bool(payload.get("infections"))}   # CURRENT
@@ -152,6 +154,9 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     out["infections"] = [
         {"strain_uuid": (i.get("strain") or {}).get("strain_uuid"),
          "signature": (i.get("strain") or {}).get("signature"),
+         "mods": (i.get("strain") or {}).get("expression_mods"),
+         "contagion": (i.get("strain") or {}).get("contagion"),
+         "synth_done_at": i.get("synth_done_at"),
          "caught_at": i.get("caught_at"),
          "detected": bool(i.get("detected_at") and
                           i["detected_at"] <= now)}
@@ -160,6 +165,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     out["antigens"] = [
         {"strain_uuid": a.get("strain_uuid"),
          "vector": a.get("vector"),
+         "decay_rate": a.get("decay_rate"),
          "made_at": a.get("made_at"),
          "potency": max(0.0, 1.0 - a.get("decay_rate", 0.0)
                         * (now - a.get("made_at", now)))}

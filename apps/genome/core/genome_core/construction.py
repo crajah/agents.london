@@ -733,7 +733,8 @@ def portable(site: dict) -> bool:
 
 
 async def take_up(client: Any, realm: str, site_key: str, user_id: str,
-                  agent_uuid: str, now: float) -> dict:
+                  agent_uuid: str, now: float,
+                  time_scale: float = 1.0) -> dict:
     """Pledge a pair of hands. The construction lifts the moment the fresh
     pledges span the required number of DISTINCT users (Rule 3.10); until
     then pledges accumulate and quietly expire."""
@@ -746,8 +747,9 @@ async def take_up(client: Any, realm: str, site_key: str, user_id: str,
         return {"error": f"the {site.get('name')} cannot be taken up"}
     if site.get("carried"):
         return {"error": "already aloft"}
+    fresh = PLEDGE_FRESH_S / max(1.0, time_scale)   # a WORLD hour
     porters = {u: p for u, p in dict(site.get("porters", {})).items()
-               if now - p.get("at", 0.0) < PLEDGE_FRESH_S}
+               if now - p.get("at", 0.0) < fresh}
     porters[agent_uuid] = {"user": user_id, "at": now}
     users = {p["user"] for p in porters.values() if p.get("user")}
     need = int(site.get("required_users", 1))

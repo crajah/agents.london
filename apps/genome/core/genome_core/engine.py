@@ -731,7 +731,7 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "go_to_market":
         mkt = ctx.get("market")
         if not mkt:
-            return Effects(schedule=("decide", now + 60.0,
+            return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
         tx, ty = standoff(agent.x, agent.y, mkt["x"], mkt["y"])
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
@@ -851,7 +851,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
             transfer={"to_world": payload.get("portal_to") or
                       choice.target,
                       "portal_xy": payload.get("portal_xy")},
-            schedule=("decide", now + 60.0, agent.agent_uuid, {}))
+            schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                      agent.agent_uuid, {}))
 
     if choice.option in ("accept_mate", "decline_mate"):
         return Effects(schedule=("mating_answer", now, agent.agent_uuid,
@@ -876,7 +877,8 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
 
 def on_deposit_arrival(agent: AgentView, stock: dict[str, float],
                        now: float,
-                       ceiling: float = USER_CEILING_PER_KIND) -> Effects:
+                       ceiling: float = USER_CEILING_PER_KIND,
+                       time_scale: float = 1.0) -> Effects:
     """Deposit at the birth world, partially accepted at the user ceiling
     (genome-spec Rules 4.3, 4.15, 4.19) — raised by a standing Store
     (calibration §5). Remainder stays aboard."""
@@ -889,7 +891,8 @@ def on_deposit_arrival(agent: AgentView, stock: dict[str, float],
             accepted[kind] = take
             delta[kind] = -take
     return Effects(deposit=accepted, cargo_delta=delta,
-                   schedule=("decide", now + 60.0, agent.agent_uuid, {}))
+                   schedule=("decide", now + 60.0 / max(1.0, time_scale),
+                             agent.agent_uuid, {}))
 
 
 def stub_decider(req: DecisionRequest, seed: int) -> Choice:
