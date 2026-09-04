@@ -1133,8 +1133,7 @@ async def my_delete(payload: dict, request: __import__("fastapi").Request):
 
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
-    uid = auth_mod.verify_cookie(
-        request.cookies.get("genome_session", ""))
+    uid = _uid(request)
     if not uid:
         return {"authenticated": False}
     realm = await genesis.user_world_realm(app.state.pg, uid)
