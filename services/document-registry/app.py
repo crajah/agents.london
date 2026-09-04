@@ -19,7 +19,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import (FastAPI, File, Form, HTTPException, Query,
+                     Request, UploadFile)
 
 from post_graph import AsyncPostGraph
 
@@ -163,6 +164,92 @@ def _record(kind: str, key: SpaceKey, payload_bytes: int, **extra) -> None:
                                 kind=kind, bytes=payload_bytes, **extra))
     except Exception:
         logger.exception("metering failed for %s; the operation stands", kind)
+
+
+# ----------------------------------------------------- authority (/my/*)
+# The platform front door's scoped tokens (POST agents.london/authority/
+# exchange, app="docs") open a USER'S OWN document ground here. On these
+# routes the caller names no org: the token's grant IS the realm, verified
+# against the authority's JWKS -- enforcement at this boundary, post-graph
+# stays auth-blind. The org_id routes above remain the internal surface.
+_authority_jwks_client = None
+
+
+def _granted_docs_realm(request: Request) -> str:
+    import jwt as _jwt
+    from jwt import PyJWKClient
+    global _authority_jwks_client
+    h = request.headers.get("authorization", "")
+    if not h.lower().startswith("bearer "):
+        raise HTTPException(status_code=401,
+                            detail="A scoped authority token is required: "
+                                   "POST /authority/exchange with "
+                                   "app='docs'.")
+    if _authority_jwks_client is None:
+        _authority_jwks_client = PyJWKClient(
+            os.getenv("AUTHORITY_JWKS_URL",
+                      "http://authority-service:8810/jwks.json"),
+            cache_keys=True)
+    try:
+        key = _authority_jwks_client.get_signing_key_from_jwt(h[7:]).key
+        claims = _jwt.decode(
+            h[7:], key, algorithms=["RS256"],
+            issuer=os.getenv("AUTHORITY_ISSUER",
+                             "https://agents.london/authority"),
+            options={"require": ["exp", "iss", "sub"]})
+    except Exception as e:
+        raise HTTPException(status_code=401,
+                            detail=f"Invalid authority token: {e}") from e
+    for g in claims.get("grants") or []:
+        realm = g.get("realm", "")
+        if realm.startswith("docs--"):
+            return realm
+    raise HTTPException(status_code=403,
+                        detail="This token grants no docs realm; exchange "
+                               "with app='docs'.")
+
+
+@app.post("/my/spaces", tags=["My Documents"])
+async def my_create_space(request: Request, body: dict):
+    realm = _granted_docs_realm(request)
+    req = CreateSpaceRequest(org_id=realm,
+                             project_id=body.get("project_id", "default"),
+                             document_space=body.get("document_space",
+                                                     "default"),
+                             description=body.get("description"))
+    return await create_document_space(req)
+
+
+@app.get("/my/projects/{project_id}/documents", tags=["My Documents"])
+async def my_list_documents(request: Request, project_id: str,
+                            space_name: Optional[str] = Query(None)):
+    realm = _granted_docs_realm(request)
+    return await list_project_documents(project_id,
+                                        space_name=space_name,
+                                        org_id=realm)
+
+
+@app.post("/my/spaces/{space_name}/documents/upload-text",
+          tags=["My Documents"])
+async def my_upload_text(request: Request, space_name: str, body: dict):
+    realm = _granted_docs_realm(request)
+    req = UploadTextRequest(org_id=realm,
+                            project_id=body.get("project_id", "default"),
+                            space_name=space_name,
+                            document_name=body["document_name"],
+                            content=body["content"],
+                            category=body.get("category", "unstructured"))
+    return await upload_document_text(space_name, req)
+
+
+@app.post("/my/query", tags=["My Documents"])
+async def my_query(request: Request, body: dict):
+    realm = _granted_docs_realm(request)
+    req = RAGQueryRequest(org_id=realm,
+                          project_id=body.get("project_id", "default"),
+                          document_space=body.get("document_space"),
+                          query=body["query"])
+    return await query_document_rag(req)
 
 
 # --------------------------------------------------------------------- system
