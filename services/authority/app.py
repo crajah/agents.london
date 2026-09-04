@@ -229,8 +229,47 @@ async def refresh(request: Request):
                           claims.get("grants"), claims.get("email"))}
 
 
+import re as _re
+
+APP_RE = _re.compile(r"^[a-z][a-z0-9-]{1,23}$")
+SPACE_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
+EXCHANGE_TTL = int(os.getenv("AUTHORITY_EXCHANGE_TTL", "300"))
+
+
 @app.post("/exchange")
-async def exchange():
-    return JSONResponse(
-        {"error": "realm grants land in Phase C; this door is built but "
-         "not yet open"}, status_code=501)
+async def exchange(request: Request):
+    """Phase C: a service presents the user's token and asks for a realm.
+    The FIRST policy is a namespace convention, and it is stateless on
+    purpose: the realm `{app}--{sub}` (plus an optional `--{space}`) is the
+    user's own ground in that app -- docs--u:abc123--contracts -- and
+    OWNERSHIP of one's own namespace needs no grant table. The scoped
+    token that comes back lives five minutes and names exactly one realm;
+    the service enforces the claim at its own boundary, post-graph stays
+    auth-blind. Cross-user sharing is the day a grant TABLE arrives; the
+    token shape will not change."""
+    tok = _bearer(request)
+    claims = verify(tok) if tok else None
+    if not claims:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    try:
+        body = json.loads((await request.body()) or b"{}")
+    except Exception:
+        return JSONResponse({"error": "body must be JSON"}, status_code=400)
+    app_name = str(body.get("app", ""))
+    space = str(body.get("space", "") or "")
+    if not APP_RE.match(app_name):
+        return JSONResponse(
+            {"error": "app must be 2-24 chars of [a-z0-9-], starting "
+             "with a letter"}, status_code=400)
+    if space and not SPACE_RE.match(space):
+        return JSONResponse(
+            {"error": "space must be 1-24 chars of [a-z0-9-]"},
+            status_code=400)
+    realm = f"{app_name}--{claims['sub']}" + (f"--{space}" if space else "")
+    now = int(time.time())
+    scoped = jwt.encode(
+        {"iss": BASE, "sub": claims["sub"], "iat": now,
+         "exp": now + EXCHANGE_TTL, "provider": claims.get("provider", "?"),
+         "grants": [{"realm": realm, "role": "owner"}]},
+        _key, algorithm="RS256", headers={"kid": KID})
+    return {"realm": realm, "token": scoped, "ttl": EXCHANGE_TTL}
