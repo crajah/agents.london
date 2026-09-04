@@ -1,8 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG VITE_GENOME_API=/genome-api
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN VITE_GENOME_API="$VITE_GENOME_API" VITE_BASE=/genome/ npm run build
 
