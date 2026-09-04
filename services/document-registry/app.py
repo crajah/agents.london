@@ -224,9 +224,13 @@ async def my_create_space(request: Request, body: dict):
 async def my_list_documents(request: Request, project_id: str,
                             space_name: Optional[str] = Query(None)):
     realm = _granted_docs_realm(request)
+    # a direct call resolves NO FastAPI defaults: every Query(...) param
+    # must be passed, or the sentinel object reaches the handler
     return await list_project_documents(project_id,
                                         space_name=space_name,
-                                        org_id=realm)
+                                        document_space=None,
+                                        org_id=realm,
+                                        include_withdrawn=False)
 
 
 @app.post("/my/spaces/{space_name}/documents/upload-text",
