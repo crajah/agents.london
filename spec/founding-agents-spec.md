@@ -22,7 +22,7 @@ have exactly one owner, and the roster is the set of those owners.
 Three findings, all confirmed against a running stack.
 
 **2.1 — There were three rosters, and the one that ran had four members.** The
-engine selected by default (`CIVILIZATION_ENGINE_TYPE=GOOGLE_ADK`) provisioned
+the Google ADK engine (the only engine since 2026-09-04) provisioned
 four scaffold agents whose entire system prompt was *"You are the Genesis Prime
 Agent in Google ADK civilization."* A second engine provisioned twenty-eight
 richer ones. A third list in `main.py` backed discovery. A user could search for

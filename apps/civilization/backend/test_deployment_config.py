@@ -65,7 +65,7 @@ def code_directories():
 
     Enumerated rather than hard-coded as ROOT/"backend": that path stopped
     existing when the app moved to apps/civilization/, and the test did not
-    fail loudly — it reported CIVILIZATION_ENGINE_TYPE and
+    fail loudly — it reported a then-live engine selector and
     DOCUMENT_REGISTRY_URL as "set in the cluster and read by nothing", which
     reads like a deployment bug rather than a stale glob. Any new app under
     apps/ is picked up without editing this.

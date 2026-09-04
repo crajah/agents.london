@@ -18,7 +18,7 @@ would have forced a fake at exactly the seam the tool tests exist to prove.
 ```bash
 python3 -m pytest tests -q              # the end-to-end suite (108)
 python3 -m pytest services backend -q   # the unit suite (235)
-python3 test_civilization.py            # the civilization engine (14)
+# test_civilization.py targeted the removed native engine (deleted 2026-09-04)
 ```
 
 The civilization script needs the agent registry listening on `:8001`; without
@@ -168,7 +168,7 @@ class of defect a test double cannot reach.
 | 13 | Each `_get_pg_client()` opened a fresh ten-connection pool | Twenty-eight agent registrations exhausted a hundred server connections: "sorry, too many clients already", after which every later write failed. |
 | 14 | The engine tried four DSNs and used whichever answered | Two carried hardcoded credentials. A typo in `POSTGRES_URI` did not fail — it silently wrote a tenant's agents to whatever local database accepted a guess. |
 
-Bugs 11 to 14 were found by running `test_civilization.py`, which had never
+Bugs 11 to 14 were found by running the since-removed `test_civilization.py`, which had never
 passed more than 12 of its 14 checks. It now passes 14.
 
 Fixes 8 and 10 have unit regressions added alongside them

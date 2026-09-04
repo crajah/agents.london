@@ -43,7 +43,6 @@
 ### 1. 🤖 Google Agent Development Kit (ADK) Engine & Dual Strategy Architecture
 - **Primary Engine Strategy (`GOOGLE_ADK`)**: Leverages Google GenAI SDK & Agent Development Kit (ADK) agent specs (`ADKAgentNode`), multi-agent delegation, and structured tool calling.
 - **Native Python Strategy (`NATIVE`)**: High-performance Python engine with zero framework dependencies.
-- **Dynamic Factory Switcher (`apps/civilization/backend/civilization_factory.py`)**: Seamless hot-swapping controlled by `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` or `"NATIVE"`).
 
 ---
 
@@ -92,7 +91,6 @@ agents.london/
 │           ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
 │           ├── civilization_adk.py       # Google ADK Engine Implementation & Prime Nodes
 │           ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
-│           ├── civilization.py           # Native Python Engine & PostGraph persistence
 │           ├── prompts.py        # 6-Section Production System Prompts
 │           ├── redis_bus.py      # Redis Pub/Sub & Task Queues per project
 │           ├── requirements.txt
@@ -106,7 +104,6 @@ agents.london/
 │   ├── tool-registry/            # MCP Tool Registry Microservice (GCP Search, SQL, pgvector)
 │   └── document-registry/        # Multi-document upload, Docling parsing, post-graph-rag indexing
 ├── deploy/k8s/                   # Kubernetes deployment manifests & ConfigMaps
-│   ├── 00-litellm-configmap.yaml # Central LiteLLM service & CIVILIZATION_ENGINE_TYPE config
 │   ├── 00-secrets.yaml
 │   ├── 01-agent-registry.yaml
 │   ├── 02-tool-registry.yaml
@@ -146,7 +143,6 @@ cd services/tool-registry && uvicorn app:app --port 8002
 cd services/document-registry && uvicorn app:app --port 8003
 
 # Terminal 4: Backend BFF Service (Google ADK default)
-cd backend && export CIVILIZATION_ENGINE_TYPE="GOOGLE_ADK" && uvicorn main:app --port 8000
 
 # Terminal 5: React Frontend UI
 cd frontend && npm install && npm run dev

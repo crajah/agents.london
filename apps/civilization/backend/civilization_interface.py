@@ -43,16 +43,6 @@ class AbstractCivilizationEngine(ABC):
         pass
 
     @abstractmethod
-    async def provision_civilization_for_project(
-        self,
-        org_id: str,
-        user_id: str,
-        project_id: str
-    ) -> Dict[str, Any]:
-        """Provisions full Prime Node agents hierarchy for project."""
-        pass
-
-    @abstractmethod
     async def create_user(self, org_id: str, username: str, email: str) -> Dict[str, Any]:
         """Creates user entity in civilization system."""
         pass

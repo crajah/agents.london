@@ -13,10 +13,8 @@ The **Backend for Frontend (BFF)** is a FastAPI service (`backend/main.py`) powe
    - **`GoogleADKCivilizationEngine`**: Google Agent Development Kit (ADK) implementation with Prime Node specs (`ADKAgentNode`), multi-agent delegation, and RAG memory search.
 
 3. **`backend/civilization_factory.py`**:
-   - **`get_civilization_engine()`**: Factory router inspecting `CIVILIZATION_ENGINE_TYPE` (`"GOOGLE_ADK"` default vs `"NATIVE"`).
 
-4. **`backend/civilization.py`**:
-   - **`AgentCivilizationEngine`**: High-performance Native Python engine with zero framework dependencies.
+4. **`backend/civilization_adk.py`** (the only engine; the native python engine was removed 2026-09-04):
 
 5. **`backend/redis_bus.py`**:
    - **`RedisBus`**: Work queue and pub/sub engine scoped strictly per `{project_id}` realm.
@@ -54,10 +52,8 @@ cd backend
 pip install -r requirements.txt
 
 # Option A: Run with Google ADK Engine (Default)
-export CIVILIZATION_ENGINE_TYPE="GOOGLE_ADK"
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Option B: Run with Native Engine
-export CIVILIZATION_ENGINE_TYPE="NATIVE"
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```

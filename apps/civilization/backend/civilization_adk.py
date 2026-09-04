@@ -25,6 +25,14 @@ except (ImportError, ModuleNotFoundError):
 from backend.registry_contract import to_registration
 from backend.civilization_interface import AbstractCivilizationEngine
 try:
+    from backend.platform_store import (PlatformStoreMixin,
+                                        generate_dynamic_task_document,
+                                        record_execution_telemetry)
+except ImportError:
+    from platform_store import (PlatformStoreMixin,
+                                generate_dynamic_task_document,
+                                record_execution_telemetry)
+try:
     from backend.env_config import (
         DEFAULT_LLM_MODEL, EMBEDDING_DIM, EMBEDDING_MODEL,
         JUDGE_MODELS as CONFIGURED_JUDGE_MODELS,
@@ -41,23 +49,9 @@ try:
 except (ImportError, ModuleNotFoundError):
     from redis_bus import redis_bus
 
-def record_execution_telemetry(
-    org_id: str,
-    project_id: str,
-    user_id: str,
-    agent_id: str,
-    input_text: str,
-    output_text: str,
-    prompt_tokens: Optional[int] = None,
-    completion_tokens: Optional[int] = None
-):
-    """Standalone execution telemetry recorder for ADK engine."""
-    try:
-        bytes_in = len(input_text.encode('utf-8')) if input_text else 0
-        bytes_out = len(output_text.encode('utf-8')) if output_text else 0
-        logger.debug(f"[ADK Telemetry] Record: agent={agent_id}, in={bytes_in}b, out={bytes_out}b")
-    except Exception as e:
-        logger.debug(f"Telemetry logging note: {e}")
+# telemetry: the real recorder lives in platform_store (memory + durable
+# executions_data rows); the debug-log no-op that lived here answered the
+# metrics endpoints with zeros forever
 
 logger = logging.getLogger(__name__)
 
@@ -300,15 +294,10 @@ class ADKAgentNode:
                     return res.json()["choices"][0]["message"]["content"].strip()
         except Exception as _e:
             logger.warning("%s: recoverable Exception in execute, continuing", type(_e).__name__, exc_info=_e)
-
-        try:
-            from backend.civilization import generate_dynamic_task_document
-        except ImportError:
-            from civilization import generate_dynamic_task_document
         return await generate_dynamic_task_document(input_prompt, project_id, org_id)
 
 
-class GoogleADKCivilizationEngine(AbstractCivilizationEngine):
+class GoogleADKCivilizationEngine(PlatformStoreMixin, AbstractCivilizationEngine):
     """Google Agent Development Kit (ADK) Engine Implementation."""
 
     def __init__(self):

@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone
 import httpx
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query, Header, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Query, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -30,15 +30,25 @@ except ImportError:  # started with backend/ as the working directory
         RAG_MODEL, require_env,
     )
 try:
-    from backend.civilization import civilization_engine, get_real_telemetry, record_execution_telemetry, generate_dynamic_task_document
+    from backend.civilization_factory import get_civilization_engine
+    from backend.platform_store import (generate_dynamic_task_document,
+                                        get_project_api_key_from_pg,
+                                        generate_project_api_key,
+                                        save_project_api_key_to_pg,
+                                        get_real_telemetry,
+                                        record_execution_telemetry)
     from backend.redis_bus import redis_bus
 except (ImportError, ModuleNotFoundError):
-    try:
-        from civilization import civilization_engine, get_real_telemetry, record_execution_telemetry, generate_dynamic_task_document
-        from redis_bus import redis_bus
-    except (ImportError, ModuleNotFoundError):
-        from .civilization import civilization_engine, get_real_telemetry, record_execution_telemetry, generate_dynamic_task_document
-        from .redis_bus import redis_bus
+    from civilization_factory import get_civilization_engine
+    from platform_store import (generate_dynamic_task_document,
+                                get_project_api_key_from_pg,
+                                generate_project_api_key,
+                                save_project_api_key_to_pg,
+                                get_real_telemetry,
+                                record_execution_telemetry)
+    from redis_bus import redis_bus
+
+civilization_engine = get_civilization_engine()
 
 try:
     from post_graph_rag import GraphRAG, RAGConfig, DocumentMetadata, QueryParam
@@ -2145,14 +2155,41 @@ async def get_agent_real_metrics(agent_id: str):
 # MCP & A2A PROJECT API KEY ACCESS PROTOCOL (XXXX-XXXX-XXXX-XXXX)
 # =========================================================================
 
-@app.get("/api/projects/{project_id}/key")
-async def get_project_api_key(project_id: str):
-    """Retrieves the randomly generated 16-character project API key for MCP and A2A access directly from post-graph database."""
+def _require_platform_user(request: Request) -> str:
+    """An authenticated platform user (authority JWT) or a 401. The key
+    endpoints used to be ANONYMOUS: anyone could read or rotate any
+    project's key by id (audit 2026-09-04). Org-level binding of projects
+    to subs is follow-up; this closes the anonymous hole."""
+    global _authority_jwks_client
+    import jwt as _jwt
+    from jwt import PyJWKClient
+    h = request.headers.get("authorization", "")
+    tok = h[7:] if h.lower().startswith("bearer ") else         request.cookies.get("authority_token", "")
+    if not tok:
+        raise HTTPException(status_code=401,
+                            detail="Sign in via the authority first.")
+    if _authority_jwks_client is None:
+        _authority_jwks_client = PyJWKClient(
+            os.getenv("AUTHORITY_JWKS_URL",
+                      "http://authority-service:8810/jwks.json"),
+            cache_keys=True)
     try:
-        from backend.civilization import get_project_api_key_from_pg
-    except Exception:
-        from civilization import get_project_api_key_from_pg
+        key = _authority_jwks_client.get_signing_key_from_jwt(tok).key
+        claims = _jwt.decode(tok, key, algorithms=["RS256"],
+                             issuer=os.getenv(
+                                 "AUTHORITY_ISSUER",
+                                 "https://agents.london/authority"),
+                             options={"require": ["exp", "iss", "sub"]})
+    except Exception as e:
+        raise HTTPException(status_code=401,
+                            detail=f"Invalid authority token: {e}") from e
+    return claims["sub"]
 
+
+@app.get("/api/projects/{project_id}/key")
+async def get_project_api_key(project_id: str, request: Request):
+    """The project API key -- for authenticated platform users only."""
+    _require_platform_user(request)
     key = await get_project_api_key_from_pg(project_id)
 
     return {
@@ -2163,13 +2200,11 @@ async def get_project_api_key(project_id: str):
     }
 
 @app.post("/api/projects/{project_id}/key/regenerate")
-async def regenerate_project_api_key(project_id: str):
-    """Regenerates a brand new random 16-character project API key for MCP and A2A access and persists in post-graph database."""
-    try:
-        from backend.civilization import generate_project_api_key, save_project_api_key_to_pg
-    except Exception:
-        from civilization import generate_project_api_key, save_project_api_key_to_pg
-
+async def regenerate_project_api_key(project_id: str, request: Request):
+    """Rotate the project key -- authenticated platform users only (an
+    anonymous rotation was a one-call denial of service against every
+    caller holding the old key)."""
+    _require_platform_user(request)
     new_key = generate_project_api_key()
     await save_project_api_key_to_pg(project_id, new_key)
 
@@ -2192,8 +2227,11 @@ class MCPCallRequest(BaseModel):
     caller: Dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
 
-def _require_project_key(api_key, authorization):
-    """The project API key, or a 401/400 naming what is wrong with it."""
+async def _require_project_key(project_id: str, api_key, authorization):
+    """The project's ACTUAL key, compared in constant time. The previous
+    version validated only the FORMAT -- AAAA-AAAA-AAAA-AAAA opened every
+    'restricted' endpoint (audit 2026-09-04)."""
+    import hmac as _hmac
     provided = api_key or (authorization.replace("Bearer ", "").strip()
                            if authorization else None)
     if not provided:
@@ -2201,11 +2239,10 @@ def _require_project_key(api_key, authorization):
             status_code=401,
             detail="Missing Project API Key header. Set 'Authorization: Bearer "
                    "XXXX-XXXX-XXXX-XXXX' or 'X-Project-API-Key'")
-    if not re.match(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$', provided):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid API Key format. Must be 16 uppercase alphanumeric "
-                   "digits with hyphens (e.g. XXXX-XXXX-XXXX-XXXX)")
+    expected = await get_project_api_key_from_pg(project_id)
+    if not _hmac.compare_digest(provided.strip(), expected):
+        raise HTTPException(status_code=403,
+                            detail="Project API key does not match.")
     return provided
 
 
@@ -2297,7 +2334,7 @@ async def call_mcp_agent_tool(
     finding. An agent cannot tell fabricated evidence from real evidence, so
     this layer must never produce any.
     """
-    _require_project_key(api_key, authorization)
+    await _require_project_key(req.project_id, api_key, authorization)
 
     name = req.tool_name
     async with httpx.AsyncClient(timeout=180.0) as client:
@@ -2369,7 +2406,7 @@ async def dispatch_a2a_agent_message(
     saying the goal had been "processed successfully" — without ever contacting
     the target. A sender had no way to tell that from a real delivery.
     """
-    _require_project_key(api_key, authorization)
+    await _require_project_key(req.project_id, api_key, authorization)
     org_id = getattr(req, "org_id", None) or DEFAULT_ORG_ID
 
     async with httpx.AsyncClient(timeout=180.0) as client:

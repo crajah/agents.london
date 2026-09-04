@@ -1,7 +1,7 @@
 """Path setup, so the backend's tests run from the repository root too.
 
 `backend/` is a directory of top-level modules that import each other by bare
-name (`from civilization import …`), which works when pytest is started inside
+name (`from civilization_adk import …`), which works when pytest is started inside
 it and not from the root. That difference meant `python3 -m pytest` at the root
 could not even collect these tests, so they were only ever run by someone who
 knew to `cd backend` first.

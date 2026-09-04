@@ -37,7 +37,6 @@ data:
   # seeded with it and no agent is told it has it.
   WEB_SEARCH_MODEL: "gemini-3.5-flash-lite"
   # Engine
-  CIVILIZATION_ENGINE_TYPE: "GOOGLE_ADK"
   # Postgres
   POSTGRES_HOST: "postgres-service.default.svc.cluster.local"
   POSTGRES_PORT: "5432"
