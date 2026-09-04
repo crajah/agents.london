@@ -4,7 +4,7 @@ ARG VITE_GENOME_API=/genome-api
 COPY package.json ./
 RUN npm install
 COPY . .
-RUN VITE_GENOME_API="$VITE_GENOME_API" npm run build -- --base=/genome/
+RUN VITE_GENOME_API="$VITE_GENOME_API" VITE_BASE=/genome/ npm run build
 
 FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
