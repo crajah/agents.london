@@ -273,3 +273,134 @@ async def exchange(request: Request):
          "grants": [{"realm": realm, "role": "owner"}]},
         _key, algorithm="RS256", headers={"kid": KID})
     return {"realm": realm, "token": scoped, "ttl": EXCHANGE_TTL}
+
+
+# ----------------------------------------------------------------- vault
+# Phase D: BYOK. A user's model credentials, AES-256-GCM encrypted with a
+# key that lives only in the cluster secret -- execution-spec 9.3's
+# "revoke and re-key" is DELETE and PUT. Plaintext leaves only through the
+# internal reveal, gated by a second cluster secret, for the router sync;
+# the public surface returns fingerprints and nothing else.
+import base64 as _b64
+
+_VAULT_KEY = _b64.b64decode(os.getenv("AUTHORITY_VAULT_KEY", "")) \
+    if os.getenv("AUTHORITY_VAULT_KEY") else None
+INTERNAL_KEY = os.getenv("AUTHORITY_INTERNAL_KEY", "")
+VAULT_REALM = "authority_vault"
+_pg = None
+
+
+async def _vault_client():
+    global _pg
+    if _pg is None:
+        from post_graph import AsyncPostGraph
+        dsn = os.environ["AUTHORITY_VAULT_DSN"]
+        _pg = AsyncPostGraph(dsn=dsn, pool_min_size=1, pool_max_size=2,
+                             statement_cache_size=0)
+        await _pg.connect()
+        await _pg.create_vertex_table("credentials", realm=VAULT_REALM)
+    return _pg
+
+
+def _seal(plaintext: str) -> dict:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = os.urandom(12)
+    ct = AESGCM(_VAULT_KEY).encrypt(nonce, plaintext.encode(), None)
+    return {"nonce": _b64.b64encode(nonce).decode(),
+            "ct": _b64.b64encode(ct).decode(),
+            "fp": hashlib.sha256(plaintext.encode()).hexdigest()[:12]}
+
+
+def _open(sealed: dict) -> str:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    return AESGCM(_VAULT_KEY).decrypt(
+        _b64.b64decode(sealed["nonce"]), _b64.b64decode(sealed["ct"]),
+        None).decode()
+
+
+PROVIDER_RE = None
+
+
+@app.put("/vault/keys")
+async def vault_put(request: Request):
+    if _VAULT_KEY is None:
+        return JSONResponse({"error": "vault not provisioned"},
+                            status_code=503)
+    claims = verify(_bearer(request) or "")
+    if not claims:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    import re as _re2
+    body = json.loads((await request.body()) or b"{}")
+    provider = str(body.get("provider", ""))
+    api_key = str(body.get("api_key", ""))
+    if not _re2.match(r"^[a-z][a-z0-9_-]{1,31}$", provider) or \
+            not 8 <= len(api_key) <= 512:
+        return JSONResponse({"error": "provider [a-z0-9_-], key 8-512 "
+                             "chars"}, status_code=400)
+    c = await _vault_client()
+    sealed = _seal(api_key)
+    rec_key = f"{claims['sub']}:{provider}"
+    rows = await c.find_vertices("credentials", realm=VAULT_REALM,
+                                 filters={"key": rec_key}, limit=1)
+    payload = {"key": rec_key, "sub": claims["sub"], "provider": provider,
+               **sealed, "updated_at": int(time.time())}
+    if rows:
+        await c.upsert_vertex("credentials", realm=VAULT_REALM,
+                              vertex_id=int(rows[0].id), space="default",
+                              payload=payload)
+    else:
+        await c.add_vertex("credentials", realm=VAULT_REALM,
+                           payload=payload)
+    return {"ok": True, "provider": provider, "fingerprint": sealed["fp"]}
+
+
+@app.get("/vault/keys")
+async def vault_list(request: Request):
+    if _VAULT_KEY is None:
+        return JSONResponse({"error": "vault not provisioned"},
+                            status_code=503)
+    claims = verify(_bearer(request) or "")
+    if not claims:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    c = await _vault_client()
+    rows = await c.find_vertices("credentials", realm=VAULT_REALM,
+                                 filters={"sub": claims["sub"]}, limit=50)
+    return {"keys": [{"provider": v.payload["provider"],
+                      "fingerprint": v.payload["fp"],
+                      "updated_at": v.payload.get("updated_at")}
+                     for v in rows]}
+
+
+@app.delete("/vault/keys/{provider}")
+async def vault_delete(request: Request, provider: str):
+    claims = verify(_bearer(request) or "")
+    if not claims:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    c = await _vault_client()
+    rows = await c.find_vertices("credentials", realm=VAULT_REALM,
+                                 filters={"key": f"{claims['sub']}:"
+                                          f"{provider}"}, limit=1)
+    if not rows:
+        return JSONResponse({"error": "no such key"}, status_code=404)
+    await c.delete_vertices("credentials", realm=VAULT_REALM,
+                            where=[("key", "=",
+                                    f"{claims['sub']}:{provider}")])
+    return {"ok": True, "revoked": provider}
+
+
+@app.get("/vault/keys/{sub}/{provider}/reveal")
+async def vault_reveal(request: Request, sub: str, provider: str):
+    """In-cluster only: the router sync fetches plaintext with the second
+    secret. Never routed through the public ingress path by policy; the
+    internal key is the lock either way."""
+    if not INTERNAL_KEY or \
+            request.headers.get("x-internal-key") != INTERNAL_KEY:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    c = await _vault_client()
+    rows = await c.find_vertices("credentials", realm=VAULT_REALM,
+                                 filters={"key": f"{sub}:{provider}"},
+                                 limit=1)
+    if not rows:
+        return JSONResponse({"error": "no such key"}, status_code=404)
+    return {"api_key": _open(rows[0].payload),
+            "fingerprint": rows[0].payload["fp"]}

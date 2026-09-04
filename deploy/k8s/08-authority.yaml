@@ -35,6 +35,23 @@ spec:
               value: /authority
             - name: AUTHORITY_ALLOWED_RETURN
               value: https://agents.london/,http://localhost
+            - name: AUTHORITY_VAULT_KEY
+              valueFrom:
+                secretKeyRef: { name: authority-jwt, key: vault_key }
+            - name: AUTHORITY_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef: { name: authority-jwt, key: internal_key }
+            - name: AUTHORITY_VAULT_DSN
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgbouncer-service:5432/$(POSTGRES_DB)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: postgres-secrets, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secrets, key: POSTGRES_PASSWORD }
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef: { name: postgres-secrets, key: POSTGRES_DB }
           readinessProbe:
             httpGet: { path: /health, port: 8810 }
             initialDelaySeconds: 3
