@@ -40,8 +40,7 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
     """View + the agent's stored payload (genotype, knowledge). Position is
     derived from the latest movement intent and the clock — never stored
     (execution-spec Rule 2.2)."""
-    rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                        filters={"key": agent_uuid}, limit=1)
+    rows = await store.find_agent_rows(agent_uuid)
     payload = rows[0].payload if rows else {}
     if rows and "capability" not in payload:
         # born before skills-spec landed: the birth roll happens now,
@@ -248,8 +247,7 @@ async def apply_word(store: GenomeStore, agent: engine.AgentView,
     if not target or said is None:
         return
     subject, locus, v = said
-    rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                        filters={"key": target}, limit=1)
+    rows = await store.find_agent_rows(target)
     if not rows:
         return
     tp = dict(rows[0].payload)
@@ -291,8 +289,7 @@ async def apply_convoke(store: GenomeStore, world_realm: str,
         px, py = forms.route_position(r, now)
         if _m.hypot(px - agent.x, py - agent.y) > engine.SIGHT_RADIUS * 2:
             continue
-        rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                            filters={"key": other}, limit=1)
+        rows = await store.find_agent_rows(other)
         if not rows:
             continue
         tp = rows[0].payload
@@ -353,9 +350,7 @@ async def apply_service(store: GenomeStore, world_realm: str,
     verb, counterparty, skill = eff.service
     metrics.SERVICES.labels(verb).inc()
     if verb == "request":
-        rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                            filters={"key": counterparty},
-                                            limit=1)
+        rows = await store.find_agent_rows(counterparty)
         if not rows:
             return
         hp = rows[0].payload
@@ -372,9 +367,7 @@ async def apply_service(store: GenomeStore, world_realm: str,
              "credit": (hp.get("credits") or {}).get(agent.agent_uuid, 0)})
         return
     # the HOLDER answers
-    rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                        filters={"key": counterparty},
-                                        limit=1)
+    rows = await store.find_agent_rows(counterparty)
     if not rows:
         return
     rq = dict(rows[0].payload)
@@ -504,10 +497,7 @@ async def apply_portage(store: GenomeStore, world_realm: str,
             vertex_id=int(rows[0].id), space="default",
             payload={**site, "porters": near})
         for porter in near:
-            prow = await store._c.find_vertices("agents",
-                                                realm="genome_agents",
-                                                filters={"key": porter},
-                                                limit=1)
+            prow = await store.find_agent_rows(porter)
             if prow:
                 pl = dict(prow[0].payload)
                 await store.put_agent(porter,
@@ -525,10 +515,7 @@ async def apply_portage(store: GenomeStore, world_realm: str,
                                           agent.x, agent.y)
         porters = res.get("porters") or [agent.agent_uuid]
         for porter in set(porters) | {agent.agent_uuid}:
-            prow = await store._c.find_vertices("agents",
-                                                realm="genome_agents",
-                                                filters={"key": porter},
-                                                limit=1)
+            prow = await store.find_agent_rows(porter)
             if prow:
                 pl = dict(prow[0].payload)
                 if pl.pop("carrying_site", None) is not None or porter == agent.agent_uuid:
@@ -1781,8 +1768,7 @@ async def consummate(store: GenomeStore, world_realm: str,
         await store.schedule(home, f"born-{child_uuid}",
                              _iso(now + 60.0 / _bts),
                              "decide", child_uuid, {})
-        rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                            filters={"key": child_uuid}, limit=1)
+        rows = await store.find_agent_rows(child_uuid)
         await schedule_perish(store, child_uuid, rows[0].payload, now)
         born.append((child_uuid, name, home))
         for side in (parent_pl, mate_pl):

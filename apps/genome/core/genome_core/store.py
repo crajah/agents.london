@@ -84,9 +84,27 @@ class GenomeStore:
         self._c = client
 
     async def _pk(self, table: str, realm: str, key: str) -> int | None:
+        # agents fast path: put_agent writes space == key, and (realm, space)
+        # is a btree -- 0.06ms against the 36ms containment seq-scan that
+        # kept the database at two cores (measured 2026-09-05). Containment
+        # remains as the fallback for any row that predates the invariant.
+        if table == AGENTS and realm == AGENTS_REALM:
+            rows = await self._c.find_vertices(table, realm=realm,
+                                               space=key, limit=1)
+            if rows:
+                return int(rows[0].id)
         rows = await self._c.find_vertices(table, realm=realm,
                                            filters={"key": key}, limit=1)
         return int(rows[0].id) if rows else None
+
+    async def find_agent_rows(self, key: str) -> list:
+        """One agent's row by key, via the indexed space column first."""
+        rows = await self._c.find_vertices(AGENTS, realm=AGENTS_REALM,
+                                           space=key, limit=1)
+        if rows:
+            return rows
+        return await self._c.find_vertices(AGENTS, realm=AGENTS_REALM,
+                                           filters={"key": key}, limit=1)
 
     async def _upsert_by_key(self, table: str, realm: str, key: str,
                              payload: dict, space: str = "default") -> int:
