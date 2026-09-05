@@ -2339,7 +2339,6 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
 
     return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
 
-@app.post("/api/projects/{project_id}/spaces/{space_name}/documents/upload-text")
 class UploadTextBody(BaseModel):
     document_name: str
     content: str
