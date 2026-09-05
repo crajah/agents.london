@@ -98,7 +98,11 @@ OPTION_TEXT = {
     "send_word": "Send word to an agent you know, however far away: your "
                  "strongest testimony about a third party. Claims travel; "
                  "only deals require meeting.",
-    "request_service": "Ask a capable agent you know to perform its skill "
+    "request_service": "Pursue your owner's question or objective through "
+                       "another agent: one you know holds a capability (a "
+                       "web search, a chronicle, an appraisal) that could "
+                       "answer it. "
+                       "Ask a capable agent you know to perform its skill "
                        "for you, at any distance. If it obliges, you will "
                        "owe a favour -- and its answer is only as honest "
                        "as it is.",

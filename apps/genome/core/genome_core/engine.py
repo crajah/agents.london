@@ -844,8 +844,17 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         if not holders:
             return Effects(schedule=("decide", now + 60.0 / max(1.0, time_scale),
                                      agent.agent_uuid, {}))
-        # mechanical resolution: the most recently met holder is asked
+        # mechanical resolution: the most recently met holder is asked --
+        # UNLESS an owner objective stands, in which case a TOOL holder
+        # (Web Search) is preferred: the objective travels as the query and
+        # the answer comes back as testimony (user directive 2026-09-05:
+        # "it should be the agent's responsibility to find the best way")
         who, skill = holders[-1]
+        if ctx.get("has_objective"):
+            from . import skills as _sk
+            tool_holders = [h for h in holders if h[1] in _sk.TOOLS]
+            if tool_holders:
+                who, skill = tool_holders[-1]
         return Effects(service=("request", who, skill),
                        schedule=("decide", now + 600.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))

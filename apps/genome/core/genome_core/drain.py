@@ -339,6 +339,62 @@ def _perform_tool(holder_payload: dict, tool: str, requester_pl: dict,
     return {"kind": "web", "query": query, "summary": summary[:400]}
 
 
+async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
+                          result: dict, raw_text: str, now: float) -> None:
+    """Close the loop (user directive 2026-09-05): a result won in pursuit
+    of an OWNER'S objective is not just filed as testimony -- the agent
+    composes an answer in its own voice and reports back on the chat, and
+    the objective retires. The router failing degrades to the raw material,
+    never to silence."""
+    owner = rq.get("owner_user_id")
+    objectives = rq.get("objectives") or []
+    if not owner or not objectives:
+        return
+    objective = objectives[0]
+    name = rq.get("name", agent_uuid)
+    answer = None
+    try:
+        import json as _j
+        import urllib.request as _u
+        from . import decider as _dec
+        from .models import UNBUDGETED, assign_models, temperament
+        model = assign_models(agent_uuid).get("economy") \
+            or next(iter(assign_models(agent_uuid).values()))
+        body = {"model": model, "temperature": temperament(agent_uuid),
+                "messages": [
+                    {"role": "system", "content":
+                     f"You are {name}, an agent in the genome world, "
+                     f"reporting back to your owner. Answer their question "
+                     f"from the material you gathered. Be concrete and "
+                     f"brief. If the material does not fully answer it, "
+                     f"say plainly what you found and what is missing -- "
+                     f"never invent figures."},
+                    {"role": "user", "content":
+                     f"Your owner asked: {objective}\n\n"
+                     f"What you gathered: {raw_text}"}]}
+        if model not in UNBUDGETED:
+            body["max_tokens"] = 220
+        rq_http = _u.Request(
+            _dec.ROUTER + "/v1/chat/completions",
+            data=_j.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + _dec.KEY})
+        data = _j.loads(_u.urlopen(rq_http, timeout=60).read(1 << 20))
+        answer = (data["choices"][0]["message"]["content"] or "").strip()
+    except Exception:
+        import logging
+        logging.getLogger("genome.drain").exception(
+            "reply composition failed for %s", agent_uuid)
+    reply = answer or f"I looked into \"{objective}\" -- {raw_text}"
+    await store._c.add_vertex("chats", realm="genome_agents", payload={
+        "key": f"chat-{uuidlib.uuid4().hex[:12]}", "agent_uuid": agent_uuid,
+        "from": agent_uuid, "kind": "reply", "text": reply[:1500],
+        "at": now})
+    rq["objectives"] = objectives[1:]
+    notify.emit_bg(store._c, owner, "agents", "reply",
+                   f"{name} reports: {reply[:280]}")
+
+
 async def apply_service(store: GenomeStore, world_realm: str,
                         agent: engine.AgentView, agent_payload: dict,
                         eff: engine.Effects, now: float) -> None:
@@ -409,6 +465,8 @@ async def apply_service(store: GenomeStore, world_realm: str,
         text = f"{holder_name} could do nothing for you from afar."
     rq = _word.hear(rq, text, f"agent:{agent.agent_uuid}", relays=1,
                     owner_sourced=False)
+    if result.get("kind") in ("web", "appraisal", "chronicle", "prospect"):
+        await _reply_to_owner(store, counterparty, rq, result, text, now)
     # the ledgers: a favour performed is a debt incurred (the relationship)
     debts = dict(rq.get("debts") or {})
     debts[agent.agent_uuid] = debts.get(agent.agent_uuid, 0) + 1
