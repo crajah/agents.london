@@ -173,7 +173,11 @@ export default function App() {
   // that only has to disagree once to put someone in the wrong realm (F.5).
   const handleSSOLoginSuccess = async (emailOrSession) => {
     if (emailOrSession && typeof emailOrSession === 'object') {
-      handleAuthenticate(toSession(emailOrSession));
+      // The OIDC flows hand back a session already in camelCase; mapping it
+      // through toSession() again reads snake_case keys and erases userId,
+      // which white-screened the shell on `userId.startsWith` after SSO.
+      handleAuthenticate(emailOrSession.userId
+        ? emailOrSession : toSession(emailOrSession));
       return;
     }
     const { data, error } = await attempt(resolveUnverifiedEmailSession(emailOrSession));

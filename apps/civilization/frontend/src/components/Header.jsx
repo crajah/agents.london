@@ -82,7 +82,7 @@ export default function Header({
             >
               <MenuItem value="user_chandan">chandan@agent.london</MenuItem>
               <MenuItem value="user_alice">alice@agent.london</MenuItem>
-              {state.userId.startsWith('user_') && (
+              {(state.userId || '').startsWith('user_') && (
                 <MenuItem value={state.userId}>{state.userId}</MenuItem>
               )}
             </Select>
