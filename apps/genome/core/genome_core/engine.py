@@ -456,6 +456,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     # portal, chose the free instant act again, and the population
     # teleport-looped instead of walking (user report 2026-09-04:
     # "not a single agent is moving")
+    _seeking = bool(ctx.get("has_objective")) \
+        and not ctx.get("known_remote_holders")
     _lta = ctx.get("last_transfer_at", 0.0)
     _cooled = (_lta <= 0.0) or (now - _lta) \
         >= 3600.0 / max(1.0, ctx.get("time_scale", 1.0))
@@ -464,9 +466,10 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         # Teleport Affinity (genotype disposition): some agents simply will
         # not step through. Below the floor the option is never offered —
         # a mechanical faculty, like Gender's gate on carrying young.
-        if _steps_through:
+        if _steps_through or _seeking:
             options.append("take_portal")
-    elif _steps_through and any(pt.get("to_world") for pt in (portals or [])):
+    elif (_steps_through or _seeking) \
+            and any(pt.get("to_world") for pt in (portals or [])):
         # a portal exists somewhere in this world and this agent is one that
         # crosses: walking to a door is now a CHOOSABLE act, not an accident
         options.append("travel_to_portal")

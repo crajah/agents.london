@@ -203,7 +203,9 @@ async def get_snapshot(realm: str):
     seconds for stream watchers, the poll serves ITS copy instead of
     building a second one: same data the stream just sent, at zero cost."""
     st = _streams.get(realm)
-    if st and st.get("data") and             __import__("time").time() - st.get("at", 0) < 4.0:
+    # while a refresher runs, its copy is exactly as fresh as the stream --
+    # the poll cannot be staler than what watchers are already seeing
+    if st and st.get("data") and st.get("task") is not None:
         from fastapi.responses import Response
         return Response(content=st["data"], media_type="application/json")
     return await snapshot.world_snapshot(app.state.pg, realm)
