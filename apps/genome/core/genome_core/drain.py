@@ -328,15 +328,28 @@ def _perform_tool(holder_payload: dict, tool: str, requester_pl: dict,
         + spec["endpoint"], data=body,
         headers={"Content-Type": "application/json"})
     try:
-        data = _j.loads(_u.urlopen(rq, timeout=45).read(1 << 20).decode())
+        data = _j.loads(_u.urlopen(rq, timeout=60).read(1 << 20).decode())
         rows = data.get("results") or data.get("items") or []
-        summary = "; ".join(
-            (r.get("title") or r.get("snippet") or "")[:80]
-            for r in rows[:3]) or str(data)[:200]
+        # the grounded SUMMARY is the substance -- the model searched and
+        # reported what the sources say, figures included. The old shape
+        # sliced 80-character title fragments and threw the findings away,
+        # so an owner asking for stock prices got a list of site names
+        # (found live 2026-09-05).
+        grounded = (data.get("summary") or "").strip()
+        sources = ", ".join(
+            (r.get("link") or r.get("title") or "")[:60]
+            for r in rows[:3] if r.get("link") or r.get("title"))
+        if grounded:
+            summary = grounded[:900] + (f" [sources: {sources}]"
+                                        if sources else "")
+        else:
+            summary = "; ".join(
+                (r.get("title") or r.get("snippet") or "")[:80]
+                for r in rows[:3]) or str(data)[:200]
     except Exception as e:
         return {"kind": "web", "query": query,
                 "summary": f"(the search failed: {type(e).__name__})"}
-    return {"kind": "web", "query": query, "summary": summary[:400]}
+    return {"kind": "web", "query": query, "summary": summary[:1000]}
 
 
 async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
