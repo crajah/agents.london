@@ -360,6 +360,49 @@ async def my_revisions(request: Request, project_id: str, doc_id: str):
     return await document_revisions(project_id, doc_id, org_id=realm)
 
 
+async def _usage_view(org_id: str, project_id: str) -> Dict[str, Any]:
+    """Month-to-date usage against the limits that apply. What the customer
+    sees is what enforcement reads -- one source, no parallel arithmetic."""
+    client = _client()
+    plan = await doc_store.org_plan(client, org_id) or {}
+    ingest = await doc_store.usage_month_to_date(client, org_id,
+                                                 "document_ingest")
+    compute = await doc_store.usage_month_to_date(client, org_id,
+                                                  "index_compute")
+    queries = await doc_store.usage_month_to_date(client, org_id,
+                                                  "rag_lookup")
+    documents = await doc_store.count_documents(client, org_id, project_id)
+
+    def cap(plan_key: str, default: int, scale: int = 1):
+        v = int(plan.get(plan_key, default)) * scale
+        return v if v > 0 else None      # None reads as "unlimited"
+
+    return {
+        "org_id": org_id,
+        "project_id": project_id,
+        "period": "month_to_date",
+        "ingest_bytes": ingest["bytes"],
+        "ingest_limit_bytes": cap("quota_ingest_mb", QUOTA_INGEST_MB,
+                                  1024 * 1024),
+        "index_compute_bytes": compute["bytes"],
+        "queries": queries["events"],
+        "query_limit": cap("quota_queries", QUOTA_QUERIES),
+        "documents": documents,
+        "document_limit": cap("quota_documents", QUOTA_DOCUMENTS),
+    }
+
+
+@app.get("/orgs/{org_id}/usage", tags=["System"])
+async def org_usage(org_id: str, project_id: str = Query("default")):
+    return await _usage_view(org_id, project_id)
+
+
+@app.get("/my/usage", tags=["My Documents"])
+async def my_usage(request: Request, project_id: str = Query("default")):
+    realm = _granted_docs_realm(request)
+    return await _usage_view(realm, project_id)
+
+
 # --------------------------------------------------------------------- system
 
 @app.get("/health", tags=["System"])
@@ -446,6 +489,50 @@ async def list_project_documents(project_id: str,
 RETAINED_TEXT_CAP = 524288
 _ingest_locks: Dict[str, Any] = {}
 
+# Quotas (§9): unset (0) means unlimited, so the internal platform surface
+# is untouched until limits are deliberately provisioned -- by env for the
+# default tier, or per org in its registry_plans row. A refusal names the
+# number, the usage, and the period; it never dresses up as a server error.
+QUOTA_INGEST_MB = int(os.getenv("DOCREG_QUOTA_INGEST_MB", "0"))
+QUOTA_QUERIES = int(os.getenv("DOCREG_QUOTA_QUERIES", "0"))
+QUOTA_DOCUMENTS = int(os.getenv("DOCREG_QUOTA_DOCUMENTS", "0"))
+
+
+async def _enforce_quota(key: SpaceKey, *, adding_bytes: int = 0,
+                         adding_query: bool = False) -> None:
+    client = _client()
+    plan = await doc_store.org_plan(client, key.org_id) or {}
+    ingest_cap = int(plan.get("quota_ingest_mb", QUOTA_INGEST_MB)) * 1024 * 1024
+    query_cap = int(plan.get("quota_queries", QUOTA_QUERIES))
+    doc_cap = int(plan.get("quota_documents", QUOTA_DOCUMENTS))
+
+    if adding_bytes and ingest_cap > 0:
+        used = await doc_store.usage_month_to_date(client, key.org_id,
+                                                   "document_ingest")
+        if used["bytes"] + adding_bytes > ingest_cap:
+            raise HTTPException(
+                status_code=402,
+                detail=(f"Ingest quota reached: "
+                        f"{used['bytes'] // (1024 * 1024)}MB of "
+                        f"{ingest_cap // (1024 * 1024)}MB used this month. "
+                        f"Nothing was catalogued or indexed."))
+    if adding_bytes and doc_cap > 0:
+        n = await doc_store.count_documents(client, key.org_id, key.project_id)
+        if n >= doc_cap:
+            raise HTTPException(
+                status_code=402,
+                detail=(f"Document quota reached: {n} of {doc_cap} documents "
+                        f"in this project. Withdraw or erase one, or raise "
+                        f"the plan."))
+    if adding_query and query_cap > 0:
+        used = await doc_store.usage_month_to_date(client, key.org_id,
+                                                   "rag_lookup")
+        if used["events"] >= query_cap:
+            raise HTTPException(
+                status_code=402,
+                detail=(f"Query quota reached: {used['events']} of "
+                        f"{query_cap} queries this month."))
+
 async def _ingest(key: SpaceKey, filename: str, digest: str, size: int,
                   text: str, extraction, content_type: Optional[str],
                   source: str, category: str) -> Dict[str, Any]:
@@ -472,6 +559,7 @@ async def _ingest(key: SpaceKey, filename: str, digest: str, size: int,
     # filename both passed the existence check and forked the catalogue.
     # This lock holds within the process -- the registry runs one replica;
     # scaling out needs a database constraint, not a bigger claim here.
+    await _enforce_quota(key, adding_bytes=size)
     lock = _ingest_locks.setdefault(f"{key.org_id}:{key.project_id}:{doc_id}",
                                     __import__("asyncio").Lock())
     async with lock:
@@ -855,6 +943,7 @@ async def query_document_rag(req: RAGQueryRequest):
     key = SpaceKey(org_id=req.org_id, project_id=req.project_id,
                    document_space=req.document_space or "default")
     scope = req.document_space          # None means project-wide (Rule 2.3)
+    await _enforce_quota(key, adding_query=True)
 
     try:
         async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:

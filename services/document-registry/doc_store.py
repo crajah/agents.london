@@ -345,3 +345,54 @@ async def update_index_outcome(client, org_id: str, project_id: str, doc_id: str
         table_name=CATALOG, realm=org_id, vertex_id=pk,
         payload={**document, "kind": "reindex", "recorded_at": now()})
     return document
+
+
+# ------------------------------------------------------------------- usage
+
+PLANS = "registry_plans"
+
+
+async def org_plan(client, org_id: str) -> Optional[Dict[str, Any]]:
+    """The org's plan row, if the platform has set one. Absent = defaults."""
+    ref = client._get_table_ref(PLANS, org_id)
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT payload FROM {ref} WHERE realm = $1 ORDER BY id DESC LIMIT 1",
+        org_id)
+    return _payload(rows[0]) if rows else None
+
+
+async def usage_month_to_date(client, org_id: str, kind: str) -> Dict[str, int]:
+    """Sum of bytes and count of events for one kind since the month began.
+
+    Read from the durable ledger, so it lags the meter's flush interval by a
+    few seconds -- a quota check that is marginally generous, never wrong."""
+    ref = client._get_table_ref("usage_events", org_id)
+    month_start = now()[:7] + "-01"
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT coalesce(sum((payload->>'bytes')::bigint), 0) AS b, "
+        f"count(*) AS n FROM {ref} WHERE realm = $1 "
+        f"AND payload->>'kind' = $2 AND payload->>'occurred_at' >= $3",
+        org_id, kind, month_start)
+    if not rows:
+        return {"bytes": 0, "events": 0}
+    row = rows[0]
+    try:
+        return {"bytes": int(row["b"]), "events": int(row["n"])}
+    except (TypeError, KeyError):
+        return {"bytes": 0, "events": 0}
+
+
+async def count_documents(client, org_id: str, project_id: str) -> int:
+    ref = client._get_table_ref(CATALOG, org_id)
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT count(*) AS n FROM {ref} WHERE realm = $1 AND space = $2 "
+        f"AND coalesce(payload->>'lifecycle', 'active') "
+        f"NOT IN ('{WITHDRAWN}', 'erased')",
+        org_id, project_id)
+    try:
+        return int(rows[0]["n"]) if rows else 0
+    except (TypeError, KeyError):
+        return 0
