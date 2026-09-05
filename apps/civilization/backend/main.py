@@ -2281,7 +2281,7 @@ def _docreg_client(**kw) -> "httpx.AsyncClient":
     tok = os.getenv("DOCREG_INTERNAL_TOKEN", "")
     if tok:
         kw.setdefault("headers", {})["x-internal-token"] = tok
-    return _docreg_client(**kw)
+    return httpx.AsyncClient(**kw)
 
 
 @app.post("/api/projects/{project_id}/spaces")
