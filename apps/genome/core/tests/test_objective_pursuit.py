@@ -69,10 +69,11 @@ class ReplyToOwner(unittest.IsolatedAsyncioTestCase):
                                  "stock prices"]}
             # ROUTER is unreachable in tests: the reply degrades to the raw
             # material -- never to silence
-            await drain._reply_to_owner(FakeStore(), "agent-asker", rq,
-                                        {"kind": "web"},
-                                        "searched: AAPL 234; GOOGL 178",
-                                        1000.0)
+            await drain._reply_to_owner(
+                FakeStore(), "agent-asker", rq,
+                {"kind": "web",
+                 "query": rq["objectives"][0][:200]},
+                "searched: AAPL 234; GOOGL 178", 1000.0)
         finally:
             drain.notify.emit_bg = orig
         self.assertEqual(len(chats), 1)
@@ -96,6 +97,22 @@ class ReplyToOwner(unittest.IsolatedAsyncioTestCase):
         await drain._reply_to_owner(FakeStore(), "a",
                                     {"owner_user_id": "u:x"},
                                     {"kind": "web"}, "m", 0.0)
+
+
+    async def test_a_mismatched_query_never_answers_the_objective(self):
+        class FakeStore:
+            class _c:
+                @staticmethod
+                async def add_vertex(*a, **k):
+                    raise AssertionError("must not write")
+        rq = {"owner_user_id": "u:owner",
+              "objectives": ["compare Apple and Google stock"]}
+        # a liar's decoy, or a stale round: the query was something else
+        await drain._reply_to_owner(FakeStore(), "a", rq,
+                                    {"kind": "web",
+                                     "query": "the price of tulips"},
+                                    "tulips are lovely", 0.0)
+        self.assertEqual(len(rq["objectives"]), 1)   # not retired
 
 
 if __name__ == "__main__":

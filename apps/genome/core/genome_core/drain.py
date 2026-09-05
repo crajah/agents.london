@@ -351,6 +351,13 @@ async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
     if not owner or not objectives:
         return
     objective = objectives[0]
+    # only a result that actually PURSUED the objective may answer it: a
+    # web search that ran some other query (a stale round, a liar's decoy)
+    # must not compose a reply from unrelated material and retire the
+    # owner's question unanswered (found live 2026-09-05)
+    if result.get("kind") == "web" and \
+            result.get("query") != objective[:200]:
+        return
     name = rq.get("name", agent_uuid)
     answer = None
     try:
@@ -465,7 +472,9 @@ async def apply_service(store: GenomeStore, world_realm: str,
         text = f"{holder_name} could do nothing for you from afar."
     rq = _word.hear(rq, text, f"agent:{agent.agent_uuid}", relays=1,
                     owner_sourced=False)
-    if result.get("kind") in ("web", "appraisal", "chronicle", "prospect"):
+    if result.get("kind") == "web":
+        # in-world results (appraisals, chronicles) inform the agent; only
+        # a search that carried the owner's question closes the loop
         await _reply_to_owner(store, counterparty, rq, result, text, now)
     # the ledgers: a favour performed is a debt incurred (the relationship)
     debts = dict(rq.get("debts") or {})
