@@ -67,6 +67,19 @@ def dsn() -> str:
         f"{os.getenv('POSTGRES_PORT', '5432')}/{os.environ['POSTGRES_DB']}")
 
 
+async def _payloads_for(store: GenomeStore, uuids: list) -> dict:
+    """Every named agent's payload in ONE query. The per-agent containment
+    lookup cost ~36ms of seq-scan CPU each; heal and sweep issuing one per
+    agent per tick kept the database pinned after every other storm was
+    out (measured 2026-09-05)."""
+    if not uuids:
+        return {}
+    rows = await store._c.find_vertices(
+        "agents", realm="genome_agents",
+        where=[("key", "in", list(uuids))], limit=len(uuids))
+    return {r.payload.get("key"): r.payload for r in rows}
+
+
 async def heal(store: GenomeStore, realm: str, now: float) -> int:
     """Schedule a decide for any present agent with nothing pending."""
     pending_subjects = {v.payload.get("subject")
@@ -84,11 +97,10 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
                             where=[("done_at", "is_null", None)],
                             limit=2000)}
     healed = 0
-    for v in await store.agents_in(realm):
-        a = v.payload["key"]
-        rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                            filters={"key": a}, limit=1)
-        apl = rows[0].payload if rows else {}
+    present = [v.payload["key"] for v in await store.agents_in(realm)]
+    payloads = await _payloads_for(store, present)
+    for a in present:
+        apl = payloads.get(a, {})
         from genome_core import pathogen as _pth
         if len(apl.get("antigens") or []) > _pth.ANTIGEN_CAP:
             # inert antigens cost storage and detoast CPU on every read;
@@ -126,19 +138,18 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
     from genome_core import drain as _d, forms as _f
     wmeta = await _d._world_payload(store, realm)
     positions = {}
-    metas = {}
-    for v in await store.agents_in(realm):
-        a = v.payload["key"]
+    present = [v.payload["key"] for v in await store.agents_in(realm)]
+    metas = await _payloads_for(store, present)
+    for a in present:
         latest = await store.latest_movement(a)
         if latest is None or "waypoints" not in latest.payload:
+            metas.pop(a, None)
             continue
         pl = latest.payload
         r = _f.Route(tuple(tuple(q) for q in pl["waypoints"]),
                      pl["departed_at"], pl.get("arrives_at"))
         positions[a] = _f.route_position(r, now)
-        rows = await store._c.find_vertices("agents", realm="genome_agents",
-                                            filters={"key": a}, limit=1)
-        metas[a] = rows[0].payload if rows else {}
+        metas.setdefault(a, {})
     agents = sorted(positions)
     hits = 0
     for i, a in enumerate(agents):
