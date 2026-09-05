@@ -130,8 +130,17 @@ async def index(rag: GraphRAG, key: SpaceKey, text: str,
     failure in this service to diagnose from the outside.
     """
     try:
-        raw = await rag.index_document(text, metadata=metadata, space=key.project_id)
-        return IndexOutcome.succeeded(raw if isinstance(raw, dict) else {})
+        # index_text, not index_document: index_document means "index ONE
+        # chunk", and feeding it a whole document sent the entire text to the
+        # LLM as a single extraction prompt (context overflow on anything
+        # sizeable, "no usable entities" on the rest) and produced one
+        # truncated embedding for the whole file. index_text chunks
+        # (chunk_chars=2000, overlap=200) and processes bounded batches
+        # (max_concurrent_chunks) -- correct retrieval granularity AND
+        # bounded memory (user question 2026-09-05).
+        raw = await rag.index_text(text, metadata=metadata, space=key.project_id)
+        chunks = raw if isinstance(raw, list) else [raw]
+        return IndexOutcome.succeeded({"chunks_indexed": len(chunks)})
     except Exception as e:
         logger.exception("GraphRAG indexing failed for %s", metadata.document)
         return IndexOutcome.failed(f"{type(e).__name__}: {e}")
