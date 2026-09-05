@@ -150,6 +150,7 @@ async def _refresher(realm: str):
             try:
                 snap = await snapshot.world_snapshot(app.state.pg, realm)
                 st["data"] = _json.dumps(snap)
+                st["at"] = __import__("time").time()
             except Exception:
                 logger.exception("stream refresh failed for %s", realm)
             async with st["cond"]:
@@ -196,7 +197,15 @@ async def world_stream(realm: str):
 @app.get("/worlds/{realm}/snapshot", tags=["World"])
 async def get_snapshot(realm: str):
     """Any world, read-only (genome-spec Rule 13.2). Observation confers
-    nothing on agents (Rule 13.3) — this path serves humans only."""
+    nothing on agents (Rule 13.3) — this path serves humans only.
+
+    When the SSE refresher is already rebuilding this realm every two
+    seconds for stream watchers, the poll serves ITS copy instead of
+    building a second one: same data the stream just sent, at zero cost."""
+    st = _streams.get(realm)
+    if st and st.get("data") and             __import__("time").time() - st.get("at", 0) < 4.0:
+        from fastapi.responses import Response
+        return Response(content=st["data"], media_type="application/json")
     return await snapshot.world_snapshot(app.state.pg, realm)
 
 
