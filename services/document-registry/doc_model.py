@@ -84,8 +84,25 @@ def document_id(project_id: str, document_space: str, filename: str) -> str:
 
     The org is the realm and so is already the table's schema; it is not
     repeated in the id. Separators in the filename are flattened because this
-    string is a post-graph vertex id.
+    string is a post-graph vertex id — and when flattening loses information,
+    a short hash of the raw name rides along, because "report v1.pdf" and
+    "report_v1.pdf" flattening to the same id made the second upload a
+    *revision of a different document*: its chunks replaced, silently.
+    Filenames that flatten losslessly keep their unhashed id, which is also
+    what preserves continuity for everything already catalogued.
     """
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("_") or "doc"
+    if safe != filename:
+        import hashlib as _h
+        safe = f"{safe}.{_h.sha256(filename.encode()).hexdigest()[:8]}"
+    return f"doc_{project_id}_{document_space}_{safe}"
+
+
+def legacy_document_id(project_id: str, document_space: str,
+                       filename: str) -> str:
+    """The pre-hash id shape, for continuity: a document catalogued before
+    the collision fix keeps its identity, so re-uploading it supersedes it
+    rather than forking a duplicate."""
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", filename).strip("_") or "doc"
     return f"doc_{project_id}_{document_space}_{safe}"
 

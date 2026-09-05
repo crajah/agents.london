@@ -33,7 +33,8 @@ from env_file import load_env_file
 from doc_model import (
     FAILED, INDEXED, WITHDRAWN, CreateSpaceRequest, DocumentError,
     ExtractionResult, RAGQueryRequest, SpaceKey, UploadTextRequest,
-    catalogue_entry, content_hash, document_id, normalise_document_space,
+    catalogue_entry, content_hash, document_id, legacy_document_id,
+    normalise_document_space,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ async def lifespan(app: FastAPI):
     finally:
         if app.state.meter:
             await app.state.meter.stop()
+        await doc_rag.close_engines()
         await client.close()
 
 
@@ -169,6 +171,17 @@ async def _internal_gate(request: Request, call_next):
             return JSONResponse({"detail": "internal surface; token required"},
                                 status_code=403)
     return await call_next(request)
+
+
+def _public(document: Dict[str, Any]) -> Dict[str, Any]:
+    """A catalogue record as the API presents it. The retained text and the
+    storage key are structure, not surface -- they never leave the building.
+    One boundary, used by every route, instead of a pop() per call site."""
+    doc = {k: v for k, v in document.items()
+           if k not in ("_pk", "_text")}
+    if document.get("_text"):
+        doc["retained_text"] = True
+    return doc
 
 
 def _client():
@@ -366,10 +379,14 @@ async def list_project_documents(project_id: str,
         normalise_document_space(chosen) if chosen else None, include_withdrawn)
     return {"project_id": project_id, "org_id": org_id,
             "document_space": chosen, "space_name": chosen,
-            "documents": documents, "count": len(documents)}
+            "documents": [_public(d) for d in documents],
+            "count": len(documents)}
 
 
 # ------------------------------------------------------------------ ingestion
+
+RETAINED_TEXT_CAP = 524288
+_ingest_locks: Dict[str, Any] = {}
 
 async def _ingest(key: SpaceKey, filename: str, digest: str, size: int,
                   text: str, extraction, content_type: Optional[str],
@@ -383,35 +400,66 @@ async def _ingest(key: SpaceKey, filename: str, digest: str, size: int,
     client = _client()
     # Retain the extracted text (capped) so /reindex can actually recover
     # a failed index -- without it every reindex 409ed forever (audit
-    # 2026-09-04) and the only remedy was re-upload.
-    retained_text = text[:524288] if text else ""
-
-    # Rule 5.6 — identical bytes in the same document space is a no-op.
-    duplicate = await doc_store.find_by_hash(
-        client, key.org_id, key.project_id, key.document_space, digest)
-    if duplicate:
-        return {**duplicate, "deduplicated": True}
+    # 2026-09-04) and the only remedy was re-upload. When the cap bites,
+    # say so on the record: a reindex from truncated text is partial and
+    # must never read as whole.
+    retained_text = text[:RETAINED_TEXT_CAP] if text else ""
+    truncated = bool(text) and len(text) > RETAINED_TEXT_CAP
 
     doc_id = document_id(key.project_id, key.document_space, filename)
-    existing = await doc_store.find_document(client, key.org_id, key.project_id, doc_id)
+    legacy_id = legacy_document_id(key.project_id, key.document_space,
+                                   filename)
 
-    async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
-        if existing:
-            # Rule 7.2 — the superseded revision's chunks go, or a query can
-            # cite both revisions under the same filename.
-            await doc_rag.drop_chunks(rag, key, doc_id)
-        metadata = doc_rag.metadata_for(key, filename, doc_id, digest, source, category)
-        outcome = await doc_rag.index(rag, key, text, metadata)
+    # One writer per document identity. Two concurrent uploads of the same
+    # filename both passed the existence check and forked the catalogue.
+    # This lock holds within the process -- the registry runs one replica;
+    # scaling out needs a database constraint, not a bigger claim here.
+    lock = _ingest_locks.setdefault(f"{key.org_id}:{key.project_id}:{doc_id}",
+                                    __import__("asyncio").Lock())
+    async with lock:
+        # Rule 5.6 — identical bytes in the same document space is a no-op.
+        duplicate = await doc_store.find_by_hash(
+            client, key.org_id, key.project_id, key.document_space, digest)
+        if duplicate:
+            return _public({**duplicate, "deduplicated": True})
 
-    entry = catalogue_entry(key=key, filename=filename, digest=digest,
-                            size=size, extraction=extraction,
-                            index=outcome, content_type=content_type)
-    entry["_text"] = retained_text
-    saved = await doc_store.save_document(client, key, entry)
-    saved.pop("_pk", None)
+        existing = await doc_store.find_document(client, key.org_id,
+                                                 key.project_id, doc_id)
+        if existing is None and legacy_id != doc_id:
+            # continuity: a document catalogued before the collision fix
+            # keeps its pre-hash identity, so this upload supersedes it
+            # rather than forking a duplicate
+            existing = await doc_store.find_document(client, key.org_id,
+                                                     key.project_id,
+                                                     legacy_id)
+            if existing is not None:
+                doc_id = legacy_id
+
+        async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
+            if existing:
+                # Rule 7.2 — the superseded revision's chunks go, or a query
+                # can cite both revisions under the same filename.
+                await doc_rag.drop_chunks(rag, key, doc_id)
+            metadata = doc_rag.metadata_for(key, filename, doc_id, digest,
+                                            source, category)
+            outcome = await doc_rag.index(rag, key, text, metadata)
+
+        entry = catalogue_entry(key=key, filename=filename, digest=digest,
+                                size=size, extraction=extraction,
+                                index=outcome, content_type=content_type)
+        entry["document_id"] = doc_id
+        entry["_text"] = retained_text
+        if truncated:
+            entry["_text_truncated"] = True
+        saved = await doc_store.save_document(client, key, entry)
 
     _record("document_ingest", key, size)
-    return saved
+    # the compute dimension, measured not modelled: the text handed to the
+    # embedder and extractor. post-graph-rag does not report token usage;
+    # until it does, indexed bytes is the honest billing proxy and the
+    # tokens_* fields stay zero rather than invented.
+    _record("index_compute", key, len(text.encode("utf-8")) if text else 0)
+    return _public(saved)
 
 
 def _upload_response(document: Dict[str, Any], key: SpaceKey) -> Dict[str, Any]:
@@ -454,6 +502,12 @@ async def upload_document_text(space_name: str, req: UploadTextRequest):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     data = req.content.encode("utf-8")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(f"{req.document_name!r} exceeds the "
+                    f"{MAX_UPLOAD_BYTES // (1024 * 1024)}MB upload limit. "
+                    f"Nothing was catalogued or indexed."))
     extraction = ExtractionResult(method="api_text", text=req.content,
                                   characters=len(req.content))
     document = await _ingest(key, req.document_name, content_hash(data),
@@ -526,8 +580,8 @@ async def upload_document_file(space_name: str,
         os.unlink(path)
 
     document = await _ingest(key, filename, digest, size, extraction.text,
-                             extraction, file.content_type, filename,
-                             "file_upload")
+                             extraction, file.content_type, "file_upload",
+                             "document")
     return _upload_response(document, key)
 
 
@@ -578,8 +632,8 @@ async def upload_multiple_document_files(space_name: str,
         try:
             document = await _ingest(key, filename, digest, size,
                                      extraction.text, extraction,
-                                     upload.content_type, filename,
-                                     "file_upload")
+                                     upload.content_type, "file_upload",
+                                     "document")
         except Exception as e:
             logger.exception("ingest failed for %s", filename)
             failed.append({"filename": filename, "stage": "ingest", "error": str(e)})
@@ -627,7 +681,9 @@ async def reindex_document(project_id: str, doc_id: str,
         raise HTTPException(status_code=404, detail=f"Unknown document {doc_id!r}.")
 
     revisions = await doc_store.revisions_of(client, org_id, document["_pk"])
-    text = next((r.get("_text") for r in reversed(revisions) if r.get("_text")), None)
+    chosen = next((r for r in reversed(revisions) if r.get("_text")), None)
+    text = chosen.get("_text") if chosen else None
+    truncated = bool(chosen and chosen.get("_text_truncated"))
     if not text:
         # The extracted text is not retained on the catalogue entry — it lives
         # in the index. Re-indexing therefore needs the file again, and saying
@@ -648,8 +704,18 @@ async def reindex_document(project_id: str, doc_id: str,
         outcome = await doc_rag.index(rag, key, text, metadata)
     updated = await doc_store.update_index_outcome(
         client, org_id, project_id, doc_id, outcome.model_dump(mode="json"))
-    updated.pop("_pk", None)
-    return {"status": outcome.status, "document": updated}
+    _record("document_reindex", key, len(text.encode("utf-8")))
+    response = {"status": outcome.status, "document": _public(updated)}
+    if truncated:
+        # the retained copy was capped at ingest: this index covers the head
+        # of the document only, and claiming success whole would hide it
+        response["status"] = "partial"
+        response["truncated"] = True
+        response["note"] = (f"Reindexed from retained text capped at "
+                            f"{RETAINED_TEXT_CAP} bytes; the remainder is "
+                            f"not in the index. Re-upload the file for "
+                            f"full coverage.")
+    return response
 
 
 @app.delete("/projects/{project_id}/documents/{doc_id}", tags=["Document Lifecycle"])
@@ -674,9 +740,8 @@ async def withdraw_document(project_id: str, doc_id: str,
                                                 WITHDRAWN)
     except DocumentError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    updated.pop("_pk", None)
     return {"status": "withdrawn", "document_id": doc_id, "removed": removed,
-            "document": updated,
+            "document": _public(updated),
             "note": "Catalogue record retained; chunks removed from the index."}
 
 
@@ -689,9 +754,9 @@ async def document_revisions(project_id: str, doc_id: str,
     if document is None:
         raise HTTPException(status_code=404, detail=f"Unknown document {doc_id!r}.")
     revisions = await doc_store.revisions_of(client, org_id, document["_pk"])
-    document.pop("_pk", None)
-    return {"document_id": doc_id, "current": document,
-            "revisions": revisions, "count": len(revisions)}
+    return {"document_id": doc_id, "current": _public(document),
+            "revisions": [_public(r) for r in revisions],
+            "count": len(revisions)}
 
 
 # ------------------------------------------------------------------ retrieval

@@ -13,9 +13,11 @@ bulk ingest exhausts the pool.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from post_graph_rag import DocumentMetadata, GraphRAG, QueryParam, RAGConfig
@@ -78,24 +80,54 @@ def config_for(key: SpaceKey, db_uri: str, api_key: str) -> RAGConfig:
         db_uri=db_uri,
         realm=key.org_id,          # organisation — physical isolation
         space=key.project_id,      # project — logical isolation
+        # small pools: the cache below keeps one engine per (org, project),
+        # so each holds connections for its lifetime rather than a request
+        pool_min_size=0 if _POOL_MIN_ZERO else 1,
+        pool_max_size=int(os.getenv("RAG_POOL_MAX", "4")),
     )
+
+
+# One engine per (org, project), kept warm. Constructing GraphRAG per request
+# opened a pool and re-ran initialisation on every upload and query -- under
+# concurrent tenants that multiplied connections and dominated latency.
+# LRU-capped: the eviction closes what it evicts, the lifespan closes the rest.
+_ENGINE_CAP = int(os.getenv("RAG_ENGINE_CACHE", "32"))
+_engines: "OrderedDict[tuple, GraphRAG]" = OrderedDict()
+_engines_lock = asyncio.Lock()
+_POOL_MIN_ZERO = True
 
 
 @asynccontextmanager
 async def engine(key: SpaceKey, db_uri: str, api_key: str):
-    """An initialised GraphRAG engine, closed on every path (Rule 6.4)."""
-    rag = GraphRAG(config_for(key, db_uri, api_key))
-    await rag.initialize()
-    try:
-        yield rag
-    finally:
-        try:
-            await rag.close()
-        except Exception:
-            # Indexing or querying already succeeded or failed on its own terms;
-            # a close error must not change that outcome, but leaking a pooled
-            # connection is worth seeing in the log.
-            logger.exception("failed to close the GraphRAG engine")
+    """The (org, project) engine, initialised once and shared (Rule 6.4:
+    still closed on every path -- the paths are eviction and shutdown)."""
+    cache_key = (key.org_id, key.project_id)
+    async with _engines_lock:
+        rag = _engines.get(cache_key)
+        if rag is not None:
+            _engines.move_to_end(cache_key)
+        else:
+            rag = GraphRAG(config_for(key, db_uri, api_key))
+            await rag.initialize()
+            _engines[cache_key] = rag
+            while len(_engines) > _ENGINE_CAP:
+                _, evicted = _engines.popitem(last=False)
+                try:
+                    await evicted.close()
+                except Exception:
+                    logger.exception("failed to close an evicted engine")
+    yield rag
+
+
+async def close_engines() -> None:
+    """Shutdown: close every cached engine."""
+    async with _engines_lock:
+        while _engines:
+            _, rag = _engines.popitem(last=False)
+            try:
+                await rag.close()
+            except Exception:
+                logger.exception("failed to close a cached engine")
 
 
 def metadata_for(key: SpaceKey, filename: str, doc_id: str, digest: str,
