@@ -59,6 +59,13 @@ async def load_agent(store: GenomeStore, world_realm: str, agent_uuid: str,
             r = forms.Route(tuple(tuple(q) for q in pl["waypoints"]),
                             pl["departed_at"], pl.get("arrives_at"))
             x, y = forms.route_position(r, now)
+    if len(payload.get("antigens") or []) > pathogen.ANTIGEN_CAP:
+        # healthy hoarders never pass through settle(); shrink them here so
+        # no payload keeps a museum of inert antigens (they saturated the DB)
+        pruned = {**payload,
+                  "antigens": pathogen.prune_antigens(payload["antigens"], now)}
+        await store.put_agent(agent_uuid, pruned)
+        payload = pruned
     if payload.get("infections"):
         cfx = await construction.world_effects(store._c, world_realm)
         settled, events = pathogen.settle(payload, now,
@@ -1048,7 +1055,8 @@ async def _portage_group_cross(store: GenomeStore, origin_realm: str,
     # arrivals step OFF the portal, deterministically aside -- waking ON it
     # re-offered the door every time
     import math as _m
-    _ang = _m.tau * (int(counter) % 12) / 12.0
+    import zlib as _zl
+    _ang = _m.tau * (_zl.crc32(f"{key}:{to_world}".encode()) % 12) / 12.0
     dest_xy = [min(0.95, max(0.05, dest_xy[0] + 0.045 * _m.cos(_ang))),
                min(0.95, max(0.05, dest_xy[1] + 0.045 * _m.sin(_ang)))]
     await construction.portage_cross(store._c, origin_realm, to_world,
@@ -1683,12 +1691,12 @@ async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
                            "A bargain was struck and executed.")
         for u in (me, other_uuid):
             await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
-                                 _iso(now + 30.0 / _wts), "decide", u, {})
+                                 _iso(now + 30.0 / _nts), "decide", u, {})
         return "negotiate:bargain_struck"
     # dead: both resume their lives
     for u in (me, other_uuid):
         await store.schedule(world_realm, f"post-neg-{u}-{int(now)}",
-                             _iso(now + 30.0 / _wts), "decide", u, {})
+                             _iso(now + 30.0 / _nts), "decide", u, {})
     return f"negotiate:dead({out.get('why', '?')})"
 
 

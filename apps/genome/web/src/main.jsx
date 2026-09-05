@@ -1297,6 +1297,15 @@ whole game -- the commons market is how the far kinds arrive."
             unverified</span>}
         {me?.authenticated &&
           <span className="text-sm opacity-60">your world: {me.world_realm}</span>}
+        {me?.authenticated &&
+          <button className="text-xs px-2 py-1 rounded bg-neutral-800
+                             hover:bg-neutral-700 opacity-80"
+                  title="Sign out — your world keeps living without you"
+                  onClick={async () => {
+                    await fetch(`${API}/auth/logout`, {
+                      method: "POST", credentials: "include" });
+                    setMe({ authenticated: false });
+                  }}>logout</button>}
       </header>
       <div className="flex-1 flex min-h-0 relative">
         {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}

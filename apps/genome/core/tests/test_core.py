@@ -451,6 +451,35 @@ class TestPathogen(unittest.TestCase):
                            10 ** 6 + 90 * 86400)
         self.assertGreater(soon, later)                     # Rule 2.18d
 
+    def test_antigen_prune_keeps_immunity_drops_museum(self):
+        """One agent reached 456KB of antigens and saturated the database:
+        prune must bound the list while leaving coverage indistinguishable."""
+        from genome_core import pathogen as P
+        now = 10 ** 6
+        s = P.new_strain("s8")
+        live = {"vector": list(s["signature"]), "made_at": now - 60,
+                "strain_uuid": "s8", "decay_rate": 1e-7}
+        dupes = [{**live, "made_at": now - 3600 - i} for i in range(300)]
+        dead = [{"vector": list(s["signature"]), "made_at": now - 10 ** 6,
+                 "strain_uuid": f"old{i}", "decay_rate": 1.0}
+                for i in range(300)]
+        before = P.coverage([live] + dupes + dead, s["signature"], now)
+        kept = P.prune_antigens([live] + dupes + dead, now)
+        self.assertLessEqual(len(kept), P.ANTIGEN_CAP)
+        self.assertIn(live, kept)                # newest per strain survives
+        after = P.coverage(kept, s["signature"], now)
+        self.assertAlmostEqual(before, after, places=3)
+
+    def test_settle_prunes_before_appending(self):
+        from genome_core import pathogen as P
+        s = P.new_strain("s9")
+        pl = P.infect(self._payload(), s, 0.0)
+        pl["antigens"] = [{"vector": [0.5] * P.SIG_DIMS, "made_at": 0.0,
+                           "strain_uuid": f"junk{i}", "decay_rate": 1.0}
+                          for i in range(500)]
+        settled, _ = P.settle(pl, now=10 ** 6)
+        self.assertLessEqual(len(settled["antigens"]), P.ANTIGEN_CAP + 1)
+
 
 class TestHeardAssertions(unittest.TestCase):
     def _g(self):

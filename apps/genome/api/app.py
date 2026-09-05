@@ -260,6 +260,16 @@ async def email_verify(token: str):
     return resp
 
 
+@app.post("/auth/logout", tags=["Auth"])
+async def auth_logout():
+    """End the session. The world persists and stays watchable (Rule 13.2 —
+    observation is open); only the identity leaves the browser."""
+    from fastapi.responses import JSONResponse
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("genome_session", httponly=True, samesite="lax")
+    return resp
+
+
 def _uid(request) -> str | None:
     uid = auth_mod.verify_cookie(request.cookies.get("genome_session", ""))
     if uid:

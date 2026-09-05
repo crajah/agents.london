@@ -87,6 +87,33 @@ def infect(agent_payload: dict, strain: dict, now: float,
     return {**agent_payload, "infections": infections}
 
 
+ANTIGEN_FLOOR = 0.05             # below this strength an antigen is inert
+ANTIGEN_CAP = 64                 # per agent, strongest kept
+
+
+def prune_antigens(antigens: list[dict], now: float) -> list[dict]:
+    """Herd immunity needs live antigens, not a museum: coverage() takes the
+    max per dimension, so a decayed antigen (strength < floor) and every older
+    duplicate of a strain contribute nothing — but each one still costs
+    storage, TOAST detoasting and containment CPU on every read of the agent.
+    Unpruned, one agent reached 456KB of antigens and saturated the database.
+    Keep the newest antigen per strain, drop the inert, cap at the strongest
+    ANTIGEN_CAP."""
+    newest: dict = {}
+    for a in antigens:
+        k = a.get("strain_uuid") or id(a)
+        if k not in newest or a["made_at"] > newest[k]["made_at"]:
+            newest[k] = a
+    live = [a for a in newest.values()
+            if math.exp(-a["decay_rate"] * max(0.0, now - a["made_at"]))
+            >= ANTIGEN_FLOOR]
+    if len(live) > ANTIGEN_CAP:
+        live.sort(key=lambda a: math.exp(
+            -a["decay_rate"] * max(0.0, now - a["made_at"])), reverse=True)
+        live = live[:ANTIGEN_CAP]
+    return live
+
+
 def coverage(antigens: list[dict], signature: list[float], now: float) -> float:
     """Graded immunity (Rule 2.20): best combined overlap of live antigens,
     each decayed from its birth (2.18d) and by its holder already at grant."""
@@ -112,7 +139,8 @@ def settle(agent_payload: dict, now: float,
         return agent_payload, []
     g = agent_payload["genotype"]
     r = random.Random(f"settle:{agent_payload.get('identity', '')}:{int(now)}")
-    still, antigens, events = [], list(agent_payload.get("antigens", [])), []
+    still, events = [], []
+    antigens = prune_antigens(list(agent_payload.get("antigens", [])), now)
     history = list(agent_payload.get("infection_history", []))
     for rec in infections:
         strain = rec["strain"]
