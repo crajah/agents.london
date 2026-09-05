@@ -1543,11 +1543,11 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         await store.put_agent(res["winner"],
                               {**win_p, "stamina_max": max(0.0, new_max),
                                "victories": win_p.get("victories", 0) + 1})
-        if new_max < _vitals.INCAP_FLOOR:
-            # below the incapacitation floor the body can never stand again
-            # -- that IS burnout. Perishing only at exactly zero left a
-            # zombie band (0 < max < floor): incapacitated forever, never
-            # dying, never recovering (found live 2026-09-05, 6 agents).
+        if new_max < _vitals.BURNOUT_FLOOR:
+            # a max pool under a quarter is burnout (user directive
+            # 2026-09-05): die and respawn. Perishing only at exactly zero
+            # left a zombie band -- incapacitated forever, never dying,
+            # never recovering (found live 2026-09-05, 6 agents).
             home = win_p.get("home_realm", world_realm)
             await store.schedule(home, f"burnout-{res['winner']}-{int(now)}",
                                  _iso(now), "perish", res["winner"],

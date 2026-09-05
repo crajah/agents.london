@@ -61,6 +61,10 @@ def set_mana(payload: dict, value: float, now: float) -> dict:
 INCAP_FLOOR = 0.05               # the body moves again above 5% -- hours,
 # not an instant, at the calibrated recovery pace
 
+BURNOUT_FLOOR = 0.25             # user directive 2026-09-05: a max pool
+# ground below a quarter is burnout -- the agent dies and the world
+# respawns it, rather than limping on
+
 
 def incapacitated(payload: dict, now: float,
                   time_scale: float = 1.0) -> bool:

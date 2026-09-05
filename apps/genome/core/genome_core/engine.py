@@ -546,30 +546,39 @@ def drift_route(agent: AgentView, ctx: dict, terrain: list,
     paced to roughly fill the thinking gap. Deterministic per (agent,
     moment); pure; the caller persists."""
     from . import styles as stylemod
+    import math as _m
     g = ctx.get("genotype") or {}
     env = {"neighbours": ctx.get("neighbours", []),
            "explored_frac": len(agent.explored) / (GRID_K * GRID_K)
            if agent.explored else 0.0}
-    seed = f"drift:{agent.agent_uuid}:{int(now)}"
-    style = stylemod.pick_style(g, env, seed)
-    tx, ty = stylemod.target_for(style, agent.x, agent.y,
-                                 agent.explored, env, seed)
-    # a short leg: cap the amble so the next real decision never fights a
-    # long phantom journey
-    import math as _m
-    dx, dy = tx - agent.x, ty - agent.y
-    d = _m.hypot(dx, dy)
-    if d < 1e-6:
+    style = stylemod.pick_style(g, env,
+                                f"drift:{agent.agent_uuid}:{int(now)}")
+    # CHAINED legs: one short leg left the body parked between slow decide
+    # cycles -- ~1 of 53 visibly moving (measured 2026-09-05). The amble is
+    # now a multi-leg wander in the agent's style, long enough to fill the
+    # whole thinking gap, still one write and still interruptible: the next
+    # real decision routes from wherever the closed form says the body is.
+    pts: list = [(agent.x, agent.y)]
+    cx, cy = agent.x, agent.y
+    for leg in range(5):
+        seed = f"drift:{agent.agent_uuid}:{int(now)}:{leg}"
+        tx, ty = stylemod.target_for(style, cx, cy, agent.explored, env,
+                                     seed)
+        dx, dy = tx - cx, ty - cy
+        d = _m.hypot(dx, dy)
+        if d < 1e-6:
+            continue
+        cap = min(d, 0.12)
+        tx = min(0.95, max(0.05, cx + dx / d * cap))
+        ty = min(0.95, max(0.05, cy + dy / d * cap))
+        seg = pathmod.find_path(terrain, cx, cy, tx, ty)
+        pts.extend((seg or [(cx, cy), (tx, ty)])[1:])
+        cx, cy = pts[-1]
+    if len(pts) < 2:
         return None
-    cap = min(d, 0.12)
-    tx = agent.x + dx / d * cap
-    ty = agent.y + dy / d * cap
-    tx = min(0.95, max(0.05, tx))
-    ty = min(0.95, max(0.05, ty))
-    pts = pathmod.find_path(terrain, agent.x, agent.y, tx, ty)
-    if pts is None:
-        pts = [(agent.x, agent.y), (tx, ty)]
     length = sum(_m.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+    if length < 1e-6:
+        return None
     # amble pace: ~3 minutes to walk 0.12 units -- thinking speed
     duration = max(20.0, length / 0.12 * 180.0)
     return {"waypoints": [list(q) for q in pts], "departed_at": now,
