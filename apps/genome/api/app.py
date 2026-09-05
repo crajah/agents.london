@@ -216,6 +216,36 @@ async def get_snapshot(realm: str):
 # are gone (user directive 2026-09-05): one front door, verified only.
 
 
+@app.get("/me/replies", tags=["Auth"])
+async def my_replies(request: __import__("fastapi").Request, limit: int = 20):
+    """The owner's message inbox: every reply the user's agents have sent
+    back on their chats (user directive 2026-09-05: a ready answer should
+    reach the user against a chat icon in the top bar), newest first."""
+    from fastapi.responses import JSONResponse
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    mine = await app.state.pg.find_vertices(
+        "agents", realm="genome_agents",
+        filters={"owner_user_id": uid}, limit=50)
+    names = {v.payload.get("key"): {"name": v.payload.get("name"),
+                                    "colour_pair": v.payload.get("colour_pair")}
+             for v in mine if v.payload.get("key", "").startswith("agent")}
+    if not names:
+        return []
+    rows = await app.state.pg.get_vertices("chats", realm="genome_agents")
+    replies = sorted(
+        (v.payload for v in rows
+         if v.payload.get("kind") == "reply"
+         and v.payload.get("agent_uuid") in names),
+        key=lambda m: m.get("at", 0), reverse=True)[:limit]
+    return [{"agent_uuid": m["agent_uuid"],
+             "name": names[m["agent_uuid"]]["name"],
+             "colour_pair": names[m["agent_uuid"]]["colour_pair"],
+             "text": m.get("text", ""), "at": m.get("at", 0)}
+            for m in replies]
+
+
 @app.post("/auth/logout", tags=["Auth"])
 async def auth_logout():
     """End the session. The world persists and stays watchable (Rule 13.2 —
@@ -670,7 +700,11 @@ async def admin_worlds(request: __import__("fastapi").Request):
             "oldest_due_age_s": round(oldest_due_age, 1),
             "stalled": oldest_due_age > 300 and not meta.get("paused"),
             "flood_countdown_s": _fl.countdown_visible(meta, now),
+            "flood_at_in_s": (round(meta["flood_at"] - now, 1)
+                              if meta.get("flood_at") else None),
+            "time_scale": meta.get("time_scale", 1.0),
             "flood_count": meta.get("flood_count", 0),
+            "roster": [{"uuid": a} for a in agents[:60]],
             "open_listings": len(listings),
             "decisions_last_hour": await app.state.pg.count_vertices(
                 "decision_queue", realm="genome_agents",
@@ -725,6 +759,177 @@ async def admin_prune_antigens(request: __import__("fastapi").Request):
                                   pl["antigens"], now)})
         pruned += 1
     return {"pruned": pruned}
+
+
+def _admin_guard(request):
+    from fastapi.responses import JSONResponse
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    return None
+
+
+async def _world_meta_row(realm: str):
+    rows = await app.state.pg.find_vertices("world_meta", realm=realm,
+                                            filters={"key": realm}, limit=1)
+    return rows[0] if rows else None
+
+
+@app.post("/admin/worlds/{realm}/flood", tags=["Admin"])
+async def admin_flood_now(realm: str,
+                          request: __import__("fastapi").Request):
+    """Bring the water NOW: the flood clock is set to this moment and the
+    next tick executes it (user directive 2026-09-05)."""
+    import time as _t
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    row = await _world_meta_row(realm)
+    if row is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    await app.state.pg.upsert_vertex(
+        "world_meta", realm=realm, vertex_id=int(row.id), space="default",
+        payload={**row.payload, "flood_at": _t.time()})
+    return {"ok": True, "realm": realm, "flood_at": "now"}
+
+
+@app.put("/admin/worlds/{realm}/time-scale", tags=["Admin"])
+async def admin_time_scale(realm: str, payload: dict,
+                           request: __import__("fastapi").Request):
+    """Change a world's pace. Every duration in the engine divides by this,
+    so the change takes effect from the next event scheduled."""
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    try:
+        ts = float(payload.get("time_scale"))
+        assert 0.1 <= ts <= 600
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "time_scale must be 0.1..600"},
+                            status_code=400)
+    row = await _world_meta_row(realm)
+    if row is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    await app.state.pg.upsert_vertex(
+        "world_meta", realm=realm, vertex_id=int(row.id), space="default",
+        payload={**row.payload, "time_scale": ts})
+    return {"ok": True, "realm": realm, "time_scale": ts}
+
+
+@app.post("/admin/agents/{agent_uuid}/kill", tags=["Admin"])
+async def admin_kill(agent_uuid: str,
+                     request: __import__("fastapi").Request):
+    """Death by decree: the agent goes through the game's own perish and
+    regeneration path -- never a raw row deletion."""
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore as _GS
+    import time as _t
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            space=agent_uuid, limit=1)
+    if not rows:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    home = rows[0].payload.get("home_realm")
+    store = _GS(app.state.pg)
+    now = _t.time()
+    await store.schedule(home, f"decree-{agent_uuid}-{int(now)}",
+                         _dr._iso(now), "perish", agent_uuid,
+                         {"cause": "admin decree"})
+    return {"ok": True, "agent": agent_uuid, "home": home,
+            "note": "perish scheduled; regeneration follows the game's rules"}
+
+
+@app.post("/admin/agents/{agent_uuid}/heal", tags=["Admin"])
+async def admin_heal(agent_uuid: str,
+                     request: __import__("fastapi").Request):
+    """Full vitals restored: stamina and its ceiling, mana, infections
+    cleared. The operator's mercy, plainly labelled."""
+    import time as _t
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            space=agent_uuid, limit=1)
+    if not rows:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    now = _t.time()
+    pl = {**rows[0].payload, "stamina": 1.0, "stamina_max": 1.0,
+          "stamina_at": now, "mana": 1.0, "mana_at": now, "infections": []}
+    from genome_core.store import GenomeStore as _GS
+    await _GS(app.state.pg).put_agent(agent_uuid, pl)
+    return {"ok": True, "agent": agent_uuid, "healed": True}
+
+
+@app.post("/admin/agents/{agent_uuid}/nudge", tags=["Admin"])
+async def admin_nudge(agent_uuid: str,
+                      request: __import__("fastapi").Request):
+    """Schedule a decide NOW -- the operator's poke for a parked agent."""
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore as _GS
+    import time as _t
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            space=agent_uuid, limit=1)
+    if not rows:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    home = rows[0].payload.get("home_realm")
+    now = _t.time()
+    await _GS(app.state.pg).schedule(home, f"nudge-{agent_uuid}-{int(now)}",
+                                     _dr._iso(now), "decide", agent_uuid, {})
+    return {"ok": True, "agent": agent_uuid}
+
+
+@app.post("/admin/worlds/{realm}/scurry", tags=["Admin"])
+async def admin_scurry(realm: str,
+                       request: __import__("fastapi").Request):
+    """Evacuation order (user directive 2026-09-05): every present agent
+    leaves IMMEDIATELY, through the world's portals in rotation, riding the
+    same signed-transfer rails a chosen departure uses -- verification,
+    counters and arrival scheduling included."""
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore as _GS
+    import time as _t
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    row = await _world_meta_row(realm)
+    if row is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    meta = row.payload
+    doors = [p for p in meta.get("portals", []) if p.get("to_world")]
+    if not doors:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "this world has no portals"},
+                            status_code=409)
+    store = _GS(app.state.pg)
+    now = _t.time()
+    left, failed = [], []
+    present = [v.payload["key"] for v in await store.agents_in(realm)
+               if not v.payload["key"].startswith("user:")]
+    for i, a in enumerate(present):
+        door = doors[i % len(doors)]
+        try:
+            view, apl = await _dr.load_agent(store, realm, a, realm, now)
+            ok = await _dr.do_transfer(
+                store, realm, view, apl,
+                {"to_world": door["to_world"],
+                 "portal_xy": [door.get("x"), door.get("y")]},
+                meta.get("portals", []), now)
+            (left if ok else failed).append(a)
+        except Exception as e:
+            failed.append(f"{a}: {type(e).__name__}")
+    return {"ok": True, "realm": realm, "left": len(left),
+            "failed": failed[:10], "doors_used": len(doors)}
 
 
 @app.get("/admin/config", tags=["Admin"])

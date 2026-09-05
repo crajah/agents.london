@@ -29,6 +29,61 @@ function AgentTag({ a }) {
     </span>);
 }
 
+function Chats({ onOpen }) {
+  // the message inbox (user directive 2026-09-05): when an agent's answer
+  // is ready it appears here, against the chat icon in the top bar
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(
+    Number(localStorage.getItem("genome_chats_seen") || 0));
+  useEffect(() => {
+    const load = () => fetch(`${API}/me/replies`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setItems(d))
+      .catch(() => {});
+    load(); const t = setInterval(load, 25000);
+    return () => clearInterval(t);
+  }, []);
+  const unread = items.filter(i => i.at > seen).length;
+  const markSeen = () => {
+    const now = Date.now() / 1000;
+    localStorage.setItem("genome_chats_seen", String(now));
+    setSeen(now);
+  };
+  return (
+    <span className="relative">
+      <button onClick={() => { setOpen(!open); if (!open) markSeen(); }}
+              className="text-lg" title="Messages from your agents">
+        💬{unread > 0 &&
+          <span className="text-xs text-violet-400">{unread}</span>}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 w-96 max-h-80 overflow-y-auto
+                        bg-neutral-800 border border-neutral-600 rounded p-2
+                        text-sm z-10">
+          {items.length === 0 &&
+            <div className="opacity-50">No messages yet. Instruct one of
+              your agents and its answer arrives here.</div>}
+          {items.map((m, i) => (
+            <button key={i}
+                    className="block w-full text-left py-1.5 border-b
+                               border-neutral-700 hover:bg-neutral-700/50"
+                    onClick={() => { setOpen(false); onOpen(m.agent_uuid); }}>
+              <div className="text-xs text-violet-400/80 flex gap-1
+                              items-center">
+                {(m.colour_pair || []).map((c, j) =>
+                  <span key={j} className="inline-block w-2 h-2 rounded-full"
+                        style={{ background: c }} />)}
+                {m.name || m.agent_uuid}
+                <span className="opacity-50 ml-auto">
+                  {new Date(m.at * 1000).toLocaleTimeString()}</span>
+              </div>
+              <div className="opacity-80 line-clamp-2">{m.text}</div>
+            </button>))}
+        </div>)}
+    </span>);
+}
+
+
 function Bell() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -92,6 +147,12 @@ function AdminPanel({ onClose }) {
     setCfg(next);
     await fetch(`${API}/admin/config`, {
       method: "PUT", headers: hdrs, body: JSON.stringify(next) });
+  };
+  const [roster, setRoster] = useState(null);
+  const agentAct = async (uuid, verb) => {
+    await fetch(`${API}/admin/agents/${uuid}/${verb}`,
+                { method: "POST", headers: hdrs });
+    load();
   };
   const act = async (realm, verb) => {
     await fetch(`${API}/admin/worlds/${realm}/${verb}`,
@@ -225,9 +286,13 @@ from the next portal crossing."
                   <td>{w.agents}</td>
                   <td>{w.events_due}/{w.events_pending}</td>
                   <td>{w.oldest_due_age_s}s</td>
-                  <td>{w.flood_countdown_s != null
-                    ? `${Math.round(w.flood_countdown_s / 60)}m!`
-                    : `#${w.flood_count}`}</td>
+                  <td title={w.flood_at_in_s != null
+                    ? `the water arrives in ${Math.round(w.flood_at_in_s / 60)} minutes (operator's clock -- agents cannot see this until the window opens)`
+                    : "no flood scheduled"}>
+                    {w.flood_at_in_s != null
+                      ? `${Math.round(w.flood_at_in_s / 60)}m`
+                      : "—"}{" "}
+                    <span className="opacity-40">#{w.flood_count}</span></td>
                   <td>{w.open_listings}</td>
                   <td className="max-w-[9rem] truncate"
                       title={Object.entries(w.stock ?? {})
@@ -243,14 +308,77 @@ from the next portal crossing."
                             title="Introduce a fresh strain: one random
 resident becomes patient zero"
                             onClick={() => act(w.realm, "infect")}>+plague</button>
-                    <button className="underline opacity-70"
+                    <button className="underline opacity-70 mr-2"
                             onClick={() => act(w.realm,
                               w.paused ? "resume" : "pause")}>
                       {w.paused ? "resume" : "pause"}</button>
+                    <button className="underline text-sky-400/80 mr-2"
+                            title="Bring the water NOW"
+                            onClick={() => window.confirm(
+                              `Flood ${w.realm} now?`) &&
+                              act(w.realm, "flood")}>flood</button>
+                    <button className="underline text-amber-400/80 mr-2"
+                            title="Evacuation order: every agent leaves
+immediately through the portals"
+                            onClick={() => window.confirm(
+                              `Scurry ${w.realm}? Every agent leaves now.`) &&
+                              act(w.realm, "scurry")}>scurry</button>
+                    <button className="underline opacity-70"
+                            title="Inspect and act on this world's agents"
+                            onClick={() => setRoster(
+                              roster === w.realm ? null : w.realm)}>
+                      agents…</button>
                   </td>
                 </tr>))}
             </tbody>
           </table>
+          {roster && (() => {
+            const w = worlds.worlds.find(x => x.realm === roster);
+            if (!w) return null;
+            return (
+              <div className="mt-3 p-3 bg-neutral-800/60 rounded">
+                <div className="font-semibold mb-2">{w.realm}
+                  <span className="opacity-50 font-normal"> — pace </span>
+                  <input type="number" min="0.1" max="600" step="1"
+                         defaultValue={w.time_scale}
+                         className="w-20 bg-neutral-800 border
+                                    border-neutral-600 px-1 py-0.5 rounded"
+                         onBlur={async e => {
+                           await fetch(
+                             `${API}/admin/worlds/${w.realm}/time-scale`,
+                             { method: "PUT", headers: hdrs,
+                               body: JSON.stringify({ time_scale:
+                                 Number(e.target.value) }) });
+                           load();
+                         }} />
+                  <span className="opacity-50 font-normal">× real time</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  {(w.roster || []).map(a => (
+                    <div key={a.uuid}
+                         className="flex items-center gap-2 border-b
+                                    border-neutral-700/50 py-0.5">
+                      <span className="truncate flex-1">{a.uuid}</span>
+                      <button className="underline opacity-70"
+                              title="Schedule a decide now"
+                              onClick={() => agentAct(a.uuid, "nudge")}>
+                        nudge</button>
+                      <button className="underline text-emerald-400/80"
+                              title="Restore vitals in full"
+                              onClick={() => agentAct(a.uuid, "heal")}>
+                        heal</button>
+                      <button className="underline text-red-400/80"
+                              title="Death by decree — perishes and
+regenerates by the game's own rules"
+                              onClick={() => window.confirm(
+                                `Kill ${a.uuid}?`) &&
+                                agentAct(a.uuid, "kill")}>kill</button>
+                    </div>))}
+                  {(w.roster || []).length === 0 &&
+                    <div className="opacity-50">nobody present</div>}
+                </div>
+              </div>);
+          })()}
         </>}
       </div>
     </div>);
@@ -1281,6 +1409,8 @@ function App() {
                 onClick={() => setAdminOpen(true)}>⌘</button>
         {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
+        {me?.authenticated &&
+          <Chats onOpen={(u) => setInspect({ agent_uuid: u })} />}
         {me?.authenticated && <Bell />}
         {me?.authenticated && me.world_realm && realm === me.world_realm &&
           <button title="Materialise a further agent: 2 units from each of
