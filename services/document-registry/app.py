@@ -265,7 +265,9 @@ async def my_create_space(request: Request, body: dict):
 
 @app.get("/my/projects/{project_id}/documents", tags=["My Documents"])
 async def my_list_documents(request: Request, project_id: str,
-                            space_name: Optional[str] = Query(None)):
+                            space_name: Optional[str] = Query(None),
+                            limit: int = Query(100, ge=1, le=500),
+                            offset: int = Query(0, ge=0)):
     realm = _granted_docs_realm(request)
     # a direct call resolves NO FastAPI defaults: every Query(...) param
     # must be passed, or the sentinel object reaches the handler
@@ -273,7 +275,8 @@ async def my_list_documents(request: Request, project_id: str,
                                         space_name=space_name,
                                         document_space=None,
                                         org_id=realm,
-                                        include_withdrawn=False)
+                                        include_withdrawn=False,
+                                        limit=limit, offset=offset)
 
 
 @app.post("/my/spaces/{space_name}/documents/upload-text",
@@ -301,8 +304,60 @@ async def my_query(request: Request, body: dict):
     req = RAGQueryRequest(org_id=realm,
                           project_id=body.get("project_id", "default"),
                           document_space=body.get("document_space"),
-                          query=body["query"])
+                          query=body["query"],
+                          top_k=int(body.get("top_k", 5)),
+                          mode=body.get("mode", "mix"))
     return await query_document_rag(req)
+
+
+@app.post("/my/spaces/{space_name}/documents/upload-file",
+          tags=["My Documents"])
+async def my_upload_file(request: Request, space_name: str,
+                         project_id: str = Form("default"),
+                         file: UploadFile = File(...)):
+    realm = _granted_docs_realm(request)
+    return await upload_document_file(space_name, project_id=project_id,
+                                      org_id=realm, document_space=space_name,
+                                      file=file)
+
+
+@app.post("/my/spaces/{space_name}/documents/upload-multiple-files",
+          tags=["My Documents"])
+async def my_upload_files(request: Request, space_name: str,
+                          project_id: str = Form("default"),
+                          files: List[UploadFile] = File(...)):
+    realm = _granted_docs_realm(request)
+    return await upload_multiple_document_files(
+        space_name, project_id=project_id, org_id=realm,
+        document_space=space_name, files=files)
+
+
+@app.delete("/my/projects/{project_id}/documents/{doc_id}",
+            tags=["My Documents"])
+async def my_withdraw(request: Request, project_id: str, doc_id: str):
+    realm = _granted_docs_realm(request)
+    return await withdraw_document(project_id, doc_id, org_id=realm)
+
+
+@app.post("/my/projects/{project_id}/documents/{doc_id}/erase",
+          tags=["My Documents"])
+async def my_erase(request: Request, project_id: str, doc_id: str):
+    realm = _granted_docs_realm(request)
+    return await erase_document(project_id, doc_id, org_id=realm)
+
+
+@app.post("/my/projects/{project_id}/documents/{doc_id}/reindex",
+          tags=["My Documents"])
+async def my_reindex(request: Request, project_id: str, doc_id: str):
+    realm = _granted_docs_realm(request)
+    return await reindex_document(project_id, doc_id, org_id=realm)
+
+
+@app.get("/my/projects/{project_id}/documents/{doc_id}/revisions",
+         tags=["My Documents"])
+async def my_revisions(request: Request, project_id: str, doc_id: str):
+    realm = _granted_docs_realm(request)
+    return await document_revisions(project_id, doc_id, org_id=realm)
 
 
 # --------------------------------------------------------------------- system
@@ -372,15 +427,18 @@ async def list_project_documents(project_id: str,
                                  space_name: Optional[str] = Query(None),
                                  document_space: Optional[str] = Query(None),
                                  org_id: str = Query("org_default"),
-                                 include_withdrawn: bool = Query(False)):
+                                 include_withdrawn: bool = Query(False),
+                                 limit: int = Query(100, ge=1, le=500),
+                                 offset: int = Query(0, ge=0)):
     chosen = document_space or space_name
     documents = await doc_store.list_documents(
         _client(), org_id, project_id,
-        normalise_document_space(chosen) if chosen else None, include_withdrawn)
+        normalise_document_space(chosen) if chosen else None,
+        include_withdrawn, limit=limit, offset=offset)
     return {"project_id": project_id, "org_id": org_id,
             "document_space": chosen, "space_name": chosen,
             "documents": [_public(d) for d in documents],
-            "count": len(documents)}
+            "count": len(documents), "limit": limit, "offset": offset}
 
 
 # ------------------------------------------------------------------ ingestion
@@ -743,6 +801,30 @@ async def withdraw_document(project_id: str, doc_id: str,
     return {"status": "withdrawn", "document_id": doc_id, "removed": removed,
             "document": _public(updated),
             "note": "Catalogue record retained; chunks removed from the index."}
+
+
+@app.post("/projects/{project_id}/documents/{doc_id}/erase",
+          tags=["Document Lifecycle"])
+async def erase_document(project_id: str, doc_id: str,
+                         org_id: str = Query("org_default")):
+    """Erase a document entirely: chunks, retained text, every revision.
+
+    Withdrawal (DELETE) keeps the record so history can explain itself;
+    erasure is for when the content itself must go -- right-to-erasure.
+    What remains is a tombstone carrying no content: the id, the space,
+    when, and how many revisions went with it.
+    """
+    client = _client()
+    document = await doc_store.find_document(client, org_id, project_id, doc_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Unknown document {doc_id!r}.")
+    key = SpaceKey(org_id=org_id, project_id=project_id,
+                   document_space=document.get("document_space", "default"))
+    async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
+        removed = await doc_rag.drop_chunks(rag, key, doc_id)
+    tombstone = await doc_store.erase_document(client, org_id, project_id, doc_id)
+    return {"status": "erased", "document_id": doc_id,
+            "chunks_removed": removed, "tombstone": tombstone}
 
 
 @app.get("/projects/{project_id}/documents/{doc_id}/revisions",

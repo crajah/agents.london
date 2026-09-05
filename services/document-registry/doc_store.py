@@ -174,22 +174,29 @@ async def find_document(client, org_id: str, project_id: str,
 
 async def list_documents(client, org_id: str, project_id: str,
                          document_space: Optional[str] = None,
-                         include_withdrawn: bool = False) -> List[Dict[str, Any]]:
+                         include_withdrawn: bool = False,
+                         limit: Optional[int] = None,
+                         offset: int = 0) -> List[Dict[str, Any]]:
+    """Catalogue listing, filtered and paged in SQL: a corpus of ten
+    thousand documents must not travel to answer for one page of it."""
     ref = client._get_table_ref(CATALOG, org_id)
-    rows = await _fetch_or_empty(
-        client,
-        f"SELECT payload FROM {ref} WHERE realm = $1 AND space = $2 ORDER BY id",
-        org_id, project_id)
-    out = []
-    for row in rows:
-        payload = _payload(row)
-        if not include_withdrawn and payload.get("lifecycle") == WITHDRAWN:
-            continue
-        name = payload.get("document_space") or payload.get("space_name")
-        if document_space and name != document_space:
-            continue
-        out.append(payload)
-    return out
+    conditions = ["realm = $1", "space = $2"]
+    args: List[Any] = [org_id, project_id]
+    if document_space:
+        args.append(document_space)
+        conditions.append(f"payload->>'document_space' = ${len(args)}")
+    if not include_withdrawn:
+        conditions.append("coalesce(payload->>'lifecycle', 'active') "
+                          f"NOT IN ('{WITHDRAWN}', 'erased')")
+    sql = (f"SELECT payload FROM {ref} WHERE {' AND '.join(conditions)} "
+           f"ORDER BY id")
+    if limit is not None:
+        args.append(int(limit))
+        sql += f" LIMIT ${len(args)}"
+    if offset:
+        args.append(int(offset))
+        sql += f" OFFSET ${len(args)}"
+    return [_payload(row) for row in await _fetch_or_empty(client, sql, *args)]
 
 
 async def find_by_hash(client, org_id: str, project_id: str, document_space: str,
@@ -265,6 +272,39 @@ async def revisions_of(client, org_id: str, doc_pk: int) -> List[Dict[str, Any]]
         if isinstance(body, dict):
             out.append(body)
     return out
+
+
+async def erase_document(client, org_id: str, project_id: str,
+                         doc_id: str) -> Dict[str, Any]:
+    """Erase a document's content from the catalogue (right-to-erasure).
+
+    Withdrawal retains the record AND the retained text and every revision;
+    erasure removes them. What remains is a tombstone that carries no
+    content -- enough to explain that something was here and was erased,
+    nothing more. The index chunks are the caller's job (drop_chunks),
+    because they live behind the RAG engine, not this table.
+    """
+    document = await find_document(client, org_id, project_id, doc_id)
+    if document is None:
+        raise DocumentError(f"unknown document {doc_id!r} in project {project_id!r}")
+    pk = document["_pk"]
+    revision_count = len(await client.get_vertex_data(
+        table_name=CATALOG, realm=org_id, vertex_id=pk))
+    # the vertex goes, and its revision rows cascade with it
+    await client.delete_vertex(CATALOG, realm=org_id, vertex_id=str(pk))
+    tombstone = {
+        "document_id": doc_id,
+        "org_id": org_id,
+        "project_id": project_id,
+        "document_space": document.get("document_space", "default"),
+        "space_name": document.get("document_space", "default"),
+        "lifecycle": "erased",
+        "erased_at": now(),
+        "revisions_erased": revision_count,
+    }
+    await client.add_vertex(CATALOG, realm=org_id, space=project_id,
+                            payload=tombstone)
+    return tombstone
 
 
 async def set_lifecycle(client, org_id: str, project_id: str, doc_id: str,

@@ -33,6 +33,26 @@ class FakeClient:
                     for pk, (t, r, s, p) in sorted(self.rows.items())
                     if t == table and r == realm and s == space
                     and p.get("document_space") == name]
+        if "NOT IN ('withdrawn', 'erased')" in query or "LIMIT $" in query \
+                or "OFFSET $" in query:
+            # the paged listing: realm, space, [document_space], [limit], [offset]
+            realm, space = args[0], args[1]
+            rest = list(args[2:])
+            wanted_space = rest.pop(0) if "payload->>'document_space' = $" in query else None
+            limit = rest.pop(0) if "LIMIT $" in query else None
+            offset = rest.pop(0) if "OFFSET $" in query else 0
+            rows = [{"id": pk, "payload": p}
+                    for pk, (t, r, sp, p) in sorted(self.rows.items())
+                    if t == table and r == realm and sp == space]
+            if wanted_space is not None:
+                rows = [x for x in rows
+                        if x["payload"].get("document_space") == wanted_space]
+            if "NOT IN ('withdrawn', 'erased')" in query:
+                rows = [x for x in rows
+                        if x["payload"].get("lifecycle", "active")
+                        not in ("withdrawn", "erased")]
+            rows = rows[offset:]
+            return rows[:limit] if limit is not None else rows
         if "payload->>'content_hash'" in query:
             realm, space, digest = args
             return [{"id": pk, "payload": p}
@@ -65,6 +85,15 @@ class FakeClient:
                             payload=None, embedding=None):
         self.rows[vertex_id] = (table, realm, space, dict(payload))
         self.calls.append(("upsert_vertex", table, realm, space))
+
+    async def delete_vertex(self, table, realm=None, vertex_id=None,
+                            user_id=None):
+        pk = int(vertex_id)
+        self.rows.pop(pk, None)
+        # cascade, as the real store does: data keys are (table, vertex_id)
+        self.data = {k: v for k, v in getattr(self, "data", {}).items()
+                     if k[1] != pk}
+        return True
 
     async def add_vertex_data(self, table_name=None, realm=None, vertex_id=None,
                               payload=None):
@@ -305,3 +334,27 @@ async def test_creating_a_space_twice_against_record_rows_creates_one():
     assert a["space_key"] == b["space_key"]
     assert b["description"] == "first"
     assert sum(1 for x in c.calls if x[0] == "add_vertex") == 1
+
+
+async def test_erasure_leaves_a_content_free_tombstone():
+    c = FakeClient()
+    saved = await doc_store.save_document(c, KEY, entry())
+    doc_id = saved["document_id"]
+    tomb = await doc_store.erase_document(c, "org_a", "proj_a", doc_id)
+    assert tomb["lifecycle"] == "erased"
+    assert tomb["revisions_erased"] >= 1
+    assert "_text" not in tomb and "filename" not in tomb
+    # erased documents leave the default listing
+    docs = await doc_store.list_documents(c, "org_a", "proj_a")
+    assert all(d.get("document_id") != doc_id or
+               d.get("lifecycle") == "erased" for d in docs)
+    listed = [d for d in docs if d.get("lifecycle") != "erased"]
+    assert doc_id not in [d.get("document_id") for d in listed]
+
+
+async def test_listing_pages():
+    c = FakeClient()
+    for i in range(5):
+        await doc_store.save_document(c, KEY, entry(filename=f"f{i}.txt"))
+    page = await doc_store.list_documents(c, "org_a", "proj_a", limit=2, offset=2)
+    assert len(page) == 2
