@@ -28,14 +28,23 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                if v.payload.get("present") is True]
     import asyncio as _aio
 
+    # ONE query for the whole room, not one containment scan per agent:
+    # under SSE refreshers rebuilding every watched realm every 2 seconds,
+    # the per-agent lookups saturated the pool and a 59KB snapshot took
+    # 18-26s to assemble (measured 2026-09-05)
+    rows = await client.find_vertices(
+        "agents", realm=AGENTS_REALM,
+        where=[("key", "in", list(present))],
+        limit=len(present)) if present else []
+    by_key = {r.payload.get("key"): r for r in rows}
+
     async def _one_agent(uuid):
-        rows = await client.find_vertices("agents", realm=AGENTS_REALM,
-                                          filters={"key": uuid}, limit=1)
-        payload = rows[0].payload if rows else {}
+        row = by_key.get(uuid)
+        payload = row.payload if row else {}
         intent = None
-        if rows:
+        if row:
             latest = await client.get_latest_vertex_data(
-                "agents", realm=AGENTS_REALM, vertex_id=int(rows[0].id))
+                "agents", realm=AGENTS_REALM, vertex_id=int(row.id))
             if latest is not None and "waypoints" in latest.payload:
                 intent = {k: latest.payload[k]
                           for k in ("waypoints", "departed_at", "arrives_at")}
