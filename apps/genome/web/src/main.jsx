@@ -92,21 +92,33 @@ function WorldChat({ realm, isOwner }) {
   const [msgs, setMsgs] = useState([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const load = () => fetch(`${API}/worlds/${realm}/world-chat`)
+    .then(r => r.ok ? r.json() : [])
+    .then(d => Array.isArray(d) && setMsgs(d))
+    .catch(() => {});
   useEffect(() => {
     if (!realm) return;
-    const load = () => fetch(`${API}/worlds/${realm}/world-chat`)
-      .then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setMsgs(d))
-      .catch(() => {});
     load(); const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [realm]);
   const send = async () => {
     if (!draft.trim()) return;
-    await fetch(`${API}/worlds/${realm}/world-chat`, {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: draft, ask: true }) });
-    setDraft("");
+    setErr(null);
+    // a send that fails must SAY so, and one that succeeds must show at
+    // once -- the old shape swallowed both and typed words just vanished
+    try {
+      const r = await fetch(`${API}/worlds/${realm}/world-chat`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: draft, ask: true }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setErr(d.error || d.detail || `send failed (${r.status})`); return; }
+      setDraft("");
+      load();
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
   };
   const upload = async (file) => {
     if (!file) return;
@@ -168,6 +180,8 @@ function WorldChat({ realm, isOwner }) {
                   {m.text}</div>
               </div>))}
           </div>
+          {err &&
+            <div className="text-amber-400 text-xs px-2 py-1">{err}</div>}
           {isOwner && (
             <div className="flex gap-1 p-2 border-t border-neutral-700">
               <input className="flex-1 bg-neutral-800 px-2 py-1 rounded"
