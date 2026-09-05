@@ -10,9 +10,8 @@ import AgentRegistryView from './components/AgentRegistryView';
 import ToolRegistryView from './components/ToolRegistryView';
 import SharedMemoryView from './components/SharedMemoryView';
 import GuardrailsView from './components/GuardrailsView';
-import SSOModal from './components/SSOModal';
 import MaterializeAgentModal from './components/MaterializeAgentModal';
-import AuthLockScreen from './components/AuthLockScreen';
+import AuthLockScreen, { authorityLoginUrl } from './components/AuthLockScreen';
 import BYOMModal from './components/BYOMModal';
 import ProjectTabsBar from './components/ProjectTabsBar';
 import AgentDiscoveryView from './components/AgentDiscoveryView';
@@ -20,7 +19,7 @@ import DocumentRegistryView from './components/DocumentRegistryView';
 import { api, attempt, setApiContext } from './utils/api';
 import { readRoute, writeRoute } from './utils/route';
 import { fetchModels, resetModelCache } from './utils/models';
-import { resolveUnverifiedEmailSession, toSession } from './utils/tenancy';
+import { toSession } from './utils/tenancy';
 
 /** Events that change the population, and so invalidate what the lists show. */
 const RELOAD_EVENTS = new Set([
@@ -46,7 +45,6 @@ export default function App() {
   // cannot send a colleague a link to what they are looking at, and a refresh
   // always lands back on the chatbot.
   const [currentTab, setCurrentTab] = useState(() => readRoute().view);
-  const [ssoModalOpen, setSsoModalOpen] = useState(false);
   const [materializeModalOpen, setMaterializeModalOpen] = useState(false);
   const [byomModalOpen, setByomModalOpen] = useState(false);
 
@@ -168,27 +166,32 @@ export default function App() {
     }));
   };
 
-  // The SSO modal hands back a session the server resolved. The shell used to
-  // re-derive the organisation from the email itself — a third copy of a rule
-  // that only has to disagree once to put someone in the wrong realm (F.5).
-  const handleSSOLoginSuccess = async (emailOrSession) => {
-    if (emailOrSession && typeof emailOrSession === 'object') {
-      // The OIDC flows hand back a session already in camelCase; mapping it
-      // through toSession() again reads snake_case keys and erases userId,
-      // which white-screened the shell on `userId.startsWith` after SSO.
-      handleAuthenticate(emailOrSession.userId
-        ? emailOrSession : toSession(emailOrSession));
-      return;
+  // The only doors in are the authority's Google and Microsoft flows. The
+  // authority redirects back with a short-lived RS256 token (URL param and
+  // cookie); the backend verifies it against the authority's JWKS and answers
+  // with the tenancy — one rule, one place (F.5), verified only (F.7).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('authority_token');
+    if (fromUrl) {
+      params.delete('authority_token');
+      const qs = params.toString();
+      window.history.replaceState({}, '',
+        window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
     }
-    const { data, error } = await attempt(resolveUnverifiedEmailSession(emailOrSession));
-    if (error) {
-      console.error('Could not resolve tenancy:', error.userMessage);
-      return;
-    }
-    handleAuthenticate(data);
-  };
+    const fromCookie = document.cookie.split('; ')
+      .find((c) => c.startsWith('authority_token='))?.split('=').slice(1).join('=');
+    const token = fromUrl || fromCookie;
+    if (!token) return;
+    attempt(api.post('/api/auth/authority/session', { token }, { scoped: false }))
+      .then(({ data, error }) => {
+        if (error) console.error('Authority session rejected:', error.userMessage);
+        else handleAuthenticate(toSession(data));
+      });
+  }, []);
 
   const handleLogout = () => {
+    document.cookie = 'authority_token=; Max-Age=0; path=/';
     setUserSession(null);
   };
 
@@ -225,7 +228,7 @@ export default function App() {
 
       {!userSession ? (
         /* Mandatory Authentication Wall / Registration Screen */
-        <AuthLockScreen onAuthenticate={handleAuthenticate} />
+        <AuthLockScreen />
       ) : (
         /* Full Application Dashboard Once Authenticated */
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'background.default' }}>
@@ -235,7 +238,7 @@ export default function App() {
             setState={setState}
             userSession={userSession}
             onLogout={handleLogout}
-            onOpenSSO={() => setSsoModalOpen(true)}
+            onOpenSSO={() => { window.location.href = authorityLoginUrl('google'); }}
             onOpenMaterialize={() => setMaterializeModalOpen(true)}
             onOpenBYOM={() => setByomModalOpen(true)}
             onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
@@ -272,12 +275,6 @@ export default function App() {
           </Box>
 
           {/* Modals */}
-          <SSOModal
-            open={ssoModalOpen}
-            onClose={() => setSsoModalOpen(false)}
-            onLoginSuccess={handleSSOLoginSuccess}
-          />
-
           <MaterializeAgentModal
             open={materializeModalOpen}
             onClose={() => setMaterializeModalOpen(false)}

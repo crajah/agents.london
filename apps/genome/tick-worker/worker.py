@@ -89,6 +89,13 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
         rows = await store._c.find_vertices("agents", realm="genome_agents",
                                             filters={"key": a}, limit=1)
         apl = rows[0].payload if rows else {}
+        from genome_core import pathogen as _pth
+        if len(apl.get("antigens") or []) > _pth.ANTIGEN_CAP:
+            # inert antigens cost storage and detoast CPU on every read;
+            # the payload is already in hand here, so shrink it in passing
+            apl = {**apl, "antigens": _pth.prune_antigens(apl["antigens"],
+                                                          now)}
+            await store.put_agent(a, apl)
         if apl.get("genotype") and "perishes_at" not in apl:
             await _d.schedule_perish(store, a, apl, now)   # the reaper learns
         if a in pending_subjects:

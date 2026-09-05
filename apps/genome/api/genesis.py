@@ -82,6 +82,7 @@ async def ensure_user_world(client: Any, user_id: str,
                                      "world_realm": realm, "email": email,
                                      "first_agent": a, "created_at": now})
     await link_to_commons(client, realm)
+    await link_random_worlds(client, realm, want=5)
     await notify.emit(client, user_id, "platform", "world_created",
                       f"Your world {realm} exists. Your first agent, "
                       f"{payload['name']}, is awake in it.")
@@ -120,6 +121,71 @@ def _free_slot(meta: dict) -> dict | None:
     return None
 
 
+def _grow_slot(meta: dict, seed: str) -> dict | None:
+    """One more portal slot, clear of terrain and standing slots -- the same
+    constraints worldgen applies, seeded so re-runs agree."""
+    import random as _rnd
+    r = _rnd.Random(seed)
+    terrain = meta.get("terrain", [])
+    slots = meta.get("portal_slots", [])
+    for _try in range(120):
+        q = (r.uniform(0.08, 0.92), r.uniform(0.08, 0.92))
+        if any((q[0] - o["x"]) ** 2 + (q[1] - o["y"]) ** 2
+               < (o.get("r", 0.0) + 0.03) ** 2 for o in terrain):
+            continue
+        if any((q[0] - t["x"]) ** 2 + (q[1] - t["y"]) ** 2 < 0.10 ** 2
+               for t in slots):
+            continue
+        return {"x": round(q[0], 4), "y": round(q[1], 4)}
+    return None
+
+
+async def _user_world_realms(client: Any) -> list[str]:
+    """Every world born through genesis, discovered from the user records."""
+    out = set()
+    for v in await client.get_vertices("agents", realm="genome_agents"):
+        if v.payload.get("key", "").startswith("user:") and                 v.payload.get("world_realm"):
+            out.add(v.payload["world_realm"])
+    return sorted(out)
+
+
+async def link_random_worlds(client: Any, realm: str, want: int = 5) -> list:
+    """Teleport links to `want` random OTHER user worlds (user directive
+    2026-09-05: a new world joins five at birth). Deterministic per realm;
+    already-linked pairs are permanent and skipped."""
+    import random as _rnd
+    store = GenomeStore(client)
+    meta = await drain._world_payload(store, realm)
+    linked = {p.get("to_world") for p in meta.get("portals", [])}
+    candidates = [w for w in await _user_world_realms(client)
+                  if w != realm and w not in linked
+                  and not w.startswith("genome_commons")]
+    r = _rnd.Random(f"randlinks:{realm}")
+    r.shuffle(candidates)
+    made = []
+    for w in candidates:
+        if len(made) >= want:
+            break
+        if await link_worlds(client, realm, w):
+            made.append(w)
+    return made
+
+
+async def topup_portals(client: Any, minimum: int = 5) -> dict:
+    """Every user world up to at least `minimum` teleport points (commons
+    included in the count -- it is a portal like any other)."""
+    store = GenomeStore(client)
+    out = {}
+    for w in await _user_world_realms(client):
+        meta = await drain._world_payload(store, w)
+        n = len(meta.get("portals", []))
+        if n >= minimum:
+            continue
+        made = await link_random_worlds(client, w, want=minimum - n)
+        out[w] = {"had": n, "added": made}
+    return out
+
+
 async def link_worlds(client: Any, realm_a: str, realm_b: str) -> bool:
     """A teleport link, both ways, at each world's next free slot
     (Rules 6.2e/6.3a: fixed positions, permanent)."""
@@ -129,6 +195,22 @@ async def link_worlds(client: Any, realm_a: str, realm_b: str) -> bool:
     if any(p.get("to_world") == realm_b for p in meta_a.get("portals", [])):
         return False                              # already linked (permanent)
     sa, sb = _free_slot(meta_a), _free_slot(meta_b)
+    # Rule 6.2e fixed the slots at creation, but connectivity outgrew four
+    # (user directive 2026-09-05: every world holds at least five portals),
+    # so a full world mints one more slot -- placed by the same constraints
+    # the generator used, deterministic per (realm, slot count)
+    if sa is None:
+        sa = _grow_slot(meta_a, f"slot:{realm_a}:"
+                                f"{len(meta_a.get('portal_slots', []))}")
+        if sa:
+            meta_a = {**meta_a,
+                      "portal_slots": meta_a.get("portal_slots", []) + [sa]}
+    if sb is None:
+        sb = _grow_slot(meta_b, f"slot:{realm_b}:"
+                                f"{len(meta_b.get('portal_slots', []))}")
+        if sb:
+            meta_b = {**meta_b,
+                      "portal_slots": meta_b.get("portal_slots", []) + [sb]}
     if not (sa and sb):
         return False
     from genome_core import construction as _con
@@ -167,7 +249,8 @@ async def invite_user(client: Any, inviter_id: str, email: str) -> dict:
     if result["created"]:
         await notify.outbox(client, email, "A world awaits you in genome",
             f"You were invited to genome. Your world already exists -- "
-            f"sign in with this address to enter it: {web}")
+            f"sign in with Google or Microsoft using this address to "
+            f"enter it: {web}")
     # notifications only when something actually happened (a re-invite of an
     # already-linked pair changes nothing and says nothing)
     if linked:

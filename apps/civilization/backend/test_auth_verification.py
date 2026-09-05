@@ -1,24 +1,21 @@
 """A token has to prove something before a session is granted on it.
 
-Two ways it did not.
-
-The Microsoft path base64-decoded the middle segment of the JWT and read the
-email out of it — no signature, no issuer, no expiry, no audience. A string
-anyone could type by hand was accepted as proof of identity, and the address it
-named decided which organisation the session landed in.
-
-The Google path checked the signature (via Google's tokeninfo) but never
-checked who the token was *for*. An attacker registers their own OAuth client,
-signs in to it, and presents the resulting token here: genuinely signed,
-genuinely unexpired, and issued to somebody else's application entirely.
+There is now exactly one door: the platform authority. Google and Microsoft
+sign people in over there; what arrives here is the authority's own RS256
+token, checked against the authority's JWKS. The routes that used to accept
+provider id_tokens directly — and the email route that accepted a bare
+address as an identity — are gone, and these tests pin that they stay gone.
 """
 from __future__ import annotations
 
 import base64
 import json
+import time
 
+import jwt as pyjwt
 import pytest
-from fastapi import HTTPException
+from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi.testclient import TestClient
 
 import main
 
@@ -30,70 +27,96 @@ def forged(payload: dict) -> str:
     return f"{seg({'alg': 'RS256'})}.{seg(payload)}.not-a-signature"
 
 
-# ------------------------------------------------------------------ audience
-
-def test_a_google_token_for_another_application_is_refused():
-    with pytest.raises(HTTPException) as raised:
-        main._require_audience({"aud": "999-someone-elses.apps.googleusercontent.com"},
-                               ["976346242948-ours.apps.googleusercontent.com"],
-                               "Google")
-    assert raised.value.status_code == 401
-    assert "different application" in raised.value.detail
+@pytest.fixture()
+def client():
+    return TestClient(main.app)
 
 
-def test_a_token_for_this_application_passes():
-    main._require_audience({"aud": "ours"}, ["ours"], "Google")
+# ------------------------------------------------------- the doors that closed
+
+def test_the_email_door_is_gone(client):
+    r = client.post("/api/auth/email/session", json={"email": "a@b.com"})
+    assert r.status_code in (404, 405)
 
 
-def test_a_migration_may_accept_more_than_one_client(monkeypatch):
-    """The bundle and the backend are configured in different places.
-
-    A GitHub Actions build argument and a Kubernetes secret can hold different
-    clients — as they do here — and during a migration both are legitimate. The
-    point is that the set is stated rather than unbounded.
-    """
-    monkeypatch.setenv("GOOGLE_ADDITIONAL_CLIENT_IDS", "second, third")
-    accepted = main._accepted_client_ids("first", "GOOGLE_ADDITIONAL_CLIENT_IDS")
-    assert accepted == ["first", "second", "third"]
-    main._require_audience({"aud": "third"}, accepted, "Google")
+def test_the_direct_google_door_is_gone(client):
+    r = client.post("/api/auth/google/verify", json={"id_token": "x"})
+    assert r.status_code in (404, 405)
 
 
-def test_a_token_with_no_audience_at_all_is_refused():
-    with pytest.raises(HTTPException) as raised:
-        main._require_audience({"email": "someone@example.com"}, ["ours"], "Google")
-    assert raised.value.status_code == 401
+def test_the_direct_microsoft_door_is_gone(client):
+    r = client.post("/api/auth/ms/verify", json={"id_token": "x"})
+    assert r.status_code in (404, 405)
 
 
-def test_no_configured_client_means_nothing_can_be_checked(monkeypatch):
-    """Refusing beats accepting everything when there is nothing to compare to."""
-    monkeypatch.delenv("GOOGLE_ADDITIONAL_CLIENT_IDS", raising=False)
-    with pytest.raises(HTTPException) as raised:
-        main._accepted_client_ids("", "GOOGLE_ADDITIONAL_CLIENT_IDS")
-    assert raised.value.status_code == 500
+# ------------------------------------------------------ the door that remains
+
+class _FakeSigningKey:
+    def __init__(self, key):
+        self.key = key
 
 
-# ------------------------------------------------------------------ signature
+class _FakeJWKSClient:
+    """Stands in for PyJWKClient so the test never leaves the process."""
 
-def test_a_hand_written_microsoft_token_is_refused():
-    """The exact bypass: no key, no signature, and it used to be believed."""
-    token = forged({"email": "attacker@example.com",
-                    "aud": "ours", "iss": "https://login.microsoftonline.com/t/v2.0",
-                    "exp": 9999999999})
-    with pytest.raises(HTTPException) as raised:
-        main._verify_microsoft_id_token(token, ["ours"])
-    assert raised.value.status_code == 401
-    assert "Invalid Microsoft ID Token" in raised.value.detail
+    def __init__(self, public_key):
+        self._pub = public_key
+
+    def get_signing_key_from_jwt(self, token):
+        return _FakeSigningKey(self._pub)
 
 
-def test_the_email_in_a_forged_payload_never_reaches_tenancy():
-    """What made it serious: the address chooses the organisation."""
-    token = forged({"email": "ceo@someone-elses-company.com", "aud": "ours"})
-    with pytest.raises(HTTPException):
-        main._verify_microsoft_id_token(token, ["ours"])
+@pytest.fixture()
+def authority_keys(monkeypatch):
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    monkeypatch.setattr(main, "_authority_jwks_client",
+                        _FakeJWKSClient(private.public_key()))
+    issuer = "https://agents.london/authority"
+    monkeypatch.setenv("AUTHORITY_ISSUER", issuer)
+
+    def mint(claims: dict) -> str:
+        now = int(time.time())
+        doc = {"iss": issuer, "sub": "u:test", "iat": now, "exp": now + 300}
+        doc.update(claims)
+        return pyjwt.encode(doc, private, algorithm="RS256")
+
+    return mint
 
 
-def test_a_token_that_is_not_a_jwt_at_all_is_refused():
-    for rubbish in ("", "not.a.token", "only-one-part", "a.b"):
-        with pytest.raises(HTTPException) as raised:
-            main._verify_microsoft_id_token(rubbish, ["ours"])
-        assert raised.value.status_code == 401
+def test_a_forged_token_is_refused(client, monkeypatch):
+    monkeypatch.setattr(main, "_authority_jwks_client", None)
+    r = client.post("/api/auth/authority/session",
+                    json={"token": forged({"email": "attacker@corp.com"})})
+    assert r.status_code == 401
+
+
+def test_not_a_jwt_at_all_is_refused(client, monkeypatch):
+    monkeypatch.setattr(main, "_authority_jwks_client", None)
+    r = client.post("/api/auth/authority/session", json={"token": "rubbish"})
+    assert r.status_code == 401
+
+
+def test_a_valid_token_without_email_is_refused(client, authority_keys):
+    r = client.post("/api/auth/authority/session",
+                    json={"token": authority_keys({})})
+    assert r.status_code == 400
+    assert "email" in r.json()["detail"]
+
+
+def test_a_valid_token_grants_a_verified_session(client, authority_keys):
+    r = client.post("/api/auth/authority/session",
+                    json={"token": authority_keys({"email": "Dev@Corp.com"})})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verified"] is True
+    assert body["method"] == "authority"
+    assert body["email"] == "dev@corp.com"
+    assert body["user_id"]
+    assert body["org_id"]
+
+
+def test_an_expired_token_is_refused(client, authority_keys):
+    token = authority_keys({"email": "dev@corp.com",
+                            "exp": int(time.time()) - 10})
+    r = client.post("/api/auth/authority/session", json={"token": token})
+    assert r.status_code == 401

@@ -200,64 +200,9 @@ async def get_snapshot(realm: str):
     return await snapshot.world_snapshot(app.state.pg, realm)
 
 
-@app.get("/auth/{provider}/login", tags=["Auth"])
-async def auth_login(provider: str):
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(auth_mod.login_url(provider, state="genome"))
-
-
-@app.get("/auth/{provider}/callback", tags=["Auth"])
-async def auth_callback(provider: str, code: str):
-    from fastapi.responses import RedirectResponse
-    info = auth_mod.exchange_code(provider, code)
-    uid = auth_mod.user_id_from(provider, info)
-    result = await genesis.ensure_user_world(app.state.pg, uid,
-                                             email=info.get("email"))
-    await genesis.mark_verified(app.state.pg, uid)   # the provider attests
-    web = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
-    resp = RedirectResponse(f"{web}/?world={result['world_realm']}")
-    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
-                    httponly=True, samesite="lax")
-    return resp
-
-
-@app.post("/auth/email/login", tags=["Auth"])
-async def email_login(payload: dict):
-    """Direct entry (Rule 6.2i): the session opens at once so the demo stays
-    frictionless, but it opens UNVERIFIED; a magic link goes to the outbox
-    and only following it proves the address is really held."""
-    from fastapi.responses import JSONResponse
-    email = (payload.get("email") or "").strip()
-    if "@" not in email:
-        return JSONResponse({"error": "email required"}, status_code=400)
-    uid = auth_mod.user_id_from_email(email)
-    result = await genesis.ensure_user_world(app.state.pg, uid, email=email)
-    link = (f"{auth_mod.REDIRECT_BASE}/auth/email/verify"
-            f"?token={auth_mod.magic_token(uid)}")
-    await notify.outbox(app.state.pg, email, "Verify your genome sign-in",
-                        f"Follow this link to verify your address: {link}\n"
-                        f"It works for one day.")
-    verified = await genesis.is_verified(app.state.pg, uid)
-    resp = JSONResponse({"ok": True, "world_realm": result["world_realm"],
-                         "verified": verified})
-    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
-                    httponly=True, samesite="lax")
-    return resp
-
-
-@app.get("/auth/email/verify", tags=["Auth"])
-async def email_verify(token: str):
-    from fastapi.responses import RedirectResponse, JSONResponse
-    uid = auth_mod.verify_magic(token)
-    if not uid:
-        return JSONResponse({"error": "link invalid or expired"},
-                            status_code=400)
-    await genesis.mark_verified(app.state.pg, uid)
-    web = os.getenv("GENOME_WEB_BASE", "http://localhost:5173")
-    resp = RedirectResponse(f"{web}/?verified=1")
-    resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
-                    httponly=True, samesite="lax")
-    return resp
+# Two ways in, both through the platform authority (Google and Microsoft).
+# The legacy in-app OIDC exchange and the unverified email/magic-link door
+# are gone (user directive 2026-09-05): one front door, verified only.
 
 
 @app.post("/auth/logout", tags=["Auth"])
@@ -267,6 +212,7 @@ async def auth_logout():
     from fastapi.responses import JSONResponse
     resp = JSONResponse({"ok": True})
     resp.delete_cookie("genome_session", httponly=True, samesite="lax")
+    resp.delete_cookie("authority_token", path="/", samesite="lax")
     return resp
 
 
@@ -736,6 +682,40 @@ async def admin_worlds(request: __import__("fastapi").Request):
     return {"worlds": out, "decisions_last_hour": done_hour}
 
 
+@app.post("/admin/portals/topup", tags=["Admin"])
+async def admin_portals_topup(request: __import__("fastapi").Request):
+    """Every user world up to at least five teleport points (user directive
+    2026-09-05); new links chosen at random, permanent once made."""
+    from fastapi.responses import JSONResponse
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    return await genesis.topup_portals(app.state.pg, minimum=5)
+
+
+@app.post("/admin/prune-antigens", tags=["Admin"])
+async def admin_prune_antigens(request: __import__("fastapi").Request):
+    """One sweep over EVERY agent record -- dormant ones never pass through
+    drain or the tick heal loop, yet their payload bloat taxes each read."""
+    from fastapi.responses import JSONResponse
+    from genome_core import pathogen as _pth
+    import time as _t
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    from genome_core.store import GenomeStore as _GS
+    store = _GS(app.state.pg)
+    now = _t.time()
+    pruned = 0
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        pl = v.payload
+        if len(pl.get("antigens") or []) <= _pth.ANTIGEN_CAP:
+            continue
+        await store.put_agent(pl["key"],
+                              {**pl, "antigens": _pth.prune_antigens(
+                                  pl["antigens"], now)})
+        pruned += 1
+    return {"pruned": pruned}
+
+
 @app.get("/admin/config", tags=["Admin"])
 async def admin_get_config(request: __import__("fastapi").Request):
     from fastapi.responses import JSONResponse
@@ -1152,12 +1132,34 @@ async def my_delete(payload: dict, request: __import__("fastapi").Request):
 
 @app.get("/me", tags=["Auth"])
 async def me(request: __import__("fastapi").Request):
-    uid = _uid(request)
+    from fastapi.responses import JSONResponse
+    uid = auth_mod.verify_cookie(request.cookies.get("genome_session", ""))
+    claims = None
     if not uid:
-        return {"authenticated": False}
+        # the platform front door: its JWT is short-lived transit, so a
+        # valid one is traded here for our own session cookie
+        h = request.headers.get("authorization", "")
+        tok = h[7:] if h.lower().startswith("bearer ")             else request.cookies.get("authority_token", "")
+        claims = auth_mod.authority_claims(tok)
+        uid = claims.get("sub") if claims else None
+    if not uid:
+        return JSONResponse({"authenticated": False})
     realm = await genesis.user_world_realm(app.state.pg, uid)
-    return {"authenticated": True, "user": uid, "world_realm": realm,
-            "verified": await genesis.is_verified(app.state.pg, uid)}
+    if realm is None and claims is not None:
+        # first visit through the front door: genesis, verified -- Google or
+        # Microsoft attested the address before the authority minted the token
+        result = await genesis.ensure_user_world(app.state.pg, uid,
+                                                 email=claims.get("email"))
+        await genesis.mark_verified(app.state.pg, uid)
+        realm = result["world_realm"]
+    resp = JSONResponse({"authenticated": True, "user": uid,
+                         "world_realm": realm,
+                         "verified": await genesis.is_verified(app.state.pg,
+                                                               uid)})
+    if claims is not None:
+        resp.set_cookie("genome_session", auth_mod.session_cookie(uid),
+                        httponly=True, samesite="lax")
+    return resp
 
 
 @app.get("/agents/{agent_uuid}", tags=["Agent"])

@@ -1120,6 +1120,14 @@ function App() {
     new URLSearchParams(location.search).get("world") ?? "");
   const [me, setMe] = useState(null);
   useEffect(() => {
+    // back from the authority: the token already rides in a cookie; the
+    // URL copy is transit residue and should not linger in the address bar
+    const q = new URLSearchParams(location.search);
+    if (q.get("authority_token")) {
+      q.delete("authority_token");
+      const qs = q.toString();
+      history.replaceState({}, "", location.pathname + (qs ? `?${qs}` : ""));
+    }
     fetch(`${API}/me`, { credentials: "include" })
       .then(r => r.json()).then(d => {
         setMe(d);
@@ -1247,22 +1255,15 @@ function App() {
         <span className="text-sm opacity-70">{status}</span>
         <span className="flex-1" />
         {me && !me.authenticated && <>
-          <input className="bg-neutral-800 px-2 py-1 rounded text-sm w-56"
-                 placeholder="your@email — enter to begin"
-                 onKeyDown={async e => {
-                   if (e.key !== "Enter") return;
-                   const r = await fetch(`${API}/auth/email/login`, {
-                     method: "POST", credentials: "include",
-                     headers: { "Content-Type": "application/json" },
-                     body: JSON.stringify({ email: e.target.value })});
-                   const d = await r.json();
-                   if (d.world_realm) { setMe({ authenticated: true,
-                     world_realm: d.world_realm }); setRealm(d.world_realm); }
-                 }} />
-          <a className="text-sm underline opacity-80"
-             href={`${API}/auth/google/login`}>Google</a>
-          <a className="text-sm underline opacity-80"
-             href={`${API}/auth/microsoft/login`}>Microsoft</a>
+          <span className="text-xs opacity-50">sign in:</span>
+          <a className="text-sm px-2 py-1 rounded bg-neutral-100 text-neutral-900
+                        hover:bg-white no-underline font-medium"
+             href={`/authority/login/google?return_to=${
+               encodeURIComponent("/genome/")}`}>Google</a>
+          <a className="text-sm px-2 py-1 rounded bg-neutral-700
+                        hover:bg-neutral-600 no-underline font-medium"
+             href={`/authority/login/microsoft?return_to=${
+               encodeURIComponent("/genome/")}`}>Microsoft</a>
         </>}
         <button className="text-sm opacity-60" title="Simulation admin"
                 onClick={() => setAdminOpen(true)}>⌘</button>

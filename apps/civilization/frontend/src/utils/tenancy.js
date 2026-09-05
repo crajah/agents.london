@@ -32,23 +32,3 @@ export function toSession(body, { method } = {}) {
     notice: body.notice || null,
   };
 }
-
-/**
- * Resolve an email address to a session, without verifying it.
- *
- * Named for what it does. It is not `signIn` and not `authenticate`, because
- * it does neither, and a function whose name overstates it invites call sites
- * that trust it.
- */
-export async function resolveUnverifiedEmailSession(email) {
-  const body = await api.post('/api/auth/email/session', { email }, { scoped: false });
-  return toSession(body, { method: 'email' });
-}
-
-/** Whether an address is worth sending to the server at all. */
-export function looksLikeEmail(value) {
-  if (!value) return false;
-  const trimmed = value.trim();
-  const at = trimmed.indexOf('@');
-  return at > 0 && trimmed.indexOf('.', at) > at + 1 && !/\s/.test(trimmed);
-}

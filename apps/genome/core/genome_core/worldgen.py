@@ -113,7 +113,9 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
     # clear of terrain; linking them to destinations happens when connections
     # form. Slot 0 is reserved for the commons (Rule 6.2f).
     portal_slots = []
-    for _ in range(4):
+    # eight slots: commons plus at least five random world links at birth
+    # (user directive 2026-09-05), with headroom before slots must grow
+    for _ in range(8):
         for _try in range(60):
             q = (r.uniform(0.08, 0.92), r.uniform(0.08, 0.92))
             if any((q[0]-o["x"])**2 + (q[1]-o["y"])**2 < (o["r"]+0.03)**2

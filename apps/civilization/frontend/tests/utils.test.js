@@ -14,7 +14,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { api, ApiError, attempt, setApiContext, getApiContext } from '../src/utils/api.js';
-import { toSession, looksLikeEmail } from '../src/utils/tenancy.js';
+import { toSession } from '../src/utils/tenancy.js';
 import { fetchModels, chatModels, resetModelCache, FALLBACK_DEFAULT_MODEL } from '../src/utils/models.js';
 import { readRoute, writeRoute, VIEWS, DEFAULT_VIEW } from '../src/utils/route.js';
 
@@ -142,14 +142,6 @@ test('a verified route is not downgraded, and tenancy is never re-derived here',
   assert.equal(session.orgId, 'org_from_backend');
 });
 
-test('an address is checked before it is sent anywhere', () => {
-  assert.equal(looksLikeEmail('a@b.com'), true);
-  assert.equal(looksLikeEmail('a@b'), false);
-  assert.equal(looksLikeEmail('nope'), false);
-  assert.equal(looksLikeEmail(''), false);
-  assert.equal(looksLikeEmail('a b@c.com'), false);
-});
-
 // ------------------------------------------------------------------- models
 
 test('the catalogue comes from the backend, and embeddings are not offered as chat models', async () => {
@@ -225,22 +217,3 @@ test('the context is readable, so the shell can prove what it set', () => {
 
 // ------------------------------------------------------------------- sign-in
 
-test('a rejected Google origin is explained, not left as a console 403', async () => {
-  globalThis.window = { location: { origin: 'https://agents.london' } };
-  const { googleOriginHelp } = await import('../src/utils/oidc.js');
-
-  const help = googleOriginHelp('976346242948-poehj19t44aff.apps.googleusercontent.com');
-
-  // The two values that have to match, both named.
-  assert.match(help, /https:\/\/agents\.london/);
-  assert.match(help, /976346242948-poehj19t44aff\.apps\.googleusercontent\.com/);
-  assert.match(help, /Authorized JavaScript origins/);
-  delete globalThis.window;
-});
-
-test('the help text survives a missing client id', async () => {
-  globalThis.window = { location: { origin: 'http://localhost:3000' } };
-  const { googleOriginHelp } = await import('../src/utils/oidc.js');
-  assert.match(googleOriginHelp(''), /VITE_GOOGLE_CLIENT_ID was empty/);
-  delete globalThis.window;
-});

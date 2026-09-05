@@ -138,8 +138,9 @@ AUTHORITY_ISS = os.getenv("AUTHORITY_ISSUER",
 _jwks_client = None
 
 
-def verify_authority(token: str) -> str | None:
-    """Returns the platform user id from a valid authority JWT, else None.
+def authority_claims(token: str) -> dict | None:
+    """The full claim set from a valid authority JWT, else None. The email
+    claim rides along for world genesis; the sub is the Rule 6.2i hash.
     Key fetch is cached by PyJWKClient; the authority stays out of the
     request path."""
     global _jwks_client
@@ -151,9 +152,14 @@ def verify_authority(token: str) -> str | None:
         if _jwks_client is None:
             _jwks_client = PyJWKClient(AUTHORITY_JWKS, cache_keys=True)
         key = _jwks_client.get_signing_key_from_jwt(token).key
-        claims = _jwt.decode(token, key, algorithms=["RS256"],
-                             issuer=AUTHORITY_ISS,
-                             options={"require": ["exp", "iss", "sub"]})
-        return claims.get("sub")
+        return _jwt.decode(token, key, algorithms=["RS256"],
+                           issuer=AUTHORITY_ISS,
+                           options={"require": ["exp", "iss", "sub"]})
     except Exception:
         return None
+
+
+def verify_authority(token: str) -> str | None:
+    """Returns the platform user id from a valid authority JWT, else None."""
+    claims = authority_claims(token)
+    return claims.get("sub") if claims else None
