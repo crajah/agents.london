@@ -297,6 +297,27 @@ async def register_agent(req: AgentRegistrationRequest, request: Request = None)
     }
 
 
+def _parse_ed25519_key(registered: str):
+    """The registered key as an Ed25519 public key, or None.
+
+    Two spellings are accepted: 64 hex characters (the raw 32 bytes) and a
+    PEM SubjectPublicKeyInfo block. Anything else is a label, not a key."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PublicKey)
+    text = (registered or "").strip()
+    try:
+        if len(text) == 64:
+            return Ed25519PublicKey.from_public_bytes(bytes.fromhex(text))
+        if text.startswith("-----BEGIN"):
+            from cryptography.hazmat.primitives.serialization import (
+                load_pem_public_key)
+            key = load_pem_public_key(text.encode())
+            return key if isinstance(key, Ed25519PublicKey) else None
+    except Exception:
+        return None
+    return None
+
+
 @app.post("/agents/verify", tags=["Agent Registration"])
 async def verify_agent(req: VerifySignatureRequest):
     agent = await legacy_shim.load_agent(_client(), req.org_id, req.agent_id)
@@ -304,14 +325,35 @@ async def verify_agent(req: VerifySignatureRequest):
         raise HTTPException(status_code=404, detail=f"Agent '{req.agent_id}' not found.")
 
     computed_digest = hashlib.sha256(req.payload_text.encode()).hexdigest()
-    # HONESTY (audit 2026-09-04): what is checked here is a sha256 payload
-    # checksum against the registered key STRING -- anyone holding the
-    # payload can construct a passing value. That is integrity plus key
-    # match, NOT a cryptographic signature; the response says so, and
-    # "verified" is reserved for the day real Ed25519 verification lands.
+    key_match = agent.get("public_key") == req.public_key
+
+    # Real Ed25519 first (audit 2026-09-04 promised it; 2026-09-05 lands
+    # it): when the REGISTERED key parses as an Ed25519 public key and the
+    # offered signature is `ed25519:<hex>`, the signature is checked over
+    # the payload bytes. Only that path may say "verified".
+    sig_hex = req.signature[8:] if req.signature.startswith("ed25519:") else ""
+    key = _parse_ed25519_key(agent.get("public_key") or "")
+    if key is not None and sig_hex:
+        try:
+            key.verify(bytes.fromhex(sig_hex), req.payload_text.encode())
+            return {"agent_id": req.agent_id, "verified": True,
+                    "verification": "ed25519", "key_match": bool(key_match),
+                    "computed_digest": computed_digest,
+                    "registered_public_key": agent.get("public_key")}
+        except Exception:
+            return {"agent_id": req.agent_id, "verified": False,
+                    "verification": "ed25519",
+                    "error": "signature does not verify against the "
+                             "registered Ed25519 key",
+                    "key_match": bool(key_match),
+                    "computed_digest": computed_digest,
+                    "registered_public_key": agent.get("public_key")}
+
+    # HONESTY: without a parseable Ed25519 key what is checked is a sha256
+    # payload checksum against the registered key STRING -- integrity plus
+    # key match, NOT a cryptographic signature; the response says so.
     checksum_ok = req.signature in (f"ed25519:{computed_digest}",
                                     agent.get("signature"))
-    key_match = agent.get("public_key") == req.public_key
     return {
         "agent_id": req.agent_id,
         "verified": False,
@@ -321,7 +363,8 @@ async def verify_agent(req: VerifySignatureRequest):
         "computed_digest": computed_digest,
         "registered_public_key": agent.get("public_key"),
         "note": "sha256 payload checksum, not an Ed25519 signature check; "
-                "do not treat as cryptographic proof",
+                "register an Ed25519 public key (32-byte hex or PEM) for "
+                "cryptographic verification",
     }
 
 
