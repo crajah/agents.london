@@ -20,6 +20,13 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
+# in the image, shared/ sits beside decision-worker/; in the checkout it is
+# two levels up at the repository root
+for _shared in (Path(__file__).resolve().parents[1] / "shared",
+                Path(__file__).resolve().parents[3] / "shared"):
+    if _shared.is_dir():
+        sys.path.insert(0, str(_shared))
+        break
 from post_graph import AsyncPostGraph
 from genome_core import drain, engine
 from genome_core.decider import llm_decider
@@ -175,6 +182,31 @@ async def main() -> None:
                             statement_cache_size=0)  # pgbouncer; SCHEMA_PER_REALM unset
     await client.connect()
     store = GenomeStore(client)
+    # Consumption accounting: genome inference lands in the platform ledger
+    # like every other processing action. A DEDICATED schema-per-realm
+    # client keeps the ledger in the platform_system schema regardless of
+    # this worker's own realm-as-column mode; accounting must never stop
+    # the worker (AG Rule 12.2).
+    meter = None
+    try:
+        from contextlib import asynccontextmanager as _acm
+        from metering import configure as _meter_configure
+
+        @_acm
+        async def _meter_client(org_id: str):
+            c = AsyncPostGraph(dsn=dsn(), schema_per_realm=True,
+                               pool_min_size=0, pool_max_size=2,
+                               statement_cache_size=0)
+            await c.connect()
+            try:
+                yield c
+            finally:
+                await c.close()
+
+        meter = _meter_configure(_meter_client)
+        await meter.start()
+    except Exception:
+        logger.exception("metering unavailable; decisions run unmetered")
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
@@ -233,6 +265,8 @@ async def main() -> None:
             except TimeoutError:
                 pass
     finally:
+        if meter:
+            await meter.stop()
         await client.close()
 
 

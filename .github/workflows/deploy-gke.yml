@@ -72,7 +72,9 @@ jobs:
             context: apps/genome
             dockerfile: apps/genome/tick-worker/Dockerfile
           - name: genome-decision-worker
-            context: apps/genome
+            # Root context: this image copies shared/metering.py -- genome
+            # inference lands in the platform consumption ledger too.
+            context: .
             dockerfile: apps/genome/decision-worker/Dockerfile
           - name: genome-web
             context: apps/genome/web

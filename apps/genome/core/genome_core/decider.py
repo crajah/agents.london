@@ -37,10 +37,25 @@ LAST_PROMPT = contextvars.ContextVar("genome_last_prompt", default=None)
 def _count_tokens(data: dict, model: str) -> None:
     from . import metrics
     u = data.get("usage") or {}
-    total = u.get("total_tokens") or (
-        (u.get("prompt_tokens") or 0) + (u.get("completion_tokens") or 0))
-    if total:
-        metrics.TOKENS.labels(model, WORLD_CTX.get()).inc(total)
+    ti = u.get("prompt_tokens") or 0
+    to = u.get("completion_tokens") or 0
+    total = u.get("total_tokens") or (ti + to)
+    if not total:
+        return
+    metrics.TOKENS.labels(model, WORLD_CTX.get()).inc(total)
+    # the platform Consumption Unit (user directive 2026-09-05): inference
+    # is metered in tokens, which ARE the byte measure of what the model
+    # processed (1 token = 4 bytes). One chokepoint sees every response;
+    # a worker without the metering module simply runs unmetered.
+    try:
+        from metering import METER, UsageEvent
+        METER.record(UsageEvent(org_id="genome",
+                                project_id=WORLD_CTX.get(),
+                                kind="model_inference", bytes=0,
+                                tokens_input=ti or max(0, total - to),
+                                tokens_output=to, model=model))
+    except Exception:
+        pass
 
 
 OPTION_TEXT = {
