@@ -20,10 +20,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
-# in the image, shared/ sits beside decision-worker/; in the checkout it is
-# two levels up at the repository root
-for _shared in (Path(__file__).resolve().parents[1] / "shared",
-                Path(__file__).resolve().parents[3] / "shared"):
+# in the image, shared/ sits beside decision-worker/ (/srv/shared); in the
+# checkout it is at the repository root. parents[] raises IndexError past
+# the filesystem root, so each candidate is resolved defensively.
+for _depth in (1, 3):
+    try:
+        _shared = Path(__file__).resolve().parents[_depth] / "shared"
+    except IndexError:
+        continue
     if _shared.is_dir():
         sys.path.insert(0, str(_shared))
         break
