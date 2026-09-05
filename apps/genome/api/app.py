@@ -197,9 +197,12 @@ async def world_stream(realm: str):
 @app.get("/worlds/{realm}/world-chat", tags=["World"])
 async def world_chat_read(realm: str, limit: int = 60):
     """The world's open chat: readable by anyone (Rule 13.2)."""
-    rows = await app.state.pg.find_vertices("world_chats", realm=realm,
-                                            order_by="at", descending=True,
-                                            limit=min(limit, 200))
+    try:
+        rows = await app.state.pg.find_vertices(
+            "world_chats", realm=realm, order_by="at", descending=True,
+            limit=min(limit, 200))
+    except Exception:
+        return []          # a world nobody has spoken to has no table yet
     return list(reversed([r.payload for r in rows]))
 
 
@@ -228,6 +231,7 @@ async def world_chat_post(realm: str, payload: dict,
     if not text:
         return JSONResponse({"error": "empty"}, status_code=400)
     kind = "ask" if payload.get("ask", True) else "say"
+    await app.state.pg.create_vertex_table("world_chats", realm=realm)
     key = f"wc-{_u.uuid4().hex[:12]}"
     row = {"key": key, "thread": payload.get("thread") or key,
            "from": f"user:{uid}", "name": "the owner",
@@ -299,6 +303,7 @@ async def world_chat_upload(realm: str,
             {"error": f"the registry refused the document: "
                       f"{type(e).__name__}"}, status_code=502)
     now = _t.time()
+    await app.state.pg.create_vertex_table("world_chats", realm=realm)
     await app.state.pg.add_vertex("world_chats", realm=realm,
         space="default", payload={
             "key": f"wc-{_uu.uuid4().hex[:12]}",
