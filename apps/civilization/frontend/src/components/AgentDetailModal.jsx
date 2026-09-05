@@ -66,6 +66,7 @@ export default function AgentDetailModal({ open, onClose, agent, onSaveModel, st
     try {
       const res = await api.post('/api/agents/synthesize-description', {
           org_id: state?.orgId || 'org_london_meta',
+          project_id: state?.projectId || 'proj_alpha_civilization',
           agent_id: agent.agent_id || agent.id,
           agent_name: agent.name,
           caste: agent.caste

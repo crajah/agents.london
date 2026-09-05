@@ -208,10 +208,13 @@ async def save_project_api_key_to_pg(project_id: str, new_api_key: str,
 # ------------------------------------------------------------- LLM calls
 async def generate_dynamic_task_document(
         prompt: str, project_id: str = "proj_alpha_civilization",
-        org_id: str = "org_london_meta") -> str:
+        org_id: str = "org_london_meta",
+        model: str | None = None) -> str:
     """One prompt, one answer, through the router. The arithmetic fast-path
     survives from the native engine (input restricted to digits and
-    operators before eval)."""
+    operators before eval). `model` is honoured when given -- the playground
+    used to claim the user's selected model ran while this always called
+    RAG_MODEL (F.14: report only what happened)."""
     clean_prompt = prompt.strip()
     if not clean_prompt:
         return "Please provide a valid query or goal directive."
@@ -235,7 +238,7 @@ async def generate_dynamic_task_document(
                 res = await client.post(
                     f"{api_url.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {API_KEY}"},
-                    json={"model": RAG_MODEL,
+                    json={"model": model or RAG_MODEL,
                           "messages": [
                               {"role": "system", "content": (
                                   "You are an expert AI assistant and lead "

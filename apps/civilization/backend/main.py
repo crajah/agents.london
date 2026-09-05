@@ -531,12 +531,14 @@ class RecordIOTraceRequest(BaseModel):
     input_prompt: str
     tool_calls: List[str] = []
     output_response: str
+    project_id: str = "proj_alpha_civilization"
 
 class SynthesizeDescriptionRequest(BaseModel):
     org_id: str
     agent_id: str
     agent_name: str
     caste: str
+    project_id: str = "proj_alpha_civilization"
 
 @app.post("/api/agents/record-trace")
 async def record_agent_io_trace(req: RecordIOTraceRequest):
@@ -544,7 +546,7 @@ async def record_agent_io_trace(req: RecordIOTraceRequest):
     try:
         record_execution_telemetry(
             org_id=req.org_id,
-            project_id="proj_alpha_civilization",
+            project_id=req.project_id,
             user_id="system",
             agent_id=req.agent_id,
             input_text=req.input_prompt,
@@ -567,7 +569,7 @@ async def synthesize_agent_description(req: SynthesizeDescriptionRequest):
         f"Describe what this agent specializes in, its operational role within the civilization, "
         f"and its key capabilities. Be specific and technical."
     )
-    description = await generate_dynamic_task_document(synth_prompt, "proj_alpha_civilization", req.org_id)
+    description = await generate_dynamic_task_document(synth_prompt, req.project_id, req.org_id)
     return {
         "agent_id": req.agent_id,
         "agent_name": req.agent_name,
@@ -1005,7 +1007,9 @@ async def playground_chat(req: EnhancedPlaygroundChatRequest):
             f"Execute this request strictly as '{target_agent_id}'. Provide a complete, thorough, authoritative response in Markdown."
         )
         try:
-            answer = await generate_dynamic_task_document(solitary_prompt, req.project_id, req.org_id)
+            answer = await generate_dynamic_task_document(
+                solitary_prompt, req.project_id, req.org_id,
+                model=req.model_name)
             steps = [step("AGENT_DISPATCH",
                           f"Called '{target_agent_id}' with model '{req.model_name}'.",
                           "succeeded", started, agent=target_agent_id)]
@@ -2254,15 +2258,16 @@ async def create_user_org_project(org_id: str, user_id: str, name: str = Query(.
             "agentsCount": result.get("prime_agents_count", len(PRIME_AGENTS)),
             "status": "ACTIVE"
         }
-    except Exception:
-        new_proj = {
-            "id": clean_id,
-            "name": name.strip(),
-            "org_id": org_id,
-            "owner_user_id": user_id,
-            "agentsCount": 1,
-            "status": "ACTIVE"
-        }
+    except Exception as e:
+        # No fabricated project: answering ACTIVE for a universe that was
+        # never written to post-graph claims a creation that did not happen,
+        # and every later call against it reads an empty realm (F.38).
+        logger.error("project creation failed for %s/%s: %s",
+                     org_id, user_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail=(f"The civilization engine could not create project "
+                    f"{name.strip()!r}: {e}. Nothing was created.")) from e
 
     key = f"{org_id}:{user_id}"
     if key not in PROJECTS_REGISTRY:
