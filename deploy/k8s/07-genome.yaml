@@ -24,6 +24,12 @@ spec:
             - secretRef: { name: postgres-secrets }
             - secretRef: { name: oidc-auth-secret }
           env:
+            - name: DOCREG_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docreg-internal
+                  key: DOCREG_INTERNAL_TOKEN
+                  optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: GENOME_REDIRECT_BASE
@@ -134,6 +140,12 @@ spec:
           envFrom:
             - secretRef: { name: postgres-secrets }
           env:
+            - name: DOCREG_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docreg-internal
+                  key: DOCREG_INTERNAL_TOKEN
+                  optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: GENOME_REALMS
@@ -201,6 +213,12 @@ spec:
           envFrom:
             - secretRef: { name: postgres-secrets }
           env:
+            - name: DOCREG_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docreg-internal
+                  key: DOCREG_INTERNAL_TOKEN
+                  optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
             - name: SHARD_COUNT

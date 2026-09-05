@@ -84,6 +84,113 @@ function Chats({ onOpen }) {
 }
 
 
+function WorldChat({ realm, isOwner }) {
+  // the world's open chat (user directive 2026-09-05): the owner asks the
+  // WHOLE WORLD; present agents compete to claim and answer; documents
+  // posted here become the world's own knowledge
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!realm) return;
+    const load = () => fetch(`${API}/worlds/${realm}/world-chat`)
+      .then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setMsgs(d))
+      .catch(() => {});
+    load(); const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, [realm]);
+  const send = async () => {
+    if (!draft.trim()) return;
+    await fetch(`${API}/worlds/${realm}/world-chat`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: draft, ask: true }) });
+    setDraft("");
+  };
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    await fetch(`${API}/worlds/${realm}/world-chat/upload`, {
+      method: "POST", credentials: "include", body: fd }).catch(() => {});
+    setBusy(false);
+  };
+  if (!realm) return null;
+  return (
+    <div className="absolute bottom-3 right-3 z-30 w-96 text-sm">
+      {!open &&
+        <button onClick={() => setOpen(true)}
+                className="ml-auto block bg-neutral-800 border
+                           border-neutral-600 rounded-full px-3 py-1.5
+                           shadow-lg">
+          🗣 world chat{msgs.length > 0 && ` (${msgs.length})`}</button>}
+      {open && (
+        <div className="bg-neutral-900/95 border border-neutral-600
+                        rounded-lg shadow-2xl flex flex-col max-h-[26rem]">
+          <div className="flex items-center px-3 py-2 border-b
+                          border-neutral-700">
+            <strong>🗣 world chat</strong>
+            <span className="opacity-40 text-xs ml-2">agents compete to
+              answer</span>
+            <span className="flex-1" />
+            <button className="opacity-60"
+                    onClick={() => setOpen(false)}>✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2">
+            {msgs.length === 0 &&
+              <div className="opacity-50 p-2">Nothing said yet. Ask this
+                world a question — any agent standing here may claim it
+                and answer with whatever its capability affords.</div>}
+            {msgs.map((m, i) => (
+              <div key={i} className="mb-2">
+                <div className="text-xs flex gap-1 items-center">
+                  {(m.colour_pair || []).map((c, j) =>
+                    <span key={j} className="inline-block w-2 h-2
+                                             rounded-full"
+                          style={{ background: c }} />)}
+                  <span className={m.kind === "ask" || m.kind === "document"
+                    ? "text-emerald-500/80" : m.kind === "answer"
+                    ? "text-violet-400/80" : "text-sky-400/70"}>
+                    {m.name || m.from}
+                    {m.kind === "ask" && (m.claimed_by
+                      ? " — claimed" : " — open ask")}
+                    {m.kind === "answer" && " answers"}
+                  </span>
+                </div>
+                <div className={"rounded px-2 py-1 whitespace-pre-wrap " +
+                  (m.kind === "answer"
+                    ? "bg-violet-950/50 border border-violet-800/40"
+                    : m.kind === "document"
+                    ? "bg-emerald-950/40 border border-emerald-800/40"
+                    : "bg-neutral-800")}>
+                  {m.text}</div>
+              </div>))}
+          </div>
+          {isOwner && (
+            <div className="flex gap-1 p-2 border-t border-neutral-700">
+              <input className="flex-1 bg-neutral-800 px-2 py-1 rounded"
+                     placeholder="ask your world…"
+                     value={draft}
+                     onChange={e => setDraft(e.target.value)}
+                     onKeyDown={e => e.key === "Enter" && send()} />
+              <label className={"px-2 py-1 rounded bg-neutral-800 border " +
+                "border-neutral-600 cursor-pointer " +
+                (busy ? "opacity-40" : "opacity-80")}
+                     title="Upload a document into this world's knowledge">
+                📄<input type="file" className="hidden" disabled={busy}
+                         onChange={e => upload(e.target.files[0])} />
+              </label>
+              <button onClick={send}
+                      className="px-2 py-1 bg-emerald-800 rounded">
+                ask</button>
+            </div>)}
+        </div>)}
+    </div>);
+}
+
+
 function Bell() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -1458,6 +1565,9 @@ whole game -- the commons market is how the far kinds arrive."
       </header>
       <div className="flex-1 flex min-h-0 relative">
         {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+        <WorldChat realm={realm}
+                   isOwner={!!(me?.authenticated
+                               && me.world_realm === realm)} />
         {digest && (
           <div className="absolute top-10 right-3 z-30 w-80 bg-neutral-800
                           border border-neutral-600 rounded-lg shadow-xl

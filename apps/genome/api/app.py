@@ -194,6 +194,127 @@ async def world_stream(realm: str):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.get("/worlds/{realm}/world-chat", tags=["World"])
+async def world_chat_read(realm: str, limit: int = 60):
+    """The world's open chat: readable by anyone (Rule 13.2)."""
+    rows = await app.state.pg.find_vertices("world_chats", realm=realm,
+                                            order_by="at", descending=True,
+                                            limit=min(limit, 200))
+    return list(reversed([r.payload for r in rows]))
+
+
+@app.post("/worlds/{realm}/world-chat", tags=["World"])
+async def world_chat_post(realm: str, payload: dict,
+                          request: __import__("fastapi").Request):
+    """The world's OWNER speaks to the whole world (user directive
+    2026-09-05): a question becomes an open ASK any present agent may
+    claim; a plain message joins the conversation."""
+    from fastapi.responses import JSONResponse
+    import time as _t
+    import uuid as _u
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    meta_rows = await app.state.pg.find_vertices("world_meta", realm=realm,
+                                                 filters={"key": realm},
+                                                 limit=1)
+    if not meta_rows:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    if meta_rows[0].payload.get("owner_user_id") != uid \
+            and not _admin_ok(request):
+        return JSONResponse({"error": "only this world's owner speaks "
+                                      "here"}, status_code=403)
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    kind = "ask" if payload.get("ask", True) else "say"
+    key = f"wc-{_u.uuid4().hex[:12]}"
+    row = {"key": key, "thread": payload.get("thread") or key,
+           "from": f"user:{uid}", "name": "the owner",
+           "kind": kind, "text": text[:1000], "at": _t.time()}
+    if kind == "ask":
+        row["claimed_by"] = None
+    await app.state.pg.add_vertex("world_chats", realm=realm,
+                                  space="default", payload=row)
+    return {"ok": True, "key": key, "kind": kind}
+
+
+@app.post("/worlds/{realm}/world-chat/upload", tags=["World"])
+async def world_chat_upload(realm: str,
+                            request: __import__("fastapi").Request,
+                            file: __import__("fastapi").UploadFile =
+                            __import__("fastapi").File(...)):
+    """A document posted into the world's chat becomes WORLD KNOWLEDGE
+    (user directive 2026-09-05): catalogued and indexed in the document
+    registry under this world's own project, where agents can retrieve it
+    -- but only while they stand in this world."""
+    from fastapi.responses import JSONResponse
+    import json as _json
+    import time as _t
+    import urllib.request as _u
+    import uuid as _uu
+    uid = _uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in first"}, status_code=401)
+    meta_rows = await app.state.pg.find_vertices("world_meta", realm=realm,
+                                                 filters={"key": realm},
+                                                 limit=1)
+    if not meta_rows:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    if meta_rows[0].payload.get("owner_user_id") != uid \
+            and not _admin_ok(request):
+        return JSONResponse({"error": "only this world's owner may add to "
+                                      "its knowledge"}, status_code=403)
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        return JSONResponse({"error": "20MB limit for world knowledge"},
+                            status_code=413)
+    filename = file.filename or "document"
+    boundary = _uu.uuid4().hex
+    parts = []
+    for k, v in (("project_id", realm), ("org_id", "genome_worlds"),
+                 ("document_space", "knowledge")):
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; '
+                     f'name="{k}"\r\n\r\n{v}\r\n'.encode())
+    parts.append(
+        (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+         f'filename="{filename}"\r\nContent-Type: '
+         f'{file.content_type or "application/octet-stream"}\r\n\r\n'
+         ).encode() + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    rq = _u.Request(
+        os.getenv("DOCREG_URL",
+                  "http://document-registry-service.default.svc."
+                  "cluster.local:8003")
+        + "/spaces/knowledge/documents/upload-file",
+        data=b"".join(parts),
+        headers={"Content-Type":
+                 f"multipart/form-data; boundary={boundary}",
+                 "x-internal-token":
+                 os.getenv("DOCREG_INTERNAL_TOKEN", "")})
+    try:
+        out = _json.loads(_u.urlopen(rq, timeout=300).read())
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"the registry refused the document: "
+                      f"{type(e).__name__}"}, status_code=502)
+    now = _t.time()
+    await app.state.pg.add_vertex("world_chats", realm=realm,
+        space="default", payload={
+            "key": f"wc-{_uu.uuid4().hex[:12]}",
+            "thread": f"wc-{_uu.uuid4().hex[:12]}",
+            "from": f"user:{uid}", "name": "the owner",
+            "kind": "document", "text": f"\U0001F4C4 {filename} -- "
+            + ("indexed into this world's knowledge"
+               if out.get("indexed") else
+               f"catalogued but not indexed: "
+               f"{(out.get('message') or '')[:160]}"),
+            "filename": filename, "indexed": bool(out.get("indexed")),
+            "at": now})
+    return {"ok": True, "indexed": bool(out.get("indexed")),
+            "registry": out.get("message")}
+
+
 @app.get("/worlds/{realm}/snapshot", tags=["World"])
 async def get_snapshot(realm: str):
     """Any world, read-only (genome-spec Rule 13.2). Observation confers

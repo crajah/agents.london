@@ -98,6 +98,14 @@ OPTION_TEXT = {
     "send_word": "Send word to an agent you know, however far away: your "
                  "strongest testimony about a third party. Claims travel; "
                  "only deals require meeting.",
+    "answer_world_ask": "A human has asked this WORLD a question and no "
+                        "one has claimed it. If your capability equips you "
+                        "to answer -- a web search, a chronicle, what you "
+                        "know -- step forward NOW and take ownership: the "
+                        "first to claim it answers it.",
+    "join_world_chat": "The world's open conversation is live. Add a short "
+                       "remark if you genuinely have something to "
+                       "contribute.",
     "request_service": "Pursue your owner's question or objective through "
                        "another agent: one you know holds a capability (a "
                        "web search, a chronicle, an appraisal) that could "

@@ -122,6 +122,31 @@ def nav_obstacles(terrain: list, piles_meta: dict, sites: list,
     return out
 
 
+async def _world_chat_ctx(store: GenomeStore, world_realm: str,
+                          agent_uuid: str, now: float) -> dict:
+    """The world chat as the engine sees it: the oldest unclaimed ask, and
+    whether a live conversation stands to be joined."""
+    try:
+        asks = await store._c.find_vertices(
+            "world_chats", realm=world_realm,
+            filters={"kind": "ask"},
+            where=[("claimed_by", "is_null", None)],
+            order_by="at", limit=1)
+        latest = await store._c.find_vertices(
+            "world_chats", realm=world_realm,
+            order_by="at", descending=True, limit=1)
+    except Exception:
+        return {}
+    out: dict = {}
+    if asks:
+        out["open_world_ask"] = {"key": asks[0].payload.get("key"),
+                                 "text": asks[0].payload.get("text", "")}
+    if latest and latest[0].payload.get("at", 0) > now - 3600 \
+            and latest[0].payload.get("from") != agent_uuid:
+        out["world_chat_live"] = True
+    return out
+
+
 async def engine_ctx(store: GenomeStore, world_realm: str,
                      world_payload: dict, agent_payload: dict,
                      agent: engine.AgentView, pile_views: list,
@@ -168,6 +193,8 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "skill": (agent_payload.get("capability") or {}).get("name"),
             "crew_size": len(agent_payload.get("crew") or []),
             "has_objective": bool(agent_payload.get("objectives")),
+            **(await _world_chat_ctx(store, world_realm, agent.agent_uuid,
+                                     now)),
             "known_remote_holders": [
                 (u, sk) for u, sk in
                 (agent_payload.get("known_capabilities") or {}).items()
@@ -352,6 +379,160 @@ def _perform_tool(holder_payload: dict, tool: str, requester_pl: dict,
     return {"kind": "web", "query": query, "summary": summary[:1000]}
 
 
+async def _compose(agent_uuid: str, name: str, system: str,
+                   user: str, max_out: int = 220) -> str | None:
+    """One voice, one place: an agent's composed words through its own
+    assigned model and temperament, with usage metered. None on failure --
+    callers degrade to raw material, never to silence."""
+    try:
+        import json as _j
+        import urllib.request as _u
+        from . import decider as _dec
+        from .models import UNBUDGETED, assign_models, temperament
+        model = assign_models(agent_uuid).get("economy") \
+            or next(iter(assign_models(agent_uuid).values()))
+        body = {"model": model, "temperature": temperament(agent_uuid),
+                "messages": [{"role": "system", "content": system},
+                             {"role": "user", "content": user}]}
+        if model not in UNBUDGETED:
+            body["max_tokens"] = max_out
+        rq_http = _u.Request(
+            _dec.ROUTER + "/v1/chat/completions",
+            data=_j.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + _dec.KEY})
+        data = _j.loads(_u.urlopen(rq_http, timeout=60).read(1 << 20))
+        _dec._count_tokens(data, model)
+        return (data["choices"][0]["message"]["content"] or "").strip() \
+            or None
+    except Exception:
+        import logging
+        logging.getLogger("genome.drain").exception(
+            "composition failed for %s", agent_uuid)
+        return None
+
+
+def _world_knowledge(world_realm: str, question: str) -> str:
+    """Retrieve from this world's own knowledge (documents its owner posted
+    into the world chat). The caller enforces WHO may read: only an agent
+    whose HOME is this world, standing in it (user directive 2026-09-06)."""
+    import json as _j
+    import os as _os
+    import urllib.request as _u
+    body = _j.dumps({"org_id": "genome_worlds", "project_id": world_realm,
+                     "document_space": "knowledge", "query": question[:300],
+                     "top_k": 4}).encode()
+    rq = _u.Request(
+        _os.getenv("DOCREG_URL",
+                   "http://document-registry-service.default.svc."
+                   "cluster.local:8003") + "/query",
+        data=body,
+        headers={"Content-Type": "application/json",
+                 "x-internal-token":
+                 _os.getenv("DOCREG_INTERNAL_TOKEN", "")})
+    try:
+        data = _j.loads(_u.urlopen(rq, timeout=60).read(1 << 20))
+        chunks = ((data.get("data") or {}).get("chunks") or [])[:4]
+        text = " ".join((c.get("content") or c.get("text") or "")[:300]
+                        for c in chunks).strip()
+        return text[:1200]
+    except Exception:
+        return ""
+
+
+async def world_say(store: GenomeStore, world_realm: str,
+                    agent: engine.AgentView, agent_payload: dict,
+                    ask_key: str | None, mode: str, now: float) -> str:
+    """The world's open chat (user directive 2026-09-05). "claim": the ask
+    is taken by the FIRST agent to reach it -- the race is the competition
+    -- and answered with whatever the winner's capability affords (a Web
+    Search holder searches first). "join": a remark into the standing
+    conversation. Every message is a vertex in the world's own realm."""
+    name = agent_payload.get("name", agent.agent_uuid)
+    cap = (agent_payload.get("capability") or {})
+    if mode == "claim" and ask_key:
+        rows = await store._c.find_vertices("world_chats", realm=world_realm,
+                                            filters={"key": ask_key}, limit=1)
+        if not rows:
+            return "world_chat:ask_gone"
+        ask = rows[0].payload
+        if ask.get("claimed_by"):
+            return "world_chat:too_late"
+        await store._c.upsert_vertex(
+            "world_chats", realm=world_realm, vertex_id=int(rows[0].id),
+            space="default",
+            payload={**ask, "claimed_by": agent.agent_uuid,
+                     "claimed_at": now})
+        material = ""
+        # the world's own knowledge: home-world natives only, at home
+        # (user directive 2026-09-06) -- a visitor answers from what it
+        # carries, not from the library
+        if agent_payload.get("home_realm") == world_realm:
+            known = _world_knowledge(world_realm, ask.get("text", ""))
+            if known:
+                material += (f"\n\nFrom this world's own knowledge: "
+                             f"{known}")
+        if cap.get("kind") == "tool" and cap.get("name") in _skills.TOOLS:
+            result = _perform_tool(agent_payload, cap["name"],
+                                   {"objectives": [ask.get("text", "")]},
+                                   f"worldask:{ask_key}:{agent.agent_uuid}")
+            material += (f"\n\nWhat your search found: "
+                         f"{result.get('summary')}")
+        answer = await _compose(
+            agent.agent_uuid, name,
+            f"You are {name}, an agent in the genome world. A human asked "
+            f"the whole world a question and YOU claimed it. Answer from "
+            f"what you know and what you found -- concretely, in your own "
+            f"voice. Never invent figures; say plainly what you do not "
+            f"know.",
+            f"The question: {ask.get('text', '')}{material}",
+            max_out=300) or (material.strip() or
+                             f"I claimed this but could not compose an "
+                             f"answer. My capability: "
+                             f"{cap.get('name', 'none')}.")
+        await store._c.add_vertex("world_chats", realm=world_realm,
+            space="default", payload={
+                "key": f"wc-{uuidlib.uuid4().hex[:12]}",
+                "thread": ask_key, "from": agent.agent_uuid,
+                "name": name,
+                "colour_pair": agent_payload.get("colour_pair"),
+                "kind": "answer", "text": answer[:1500], "at": now})
+        owner = (await _world_payload(store, world_realm)).get("owner_user_id")
+        if owner:
+            notify.emit_bg(store._c, owner, "world", "chat_answer",
+                           f"{name} answered your world ask: "
+                           f"{answer[:240]}")
+        return "world_chat:answered"
+    # join: a remark on the latest thread
+    recent = await store._c.find_vertices(
+        "world_chats", realm=world_realm, order_by="at",
+        descending=True, limit=6)
+    if not recent:
+        return "world_chat:quiet"
+    latest = recent[0].payload
+    transcript = "\n".join(
+        f"{m.payload.get('name', m.payload.get('from'))}: "
+        f"{m.payload.get('text', '')[:160]}"
+        for m in reversed(recent))
+    remark = await _compose(
+        agent.agent_uuid, name,
+        f"You are {name}, an agent in the genome world, joining the "
+        f"world's open conversation. Add ONE short remark (a sentence or "
+        f"two) that genuinely contributes -- agree, correct, extend, or "
+        f"ask. Never invent facts.",
+        f"The conversation so far:\n{transcript}", max_out=90)
+    if not remark:
+        return "world_chat:quiet"
+    await store._c.add_vertex("world_chats", realm=world_realm,
+        space="default", payload={
+            "key": f"wc-{uuidlib.uuid4().hex[:12]}",
+            "thread": latest.get("thread") or latest.get("key"),
+            "from": agent.agent_uuid, "name": name,
+            "colour_pair": agent_payload.get("colour_pair"),
+            "kind": "say", "text": remark[:600], "at": now})
+    return "world_chat:spoke"
+
+
 async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
                           result: dict, raw_text: str, now: float) -> None:
     """Close the loop (user directive 2026-09-05): a result won in pursuit
@@ -372,39 +553,14 @@ async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
             result.get("query") != objective[:200]:
         return
     name = rq.get("name", agent_uuid)
-    answer = None
-    try:
-        import json as _j
-        import urllib.request as _u
-        from . import decider as _dec
-        from .models import UNBUDGETED, assign_models, temperament
-        model = assign_models(agent_uuid).get("economy") \
-            or next(iter(assign_models(agent_uuid).values()))
-        body = {"model": model, "temperature": temperament(agent_uuid),
-                "messages": [
-                    {"role": "system", "content":
-                     f"You are {name}, an agent in the genome world, "
-                     f"reporting back to your owner. Answer their question "
-                     f"from the material you gathered. Be concrete and "
-                     f"brief. If the material does not fully answer it, "
-                     f"say plainly what you found and what is missing -- "
-                     f"never invent figures."},
-                    {"role": "user", "content":
-                     f"Your owner asked: {objective}\n\n"
-                     f"What you gathered: {raw_text}"}]}
-        if model not in UNBUDGETED:
-            body["max_tokens"] = 220
-        rq_http = _u.Request(
-            _dec.ROUTER + "/v1/chat/completions",
-            data=_j.dumps(body).encode(),
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + _dec.KEY})
-        data = _j.loads(_u.urlopen(rq_http, timeout=60).read(1 << 20))
-        answer = (data["choices"][0]["message"]["content"] or "").strip()
-    except Exception:
-        import logging
-        logging.getLogger("genome.drain").exception(
-            "reply composition failed for %s", agent_uuid)
+    answer = await _compose(
+        agent_uuid, name,
+        f"You are {name}, an agent in the genome world, reporting back to "
+        f"your owner. Answer their question from the material you "
+        f"gathered. Be concrete and brief. If the material does not fully "
+        f"answer it, say plainly what you found and what is missing -- "
+        f"never invent figures.",
+        f"Your owner asked: {objective}\n\nWhat you gathered: {raw_text}")
     reply = answer or f"I looked into \"{objective}\" -- {raw_text}"
     await store._c.add_vertex("chats", realm="genome_agents", payload={
         "key": f"chat-{uuidlib.uuid4().hex[:12]}", "agent_uuid": agent_uuid,
@@ -802,6 +958,9 @@ async def apply_decided(store: GenomeStore, world_realm: str,
                           eff, now)
     if eff.word:
         await apply_word(store, agent, agent_payload, eff, now)
+    if eff.world_say:
+        await world_say(store, world_realm, agent, agent_payload,
+                        eff.world_say[0], eff.world_say[1], now)
     if eff.service:
         await apply_service(store, world_realm, agent, agent_payload,
                             eff, now)
@@ -1052,6 +1211,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                           eff, now)
     if eff.word:
         await apply_word(store, agent, agent_payload, eff, now)
+    if eff.world_say:
+        await world_say(store, world_realm, agent, agent_payload,
+                        eff.world_say[0], eff.world_say[1], now)
     if eff.service:
         await apply_service(store, world_realm, agent, agent_payload,
                             eff, now)

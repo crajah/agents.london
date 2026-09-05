@@ -102,6 +102,9 @@ class Effects:
     # ground on at the agent's feet (agent-driven founding, 2026-09-02)
     word: str | None = None                      # addressable counterparty to
     # send testimony to at ANY distance (Rules 9.1c/9.1d); caller applies
+    world_say: tuple | None = None    # (ask_key|None, mode) -- a message
+    # into the WORLD's open chat: mode "claim" answers an owner's ask,
+    # mode "join" adds to the standing conversation
     service: tuple[str, str, str] | None = None  # (verb, counterparty,
     # skill): "request" from a known remote holder, or the holder's
     # "perform"/"refuse" answer (Rules 8.6-8.8); caller applies
@@ -477,6 +480,14 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     # say may send testimony to a counterparty it has met or been told of
     if ctx.get("addressable") and ctx.get("has_testimony"):
         options.append("send_word")
+    # the world's open chat (user directive 2026-09-05): an owner's ask
+    # stands unclaimed -- any present agent may step forward, compete, and
+    # take ownership of answering it
+    if ctx.get("open_world_ask"):
+        options.append("answer_world_ask")
+    # ...and a live conversation may be joined by anyone with something to say
+    elif ctx.get("world_chat_live") and not ctx.get("spoke_in_world_chat"):
+        options.append("join_world_chat")
     # capability brokerage (8.6): a known REMOTE holder may be asked to
     # perform -- the favour creates a relationship, not a purchase
     if ctx.get("known_remote_holders"):
@@ -841,6 +852,17 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
                               "decide", {}, time_scale, pace)
+
+    if choice.option == "answer_world_ask":
+        ask = ctx.get("open_world_ask") or {}
+        return Effects(world_say=(ask.get("key"), "claim"),
+                       schedule=("decide", now + 120.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "join_world_chat":
+        return Effects(world_say=(None, "join"),
+                       schedule=("decide", now + 300.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
 
     if choice.option == "request_service":
         holders = ctx.get("known_remote_holders") or []
