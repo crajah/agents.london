@@ -93,6 +93,9 @@ function WorldChat({ realm, isOwner }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [mode, setMode] = useState("ask");     // ask = open a claimable
+  // question; say = just talk. Replying inside a thread is always talk.
+  const [replyTo, setReplyTo] = useState(null); // {thread, name}
   const load = () => fetch(`${API}/worlds/${realm}/world-chat`)
     .then(r => r.ok ? r.json() : [])
     .then(d => Array.isArray(d) && setMsgs(d))
@@ -108,13 +111,17 @@ function WorldChat({ realm, isOwner }) {
     // a send that fails must SAY so, and one that succeeds must show at
     // once -- the old shape swallowed both and typed words just vanished
     try {
+      const body = replyTo
+        ? { text: draft, ask: false, thread: replyTo.thread }
+        : { text: draft, ask: mode === "ask" };
       const r = await fetch(`${API}/worlds/${realm}/world-chat`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: draft, ask: true }) });
+        body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(d.error || d.detail || `send failed (${r.status})`); return; }
       setDraft("");
+      setReplyTo(null);
       load();
     } catch (e) {
       setErr(String(e.message || e));
@@ -177,15 +184,43 @@ function WorldChat({ realm, isOwner }) {
                     : m.kind === "document"
                     ? "bg-emerald-950/40 border border-emerald-800/40"
                     : "bg-neutral-800")}>
-                  {m.text}</div>
+                  {m.text}
+                  {isOwner &&
+                    <button className="block text-xs underline opacity-40
+                                       hover:opacity-80 mt-0.5"
+                            onClick={() => setReplyTo({
+                              thread: m.thread || m.key,
+                              name: m.name || m.from })}>
+                      ↩ reply in thread</button>}
+                </div>
               </div>))}
           </div>
           {err &&
             <div className="text-amber-400 text-xs px-2 py-1">{err}</div>}
+          {isOwner && replyTo && (
+            <div className="flex items-center gap-2 px-2 pt-1 text-xs
+                            text-sky-300/80">
+              replying to {replyTo.name}
+              <button className="opacity-60"
+                      onClick={() => setReplyTo(null)}>✕</button>
+            </div>)}
           {isOwner && (
             <div className="flex gap-1 p-2 border-t border-neutral-700">
+              {!replyTo &&
+                <button className={"px-2 py-1 rounded text-xs border " +
+                    (mode === "ask"
+                      ? "bg-emerald-900/60 border-emerald-700"
+                      : "bg-neutral-800 border-neutral-600 opacity-70")}
+                        title={mode === "ask"
+                          ? "An ASK: agents compete to claim and answer it"
+                          : "Just talk: agents may join the conversation"}
+                        onClick={() =>
+                          setMode(mode === "ask" ? "say" : "ask")}>
+                  {mode === "ask" ? "ask" : "say"}</button>}
               <input className="flex-1 bg-neutral-800 px-2 py-1 rounded"
-                     placeholder="ask your world…"
+                     placeholder={replyTo ? "reply…"
+                       : mode === "ask" ? "ask your world…"
+                       : "say something to your world…"}
                      value={draft}
                      onChange={e => setDraft(e.target.value)}
                      onKeyDown={e => e.key === "Enter" && send()} />
