@@ -98,6 +98,12 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
             await store.put_agent(a, apl)
         if apl.get("genotype") and "perishes_at" not in apl:
             await _d.schedule_perish(store, a, apl, now)   # the reaper learns
+        if 0.0 < apl.get("stamina_max", 1.0) < 0.05 and apl.get("alive", True):
+            # the zombie band: a body that can never stand again is burnout
+            # -- send it through the game's own death (perish/regenerate)
+            # rather than leaving it incapacitated forever
+            await store.schedule(realm, f"burnout-{a}", drain._iso(now),
+                                 "perish", a, {"cause": "attrition"})
         if a in pending_subjects:
             continue
         latest = await store.latest_movement(a)

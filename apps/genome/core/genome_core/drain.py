@@ -815,7 +815,11 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         # nothing is asked of the mind meanwhile
         await store.complete_event(world_realm, pl["key"], _iso(now))
         _uts = max(1.0, world_payload.get("time_scale", 1.0))
-        await store.schedule(world_realm, f"up-{agent_uuid}-{int(now)}",
+        # stable key: ONE standing wake-up per agent (upserted). A key
+        # minted per second grew a self-replacing storm of retries -- 623
+        # events cycling through the 500-per-tick drain budget, starving
+        # every healthy agent's decide behind them (found 2026-09-05).
+        await store.schedule(world_realm, f"up-{agent_uuid}",
                              _iso(now + 900.0 / _uts), "decide",
                              agent_uuid, {})
         return "incapacitated"
@@ -1539,7 +1543,11 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         await store.put_agent(res["winner"],
                               {**win_p, "stamina_max": max(0.0, new_max),
                                "victories": win_p.get("victories", 0) + 1})
-        if new_max <= 0.0:
+        if new_max < _vitals.INCAP_FLOOR:
+            # below the incapacitation floor the body can never stand again
+            # -- that IS burnout. Perishing only at exactly zero left a
+            # zombie band (0 < max < floor): incapacitated forever, never
+            # dying, never recovering (found live 2026-09-05, 6 agents).
             home = win_p.get("home_realm", world_realm)
             await store.schedule(home, f"burnout-{res['winner']}-{int(now)}",
                                  _iso(now), "perish", res["winner"],
