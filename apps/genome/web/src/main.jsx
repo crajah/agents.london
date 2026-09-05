@@ -794,7 +794,13 @@ function AgentModal({ inspect, onClose }) {
   const load = () =>
     fetch(`${API}/agents/${inspect.agent_uuid}/chat`)
       .then(r => r.json()).then(setChat).catch(() => {});
-  useEffect(() => { load(); }, [inspect.agent_uuid]);
+  useEffect(() => {
+    load();
+    // the agent replies on its own clock -- minutes after the instruction,
+    // once the pursuit succeeds -- so the open panel keeps listening
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [inspect.agent_uuid]);
   const send = async () => {
     if (!draft.trim()) return;
     const r = await fetch(`${API}/agents/${inspect.agent_uuid}/chat`, {
@@ -1088,11 +1094,17 @@ side of the capability economy.">born plain</span>}
               {chat.map((m, i) => (
                 <div key={i} className="mb-2">
                   <div className={"text-xs " + (m.kind === "instruction"
-                    ? "text-emerald-500/70" : "text-sky-500/70")}>
+                    ? "text-emerald-500/70" : m.kind === "reply"
+                    ? "text-violet-400/80" : "text-sky-500/70")}>
                     {m.kind === "instruction"
                       ? "owner instruction — becomes an objective"
+                      : m.kind === "reply"
+                      ? "your agent reports back"
                       : "assertion — a claim, not a command"}</div>
-                  <div className="bg-neutral-800 rounded px-2 py-1">
+                  <div className={"rounded px-2 py-1 whitespace-pre-wrap "
+                    + (m.kind === "reply"
+                       ? "bg-violet-950/60 border border-violet-800/40"
+                       : "bg-neutral-800")}>
                     {m.text}</div>
                 </div>))}
               {chatErr &&
