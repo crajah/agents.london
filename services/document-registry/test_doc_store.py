@@ -33,6 +33,12 @@ class FakeClient:
                     for pk, (t, r, s, p) in sorted(self.rows.items())
                     if t == table and r == realm and s == space
                     and p.get("document_space") == name]
+        if "payload->>'content_hash'" in query:
+            realm, space, digest = args
+            return [{"id": pk, "payload": p}
+                    for pk, (t, r, s, p) in sorted(self.rows.items())
+                    if t == table and r == realm and s == space
+                    and p.get("content_hash") == digest]
         if "payload->>'document_id'" in query:
             realm, space, doc_id = args
             return [{"id": pk, "payload": p}

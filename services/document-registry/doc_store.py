@@ -200,9 +200,24 @@ async def find_by_hash(client, org_id: str, project_id: str, document_space: str
     produces duplicate chunks that compete with each other in retrieval, which
     degrades every subsequent answer from that corpus.
     """
-    for document in await list_documents(client, org_id, project_id, document_space):
-        if document.get("content_hash") == digest:
-            return document
+    ref = client._get_table_ref(CATALOG, org_id)
+    # Targeted: the old shape listed EVERY document -- each carrying up to
+    # 512KB of retained text -- to compare one hash per upload.
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT payload FROM {ref} WHERE realm = $1 AND space = $2 "
+        f"AND payload->>'content_hash' = $3 ORDER BY id",
+        org_id, project_id, digest)
+    for row in rows:
+        payload = _payload(row)
+        if payload.get("lifecycle") == WITHDRAWN:
+            continue
+        name = payload.get("document_space") or payload.get("space_name")
+        if document_space and name != document_space:
+            continue
+        payload.pop("_pk", None)
+        payload.pop("_text", None)   # the dedupe answer, not the corpus
+        return payload
     return None
 
 

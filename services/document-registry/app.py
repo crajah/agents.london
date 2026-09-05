@@ -775,8 +775,13 @@ async def _direct_chunks(req: RAGQueryRequest,
                          document_space: Optional[str]) -> List[Dict[str, Any]]:
     """Read chunks straight from post-graph's `documents` table."""
     client = _client()
-    vertices = await client.get_vertices("documents", realm=req.org_id,
-                                         space=req.project_id)
+    # Bounded, and filtered in SQL when a space is named: the whole-table
+    # read grew with every chunked document and travelled in full on each
+    # fallback query (audit tail 2026-09-05).
+    filters = {"collection": document_space} if document_space else None
+    vertices = await client.find_vertices("documents", realm=req.org_id,
+                                          space=req.project_id,
+                                          filters=filters, limit=2000)
     out = []
     for vertex in vertices:
         payload = vertex.payload if isinstance(vertex.payload, dict) else {}
