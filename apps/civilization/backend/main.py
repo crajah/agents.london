@@ -2272,13 +2272,25 @@ async def create_user_org_project(org_id: str, user_id: str, name: str = Query(.
 
 DOCUMENT_REGISTRY_URL = os.getenv("DOCUMENT_REGISTRY_URL", "http://document-registry-service.default.svc.cluster.local:8003")
 
+
+def _docreg_client(**kw) -> "httpx.AsyncClient":
+    """Doc-registry calls carry the internal token when one is provisioned:
+    the registry's org_id surface is plumbing, not a public API, and after
+    DOCREG_INTERNAL_TOKEN is set it refuses anonymous callers (audit
+    2026-09-04). Unset = plain client, for compatibility."""
+    tok = os.getenv("DOCREG_INTERNAL_TOKEN", "")
+    if tok:
+        kw.setdefault("headers", {})["x-internal-token"] = tok
+    return _docreg_client(**kw)
+
+
 @app.post("/api/projects/{project_id}/spaces")
 async def create_document_space(project_id: str, space_name: str = Query(...),
                                 description: Optional[str] = None,
                                 org_id: str = Query(DEFAULT_ORG_ID)):
     """Creates a new document space for a project using post-graph space sub-grouping."""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with _docreg_client(timeout=5.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces",
                 json={"org_id": org_id, "project_id": project_id,
@@ -2299,7 +2311,7 @@ async def create_document_space(project_id: str, space_name: str = Query(...),
 async def list_document_spaces(project_id: str, org_id: str = Query(DEFAULT_ORG_ID)):
     """Lists all document spaces belonging to a project."""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with _docreg_client(timeout=5.0) as client:
             res = await client.get(f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/spaces",
                                    params={"org_id": org_id})
             if res.status_code == 200:
@@ -2314,7 +2326,7 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
                                  org_id: str = Query(DEFAULT_ORG_ID)):
     """Lists all uploaded documents stored persistently in post-graph documents_catalog."""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with _docreg_client(timeout=5.0) as client:
             url = f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/documents"
             params = {"org_id": org_id}
             if space_name:
@@ -2359,7 +2371,7 @@ async def upload_document_text(project_id: str, space_name: str,
     registry was unreachable, claiming an ingest that never occurred.
     """
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with _docreg_client(timeout=120.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-text",
                 json={
@@ -2393,7 +2405,7 @@ async def upload_document_file(project_id: str, space_name: str,
     data = {"project_id": project_id, "org_id": org_id,
             "document_space": space_name}
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with _docreg_client(timeout=300.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-file",
                 data=data,
@@ -2425,7 +2437,7 @@ async def upload_multiple_document_files(project_id: str, space_name: str,
     data = {"project_id": project_id, "org_id": org_id,
             "document_space": space_name}
     try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with _docreg_client(timeout=600.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/spaces/{space_name}/documents/upload-multiple-files",
                 data=data,
@@ -2452,7 +2464,7 @@ async def get_rag_graph(project_id: str, query: str = Query(...),
     """Returns a focused subgraph from post-graph-rag centered on a search query.
     Use depth=1 for immediate connections, increase to expand the neighborhood."""
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with _docreg_client(timeout=15.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/query",
                 json={"org_id": org_id, "project_id": project_id, "query": query,
@@ -2493,7 +2505,7 @@ async def query_document_rag(project_id: str, query: str = Query(...),
     reads as "the corpus has nothing to say", not "nobody asked it".
     """
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with _docreg_client(timeout=120.0) as client:
             res = await client.post(
                 f"{DOCUMENT_REGISTRY_URL}/query",
                 json={"org_id": org_id, "project_id": project_id, "query": query,

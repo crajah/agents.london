@@ -46,6 +46,12 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
+            - name: DOCREG_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docreg-internal
+                  key: DOCREG_INTERNAL_TOKEN
+                  optional: true
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

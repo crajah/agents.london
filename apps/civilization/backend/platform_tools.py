@@ -70,7 +70,8 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
     def body(tool_id: str, name: str, description: str, endpoint: str,
              side_effects: str, input_schema: Dict[str, Any],
              output_schema: Dict[str, Any], capabilities: List[str],
-             timeout_secs: int = 120) -> Dict[str, Any]:
+             timeout_secs: int = 120,
+             auth: Dict[str, Any] | None = None) -> Dict[str, Any]:
         return {
             "identity": {
                 "tool_id": tool_id, "name": name, "description": description,
@@ -83,11 +84,15 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
                 "transport": "http_post_json",
                 "input_schema": input_schema, "output_schema": output_schema,
                 "side_effects": side_effects,
-                "auth": {"mode": "none"},
+                "auth": auth or {"mode": "none"},
                 "limits": {"timeout_secs": timeout_secs},
                 "changelog": "Seeded with the realm.",
             },
         }
+
+    doc_auth = {"mode": "bearer",
+                "secret_ref": {"name": "docreg-internal",
+                               "key": "DOCREG_INTERNAL_TOKEN"}}
 
     tools = []
 
@@ -134,6 +139,7 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
             _object({"status": {"type": "string"}, "engine": {"type": "string"},
                      "data": {"type": "object"}}),
             ["retrieval", "rag", "documents", "search", "knowledge"],
+            auth=doc_auth,
         ),
         body(
             "mcp-document-ingest", "Document ingestion",
@@ -153,6 +159,7 @@ def platform_tools(org_id: str, project_id: Optional[str] = None) -> List[Dict[s
             _object({"status": {"type": "string"}, "document": {"type": "object"}}),
             ["ingest", "documents", "corpus", "index"],
             timeout_secs=600,
+            auth=doc_auth,
         ),
         body(
             "mcp-agent-discovery", "Agent discovery",

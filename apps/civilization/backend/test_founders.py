@@ -165,8 +165,17 @@ def test_seeded_tools_are_org_scoped_and_carry_schemas():
         assert spec["identity"]["project_id"] is None
         assert spec["version"]["input_schema"]["properties"], spec["identity"]["tool_id"]
         assert spec["version"]["output_schema"]["properties"], spec["identity"]["tool_id"]
-        # No literal credential ever reaches a registry row (Rule 6.3).
-        assert spec["version"]["auth"] == {"mode": "none"}
+        # No literal credential ever reaches a registry row (Rule 6.3):
+        # either no auth, or a *reference* the executor resolves from its
+        # own environment -- never the value itself.
+        auth = spec["version"]["auth"]
+        assert set(auth) <= {"mode", "secret_ref"}
+        if auth["mode"] == "none":
+            assert "secret_ref" not in auth
+        else:
+            assert set(auth["secret_ref"]) == {"name", "key"}
+            assert not any("token" in str(v).lower() and len(str(v)) > 40
+                           for v in auth["secret_ref"].values())
 
 
 def test_the_duty_bearers_declare_what_they_watch_and_what_they_change():

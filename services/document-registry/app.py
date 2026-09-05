@@ -141,15 +141,32 @@ app = FastAPI(
 )
 
 
-def _internal_ok(request: Request) -> None:
+_OPEN_PREFIXES = ("/my/", "/health", "/docs", "/openapi.json", "/redoc")
+
+
+@app.middleware("http")
+async def _internal_gate(request: Request, call_next):
     """If DOCREG_INTERNAL_TOKEN is set, the org_id surface requires it --
-    the /my/* routes are user-facing via authority tokens; these are the
-    internal plumbing and should not be reachable by whoever can reach
-    the port (audit 2026-09-04). Unset = open, for compatibility."""
+    the /my/* routes are user-facing via authority tokens; everything else
+    is internal plumbing and should not be reachable by whoever can reach
+    the port (audit 2026-09-04). Unset = open, for compatibility.
+
+    Two spellings are accepted because two kinds of caller exist: the
+    civilization backend sends x-internal-token; the tool-registry executor
+    dispatches with Authorization: Bearer (its `bearer` auth mode)."""
     tok = os.getenv("DOCREG_INTERNAL_TOKEN", "")
-    if tok and request.headers.get("x-internal-token") != tok:
-        raise HTTPException(status_code=403,
-                            detail="internal surface; token required")
+    path = request.url.path
+    if tok and not any(path.startswith(p) for p in _OPEN_PREFIXES):
+        offered = request.headers.get("x-internal-token", "")
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            offered = offered or auth[7:]
+        import hmac as _hmac
+        if not _hmac.compare_digest(offered, tok):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "internal surface; token required"},
+                                status_code=403)
+    return await call_next(request)
 
 
 def _client():

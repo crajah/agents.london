@@ -29,6 +29,14 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
+            - name: DOCREG_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: docreg-internal
+                  key: DOCREG_INTERNAL_TOKEN
+                  optional: true
+            - name: TOOL_SECRET_ALLOWLIST
+              value: "TAVILY_API_KEY,SERPER_API_KEY,RAPIDAPI_KEY,DOCREG_INTERNAL_TOKEN"
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
