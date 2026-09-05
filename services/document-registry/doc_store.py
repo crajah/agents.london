@@ -384,6 +384,24 @@ async def usage_month_to_date(client, org_id: str, kind: str) -> Dict[str, int]:
         return {"bytes": 0, "events": 0}
 
 
+async def consumption_month_to_date(client, org_id: str) -> int:
+    """Consumption Units since the month began, every kind (§9; user
+    directive 2026-09-05: one unit for all processing). Older ledger rows
+    predate the unit and fall back to their bytes."""
+    ref = client._get_table_ref("usage_events", org_id)
+    month_start = now()[:7] + "-01"
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT coalesce(sum(coalesce((payload->>'consumption_units')::bigint, "
+        f"(payload->>'bytes')::bigint, 0)), 0) AS cu FROM {ref} "
+        f"WHERE realm = $1 AND payload->>'occurred_at' >= $2",
+        org_id, month_start)
+    try:
+        return int(rows[0]["cu"]) if rows else 0
+    except (TypeError, KeyError):
+        return 0
+
+
 async def count_documents(client, org_id: str, project_id: str) -> int:
     ref = client._get_table_ref(CATALOG, org_id)
     rows = await _fetch_or_empty(
@@ -396,3 +414,79 @@ async def count_documents(client, org_id: str, project_id: str) -> int:
         return int(rows[0]["n"]) if rows else 0
     except (TypeError, KeyError):
         return 0
+
+
+# -------------------------------------------------------------- ingest jobs
+
+JOBS = "ingest_jobs"
+
+
+async def create_job(client, key: SpaceKey, job_id: str,
+                     filename: str) -> Dict[str, Any]:
+    await client.create_vertex_table(JOBS, realm=key.org_id)
+    payload = {
+        "job_id": job_id,
+        "org_id": key.org_id,
+        "project_id": key.project_id,
+        "document_space": key.document_space,
+        "filename": filename,
+        "status": "queued",
+        "created_at": now(),
+    }
+    vertex = await client.add_vertex(JOBS, realm=key.org_id,
+                                     space=key.project_id, payload=payload)
+    payload["_pk"] = int(vertex.id)
+    return payload
+
+
+async def update_job(client, org_id: str, pk: int,
+                     **changes: Any) -> Dict[str, Any]:
+    ref = client._get_table_ref(JOBS, org_id)
+    rows = await _fetch_or_empty(
+        client, f"SELECT id, payload FROM {ref} WHERE realm = $1 AND id = $2",
+        org_id, pk)
+    if not rows:
+        raise DocumentError(f"unknown ingest job pk {pk}")
+    payload = {**_payload(rows[0]), **changes}
+    await client.upsert_vertex(JOBS, realm=org_id, vertex_id=pk,
+                               space=payload.get("project_id", "default"),
+                               payload=payload)
+    return payload
+
+
+async def get_job(client, org_id: str, project_id: str,
+                  job_id: str) -> Optional[Dict[str, Any]]:
+    ref = client._get_table_ref(JOBS, org_id)
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT id, payload FROM {ref} WHERE realm = $1 AND space = $2 "
+        f"AND payload->>'job_id' = $3 ORDER BY id LIMIT 1",
+        org_id, project_id, job_id)
+    if not rows:
+        return None
+    payload = _payload(rows[0])
+    payload["_pk"] = int(rows[0]["id"])
+    return payload
+
+
+async def orphan_running_jobs(client, org_id: str) -> int:
+    """Jobs still 'running' when a registry starts died with the last one.
+
+    In-process workers do not survive a restart, and a job that reads
+    'running' forever is a lie. Marked failed with the honest reason."""
+    ref = client._get_table_ref(JOBS, org_id)
+    rows = await _fetch_or_empty(
+        client,
+        f"SELECT id, payload FROM {ref} WHERE realm = $1 "
+        f"AND payload->>'status' IN ('queued', 'running')",
+        org_id)
+    for row in rows:
+        payload = _payload(row)
+        payload.update(status="failed", finished_at=now(),
+                       error="The registry restarted mid-ingest; this job "
+                             "did not survive it. Re-upload the file.")
+        await client.upsert_vertex(JOBS, realm=org_id,
+                                   vertex_id=int(row["id"]),
+                                   space=payload.get("project_id", "default"),
+                                   payload=payload)
+    return len(rows)

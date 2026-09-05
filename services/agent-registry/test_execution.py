@@ -74,4 +74,6 @@ async def test_usage_is_read_from_the_provider_not_estimated(monkeypatch):
     assert out["usage"] == {"input_tokens": 11, "output_tokens": 7}
     assert seen == {"org_id": "org", "project_id": "proj_default", "agent_id": "agt_x"}
     assert recorded[0].tokens_total == 18
-    assert recorded[0].compute_units == 72
+    # CU: bytes processed with tokens at 4 bytes each; this event
+    # carries tokens only, so its CU is exactly the token bytes
+    assert recorded[0].consumption_units == recorded[0].bytes + 18 * 4

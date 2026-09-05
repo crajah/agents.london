@@ -663,10 +663,21 @@ class PipelineExecutor:
 
     @staticmethod
     def _step_compute_units(output: Dict[str, Any]) -> int:
-        """Compute units for one step, from the tokens it reports (Rule 12.1)."""
+        """Consumption Units for one step (Rule 12.1; user directive
+        2026-09-05): bytes processed, a token counting as BYTES_PER_TOKEN.
+        When the step reports token usage that IS the byte measure of what
+        the model processed; a step with no usage falls back to the byte
+        size of what it produced, so no processing reads as free."""
+        from metering import BYTES_PER_TOKEN
         usage = (output or {}).get("usage") or {}
         total = int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
-        return total * 4
+        if total:
+            return total * BYTES_PER_TOKEN
+        try:
+            import json as _json
+            return len(_json.dumps(output or {}).encode("utf-8"))
+        except Exception:
+            return 0
 
     @staticmethod
     def _edge_fires(dep, output: Dict[str, Any]) -> bool:

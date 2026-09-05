@@ -83,9 +83,34 @@ async def lifespan(_app: FastAPI):
         from autonomy import scheduler as _sched
     _sched._client_factory = _autonomy_client
     await _sched.start()
+    # Usage accounting: every model inference lands in the per-org ledger
+    # as Consumption Units. Accounting must never stop the platform
+    # starting (AG Rule 12.2).
+    meter = None
+    try:
+        from contextlib import asynccontextmanager as _acm
+        from metering import configure
+
+        @_acm
+        async def _meter_client(org_id: str):
+            # a fresh connection per flush batch, closed with it -- the
+            # engine's _get_pg_client creates per-call clients, so owning
+            # and closing this one leaks nothing
+            client = await civilization_engine._get_pg_client(org_id)
+            try:
+                yield client
+            finally:
+                await client.close()
+
+        meter = configure(_meter_client)
+        await meter.start()
+    except Exception:
+        logger.exception("metering unavailable; inference runs unmetered")
     try:
         yield
     finally:
+        if meter:
+            await meter.stop()
         await _sched.stop()
 
 

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from metering import COMPUTE_UNITS_PER_TOKEN, Meter, UsageEvent
+from metering import BYTES_PER_TOKEN, Meter, UsageEvent
 
 
 class FakeClient:
@@ -28,13 +28,11 @@ def factory_for(client):
     return _f
 
 
-def test_compute_units_are_derived_and_stored():
-    e = UsageEvent(org_id="o", kind="llm_call", tokens_input=100, tokens_output=25)
-    assert e.tokens_total == 125
-    assert e.compute_units == 125 * COMPUTE_UNITS_PER_TOKEN
-    # Stored on the payload, not recomputed at read (Rule 12.1).
-    assert e.to_payload()["compute_units"] == 500
-
+def test_consumption_units_are_bytes_plus_tokens_at_four_bytes():
+    e = UsageEvent(org_id="o", kind="llm_call", bytes=1000,
+                   tokens_input=100, tokens_output=25)
+    assert e.consumption_units == 1000 + 125 * BYTES_PER_TOKEN
+    assert e.to_payload()["consumption_units"] == 1500
 
 def test_record_never_blocks_and_returns_immediately():
     m = Meter(max_queue=10)

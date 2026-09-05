@@ -27,14 +27,19 @@ logger = logging.getLogger(__name__)
 
 USAGE_TABLE = "usage_events"
 
-# Compute units per token (Rule 12.1). Stored on each event rather than applied
-# at read time: this multiplier will change, and recomputing history under a new
-# one would silently restate past invoices.
-COMPUTE_UNITS_PER_TOKEN = 4
+# The Consumption Unit (user directive 2026-09-05): ONE unit for every data
+# processing action -- ingestion, RAG, model inference -- denominated in
+# bytes processed. A token to a model is considered 4 bytes, so an event
+# measured in tokens converts at that rate and an event measured in bytes
+# counts as itself. Stored on each event rather than applied at read time:
+# the rate will change, and recomputing history under a new one would
+# silently restate past invoices.
+BYTES_PER_TOKEN = 4
 
 KINDS = (
-    "document_ingest", "rag_lookup", "room_use",
-    "search_query", "search_results", "llm_call",
+    "document_ingest", "index_compute", "document_reindex", "rag_lookup",
+    "room_use", "search_query", "search_results", "llm_call",
+    "model_inference",
 )
 
 
@@ -66,13 +71,14 @@ class UsageEvent:
         return self.tokens_input + self.tokens_output
 
     @property
-    def compute_units(self) -> int:
-        return self.tokens_total * COMPUTE_UNITS_PER_TOKEN
+    def consumption_units(self) -> int:
+        """Bytes processed, with tokens counted at BYTES_PER_TOKEN each."""
+        return self.bytes + self.tokens_total * BYTES_PER_TOKEN
 
     def to_payload(self) -> Dict[str, Any]:
         d = asdict(self)
         d["tokens_total"] = self.tokens_total
-        d["compute_units"] = self.compute_units
+        d["consumption_units"] = self.consumption_units
         return d
 
 
@@ -124,7 +130,7 @@ class PrometheusSink:
                                       "Input tokens, by organisation and operation", labels)
             self.tokens_out = _counter("agentslondon_tokens_output_total",
                                        "Output tokens, by organisation and operation", labels)
-            self.compute = _counter("agentslondon_compute_units_total",
+            self.compute = _counter("agentslondon_consumption_units_total",
                                     "Compute units (total tokens x 4)", labels)
             self.dropped = _counter("agentslondon_usage_events_dropped_total",
                                     "Usage events lost to a full queue", ["org_id"])
@@ -150,7 +156,7 @@ class PrometheusSink:
         if e.tokens_output:
             self.tokens_out.labels(**lab).inc(e.tokens_output)
         if e.tokens_total:
-            self.compute.labels(**lab).inc(e.compute_units)
+            self.compute.labels(**lab).inc(e.consumption_units)
 
     def note_dropped(self, org_id: str) -> None:
         if self.enabled:

@@ -127,6 +127,18 @@ def record_execution_telemetry(
     to = completion_tokens if completion_tokens is not None else max(1, len(output_text) // 4)
     _record_in_memory(project_id, user_id, agent_id, bi, bo, ti, to)
     try:
+        # Consumption Units (user directive 2026-09-05): inference is
+        # metered in tokens, which ARE the byte measure of what the model
+        # processed (1 token = 4 bytes). bytes stays 0 here -- recording
+        # the text bytes AND the tokens would bill the same work twice.
+        from metering import METER, UsageEvent
+        METER.record(UsageEvent(org_id=org_id, project_id=project_id,
+                                kind="model_inference", bytes=0,
+                                tokens_input=ti, tokens_output=to,
+                                agent_id=agent_id))
+    except Exception as e:
+        logger.debug(f"usage metering note: {e}")
+    try:
         loop = asyncio.get_event_loop()
         coro = record_execution_telemetry_to_pg(
             org_id, project_id, user_id, agent_id, input_text, output_text,

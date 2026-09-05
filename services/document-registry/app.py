@@ -381,6 +381,10 @@ async def _usage_view(org_id: str, project_id: str) -> Dict[str, Any]:
         "org_id": org_id,
         "project_id": project_id,
         "period": "month_to_date",
+        # the one unit: bytes processed, a model token counting as 4 bytes
+        "consumption_units": await doc_store.consumption_month_to_date(
+            client, org_id),
+        "cu_limit": cap("quota_cu", QUOTA_CU),
         "ingest_bytes": ingest["bytes"],
         "ingest_limit_bytes": cap("quota_ingest_mb", QUOTA_INGEST_MB,
                                   1024 * 1024),
@@ -493,6 +497,7 @@ _ingest_locks: Dict[str, Any] = {}
 # is untouched until limits are deliberately provisioned -- by env for the
 # default tier, or per org in its registry_plans row. A refusal names the
 # number, the usage, and the period; it never dresses up as a server error.
+QUOTA_CU = int(os.getenv("DOCREG_QUOTA_CU", "0"))
 QUOTA_INGEST_MB = int(os.getenv("DOCREG_QUOTA_INGEST_MB", "0"))
 QUOTA_QUERIES = int(os.getenv("DOCREG_QUOTA_QUERIES", "0"))
 QUOTA_DOCUMENTS = int(os.getenv("DOCREG_QUOTA_DOCUMENTS", "0"))
@@ -502,6 +507,15 @@ async def _enforce_quota(key: SpaceKey, *, adding_bytes: int = 0,
                          adding_query: bool = False) -> None:
     client = _client()
     plan = await doc_store.org_plan(client, key.org_id) or {}
+    cu_cap = int(plan.get("quota_cu", QUOTA_CU))
+    if cu_cap > 0:
+        used_cu = await doc_store.consumption_month_to_date(client, key.org_id)
+        if used_cu >= cu_cap:
+            raise HTTPException(
+                status_code=402,
+                detail=(f"Consumption quota reached: {used_cu} of {cu_cap} "
+                        f"CU this month (1 CU = 1 byte processed; a model "
+                        f"token counts as 4)."))
     ingest_cap = int(plan.get("quota_ingest_mb", QUOTA_INGEST_MB)) * 1024 * 1024
     query_cap = int(plan.get("quota_queries", QUOTA_QUERIES))
     doc_cap = int(plan.get("quota_documents", QUOTA_DOCUMENTS))
@@ -807,6 +821,115 @@ async def upload_multiple_document_files(space_name: str,
         "indexed_count": len(indexed),
         "failed_count": len(failed),
     }
+
+
+# ------------------------------------------------------------------ jobs
+
+# pks of jobs whose worker lives in THIS process. A job row that says
+# 'running' while its pk is absent here belonged to a process that died;
+# the truth is computed at read time rather than trusted from the row.
+_live_jobs: set = set()
+
+
+def _job_view(job: Dict[str, Any]) -> Dict[str, Any]:
+    view = {k: v for k, v in job.items() if k != "_pk"}
+    if job.get("status") in ("queued", "running")             and job.get("_pk") not in _live_jobs:
+        view["status"] = "failed"
+        view["error"] = ("The registry restarted mid-ingest; this job did "
+                         "not survive it. Re-upload the file.")
+    return view
+
+
+async def _run_ingest_job(pk: int, key: SpaceKey, path: str, filename: str,
+                          digest: str, size: int,
+                          content_type: Optional[str]) -> None:
+    client = _client()
+    try:
+        await doc_store.update_job(client, key.org_id, pk, status="running")
+        try:
+            extraction = extract_path(path, filename)
+        finally:
+            os.unlink(path)
+        document = await _ingest(key, filename, digest, size,
+                                 extraction.text, extraction, content_type,
+                                 "file_upload", "document")
+        await doc_store.update_job(
+            client, key.org_id, pk, status="done",
+            finished_at=doc_store.now(),
+            result=_upload_response(document, key))
+    except HTTPException as e:
+        await doc_store.update_job(client, key.org_id, pk, status="failed",
+                                   finished_at=doc_store.now(),
+                                   error=str(e.detail))
+    except Exception as e:
+        logger.exception("ingest job %s failed", pk)
+        await doc_store.update_job(client, key.org_id, pk, status="failed",
+                                   finished_at=doc_store.now(),
+                                   error=f"{type(e).__name__}: {e}")
+    finally:
+        _live_jobs.discard(pk)
+
+
+@app.post("/spaces/{space_name}/documents/ingest-jobs",
+          tags=["Document Upload & Ingestion"], status_code=202)
+async def create_ingest_job(space_name: str,
+                            project_id: str = Form(...),
+                            org_id: str = Form("org_default"),
+                            document_space: Optional[str] = Form(None),
+                            file: UploadFile = File(...)):
+    """Accept a file and index it in the background: 202 with a job id.
+
+    Extraction plus graph indexing of a large document takes minutes, and a
+    connection held open that long fails at every proxy between here and a
+    customer. The job is the resource; GET it until it is done or failed."""
+    import asyncio as _aio
+    import uuid as _uuid
+    try:
+        key = SpaceKey(org_id=org_id, project_id=project_id,
+                       document_space=document_space or space_name)
+    except DocumentError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await _enforce_quota(key, adding_bytes=1)   # refuse before spooling
+    path, digest, size = await _spool_upload(file)
+    filename = file.filename or "uploaded_document"
+    job = await doc_store.create_job(_client(), key,
+                                     _uuid.uuid4().hex[:16], filename)
+    _live_jobs.add(job["_pk"])
+    _aio.get_running_loop().create_task(
+        _run_ingest_job(job["_pk"], key, path, filename, digest, size,
+                        file.content_type))
+    return {"status": "accepted", "job_id": job["job_id"],
+            "poll": f"/projects/{project_id}/ingest-jobs/{job['job_id']}"
+                    f"?org_id={org_id}"}
+
+
+@app.get("/projects/{project_id}/ingest-jobs/{job_id}",
+         tags=["Document Upload & Ingestion"])
+async def read_ingest_job(project_id: str, job_id: str,
+                          org_id: str = Query("org_default")):
+    job = await doc_store.get_job(_client(), org_id, project_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404,
+                            detail=f"Unknown ingest job {job_id!r}.")
+    return _job_view(job)
+
+
+@app.post("/my/spaces/{space_name}/documents/ingest-jobs",
+          tags=["My Documents"], status_code=202)
+async def my_create_ingest_job(request: Request, space_name: str,
+                               project_id: str = Form("default"),
+                               file: UploadFile = File(...)):
+    realm = _granted_docs_realm(request)
+    return await create_ingest_job(space_name, project_id=project_id,
+                                   org_id=realm, document_space=space_name,
+                                   file=file)
+
+
+@app.get("/my/projects/{project_id}/ingest-jobs/{job_id}",
+         tags=["My Documents"])
+async def my_read_ingest_job(request: Request, project_id: str, job_id: str):
+    realm = _granted_docs_realm(request)
+    return await read_ingest_job(project_id, job_id, org_id=realm)
 
 
 # ------------------------------------------------------------------ lifecycle
