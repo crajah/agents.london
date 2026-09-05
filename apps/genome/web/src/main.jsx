@@ -358,7 +358,13 @@ immediately through the portals"
                     <div key={a.uuid}
                          className="flex items-center gap-2 border-b
                                     border-neutral-700/50 py-0.5">
-                      <span className="truncate flex-1">{a.uuid}</span>
+                      <span className="flex gap-1 items-center truncate
+                                       flex-1" title={a.uuid}>
+                        {(a.colour_pair || []).map((c, j) =>
+                          <span key={j} className="inline-block w-2 h-2
+                                                   rounded-full shrink-0"
+                                style={{ background: c }} />)}
+                        {a.name || a.uuid}</span>
                       <button className="underline opacity-70"
                               title="Schedule a decide now"
                               onClick={() => agentAct(a.uuid, "nudge")}>

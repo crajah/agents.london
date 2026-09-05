@@ -639,6 +639,20 @@ def _admin_ok(request) -> bool:
     return bool(tok) and request.headers.get("x-admin-token") == tok
 
 
+async def _roster_with_names(uuids: list) -> list:
+    """Names for the operator's roster, one batched query."""
+    if not uuids:
+        return []
+    rows = await app.state.pg.find_vertices(
+        "agents", realm="genome_agents",
+        where=[("key", "in", list(uuids))], limit=len(uuids))
+    named = {r.payload.get("key"): r.payload for r in rows}
+    return [{"uuid": a,
+             "name": (named.get(a) or {}).get("name"),
+             "colour_pair": (named.get(a) or {}).get("colour_pair")}
+            for a in uuids]
+
+
 @app.get("/admin/worlds", tags=["Admin"])
 async def admin_worlds(request: __import__("fastapi").Request):
     """One row per realm: population, queue depths, oldest due age, clock,
@@ -704,7 +718,7 @@ async def admin_worlds(request: __import__("fastapi").Request):
                               if meta.get("flood_at") else None),
             "time_scale": meta.get("time_scale", 1.0),
             "flood_count": meta.get("flood_count", 0),
-            "roster": [{"uuid": a} for a in agents[:60]],
+            "roster": await _roster_with_names(agents[:60]),
             "open_listings": len(listings),
             "decisions_last_hour": await app.state.pg.count_vertices(
                 "decision_queue", realm="genome_agents",
