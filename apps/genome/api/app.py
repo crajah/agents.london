@@ -906,12 +906,15 @@ async def admin_nudge(agent_uuid: str,
 async def admin_scurry(realm: str,
                        request: __import__("fastapi").Request):
     """Evacuation order (user directive 2026-09-05): every present agent
-    leaves IMMEDIATELY, through the world's portals in rotation, riding the
-    same signed-transfer rails a chosen departure uses -- verification,
-    counters and arrival scheduling included."""
-    from genome_core import drain as _dr
-    from genome_core.store import GenomeStore as _GS
+    NAVIGATES to its nearest teleport point and leaves through it -- the
+    walk is real movement on the map, the crossing fires as an `evacuate`
+    event at the door and rides the ordinary signed-transfer rails."""
+    import math as _m
     import time as _t
+    from genome_core import drain as _dr
+    from genome_core import forms as _forms
+    from genome_core import path as _path
+    from genome_core.store import GenomeStore as _GS
     denied = _admin_guard(request)
     if denied:
         return denied
@@ -927,44 +930,39 @@ async def admin_scurry(realm: str,
                             status_code=409)
     store = _GS(app.state.pg)
     now = _t.time()
-    left, failed = [], []
+    ts = max(1.0, meta.get("time_scale", 1.0))
+    terrain = meta.get("terrain", [])
+    marched, failed = 0, []
     present = [v.payload["key"] for v in await store.agents_in(realm)
                if not v.payload["key"].startswith("user:")]
-    for i, a in enumerate(present):
-        door = doors[i % len(doors)]
+    for a in present:
         try:
             view, apl = await _dr.load_agent(store, realm, a, realm, now)
-            ok = await _dr.do_transfer(
-                store, realm, view, apl,
+            door = min(doors, key=lambda d: _m.hypot(
+                d.get("x", 0.5) - view.x, d.get("y", 0.5) - view.y))
+            pts = _path.find_path(terrain, view.x, view.y,
+                                  door.get("x", 0.5), door.get("y", 0.5)) \
+                or [(view.x, view.y),
+                    (door.get("x", 0.5), door.get("y", 0.5))]
+            length = sum(_m.dist(pts[k], pts[k + 1])
+                         for k in range(len(pts) - 1))
+            arrives = now + max(1.0, length / _forms.SPEED / ts)
+            await store.set_movement(a, {
+                "waypoints": [list(q) for q in pts],
+                "departed_at": now, "arrives_at": arrives,
+                "cargo": view.cargo})
+            await store.schedule(
+                realm, f"scurry-{a}-{int(now)}", _dr._iso(arrives),
+                "evacuate", a,
                 {"to_world": door["to_world"],
-                 "portal_xy": [door.get("x"), door.get("y")]},
-                meta.get("portals", []), now)
-            (left if ok else failed).append(a)
+                 "portal_xy": [door.get("x"), door.get("y")]})
+            marched += 1
         except Exception as e:
             failed.append(f"{a}: {type(e).__name__}")
-    return {"ok": True, "realm": realm, "left": len(left),
-            "failed": failed[:10], "doors_used": len(doors)}
-
-
-@app.get("/admin/config", tags=["Admin"])
-async def admin_get_config(request: __import__("fastapi").Request):
-    from fastapi.responses import JSONResponse
-    from genome_core import spawnpool
-    if not _admin_ok(request):
-        return JSONResponse({"error": "admin token"}, status_code=403)
-    return await spawnpool.get_config(app.state.pg)
-
-
-@app.put("/admin/config", tags=["Admin"])
-async def admin_put_config(payload: dict,
-                           request: __import__("fastapi").Request):
-    """Simulation-wide levers: free-agent spawning on/off, its cadence and
-    the per-world cap. Applied by every worker within one heal cycle."""
-    from fastapi.responses import JSONResponse
-    from genome_core import spawnpool
-    if not _admin_ok(request):
-        return JSONResponse({"error": "admin token"}, status_code=403)
-    return await spawnpool.set_config(app.state.pg, payload or {})
+    return {"ok": True, "realm": realm, "marching": marched,
+            "failed": failed[:10], "doors": len(doors),
+            "note": "each agent walks to its nearest door and crosses "
+                    "on arrival"}
 
 
 @app.post("/admin/worlds/{realm}/spawn", tags=["Admin"])

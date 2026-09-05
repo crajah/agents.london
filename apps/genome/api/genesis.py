@@ -141,12 +141,20 @@ def _grow_slot(meta: dict, seed: str) -> dict | None:
 
 
 async def _user_world_realms(client: Any) -> list[str]:
-    """Every world born through genesis, discovered from the user records."""
+    """Every LIVING world born through genesis: tombstoned and paused
+    worlds are memorials, not destinations -- a door into one strands
+    whoever steps through (found live 2026-09-05)."""
     out = set()
     for v in await client.get_vertices("agents", realm="genome_agents"):
         if v.payload.get("key", "").startswith("user:") and                 v.payload.get("world_realm"):
             out.add(v.payload["world_realm"])
-    return sorted(out)
+    store = GenomeStore(client)
+    living = []
+    for w in sorted(out):
+        meta = await drain._world_payload(store, w)
+        if not (meta.get("tombstoned") or meta.get("paused")):
+            living.append(w)
+    return living
 
 
 async def link_random_worlds(client: Any, realm: str, want: int = 5) -> list:

@@ -870,6 +870,19 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                      "dest_colours": None}] if entry else [])
     stock = await get_stock(store, world_realm)
 
+    if pl["kind"] == "evacuate":
+        # scurry, second half (user directive 2026-09-05: agents NAVIGATE
+        # to a teleport point and leave that way) -- the walk was written
+        # at order time; this fires at the door and executes the crossing
+        # on the ordinary signed-transfer rails
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        ok = await do_transfer(store, world_realm, agent, agent_payload,
+                               {"to_world": pl["payload"].get("to_world"),
+                                "portal_xy": pl["payload"].get("portal_xy")},
+                               world_payload.get("portals", []), now)
+        return f"evacuated:{pl['payload'].get('to_world')}" if ok \
+            else "evacuation_refused"
+
     if pl["kind"] == "perish":
         await store.complete_event(world_realm, pl["key"], _iso(now))
         return await regenerate(store, world_realm, agent, agent_payload, now,
@@ -1088,6 +1101,12 @@ async def _portage_group_cross(store: GenomeStore, origin_realm: str,
     refuses the whole step (the party was not assembled at the door)."""
     key = agent_payload["carrying_site"]
     to_world = transfer["to_world"]
+    dest_meta = await _world_payload(store, to_world)
+    if dest_meta.get("tombstoned") or dest_meta.get("paused"):
+        # a paused world runs no ticks: an agent admitted here would stand
+        # frozen forever. The door does not open (found live 2026-09-05:
+        # the portal top-up had linked six worlds into a tombstone).
+        return False
     rows = await store._c.find_vertices(construction.TABLE,
                                         realm=origin_realm,
                                         filters={"key": key}, limit=1)
