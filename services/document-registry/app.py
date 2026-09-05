@@ -13,8 +13,10 @@ Namespace (spec/document-registry-spec.md §2), three tiers:
 Every post-graph call is made with realm=org_id, space=project_id. The document
 space is never passed as a post-graph space.
 """
+import hashlib
 import logging
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,7 +28,7 @@ from post_graph import AsyncPostGraph
 
 import doc_rag
 import doc_store
-from doc_extract import extract
+from doc_extract import extract, extract_path
 from env_file import load_env_file
 from doc_model import (
     FAILED, INDEXED, WITHDRAWN, CreateSpaceRequest, DocumentError,
@@ -369,9 +371,9 @@ async def list_project_documents(project_id: str,
 
 # ------------------------------------------------------------------ ingestion
 
-async def _ingest(key: SpaceKey, filename: str, data: bytes, text: str,
-                  extraction, content_type: Optional[str], source: str,
-                  category: str) -> Dict[str, Any]:
+async def _ingest(key: SpaceKey, filename: str, digest: str, size: int,
+                  text: str, extraction, content_type: Optional[str],
+                  source: str, category: str) -> Dict[str, Any]:
     """Index one already-extracted document and catalogue the outcome.
 
     Order matters: extraction has already succeeded (Rule 4.1), so this
@@ -379,7 +381,6 @@ async def _ingest(key: SpaceKey, filename: str, data: bytes, text: str,
     outcome is recorded rather than swallowed (Rule 6.2).
     """
     client = _client()
-    digest = content_hash(data)
     # Retain the extracted text (capped) so /reindex can actually recover
     # a failed index -- without it every reindex 409ed forever (audit
     # 2026-09-04) and the only remedy was re-upload.
@@ -403,13 +404,13 @@ async def _ingest(key: SpaceKey, filename: str, data: bytes, text: str,
         outcome = await doc_rag.index(rag, key, text, metadata)
 
     entry = catalogue_entry(key=key, filename=filename, digest=digest,
-                            size=len(data), extraction=extraction,
+                            size=size, extraction=extraction,
                             index=outcome, content_type=content_type)
     entry["_text"] = retained_text
     saved = await doc_store.save_document(client, key, entry)
     saved.pop("_pk", None)
 
-    _record("document_ingest", key, len(data))
+    _record("document_ingest", key, size)
     return saved
 
 
@@ -455,9 +456,46 @@ async def upload_document_text(space_name: str, req: UploadTextRequest):
     data = req.content.encode("utf-8")
     extraction = ExtractionResult(method="api_text", text=req.content,
                                   characters=len(req.content))
-    document = await _ingest(key, req.document_name, data, req.content, extraction,
+    document = await _ingest(key, req.document_name, content_hash(data),
+                             len(data), req.content, extraction,
                              "text/plain", "api_upload", req.category or "text")
     return _upload_response(document, key)
+
+
+MAX_UPLOAD_BYTES = int(os.getenv("DOCREG_MAX_UPLOAD_MB", "200")) * 1024 * 1024
+
+
+async def _spool_upload(upload) -> tuple:
+    """Stream an upload to a temp file in 64KB chunks, hashing as it goes.
+
+    The raw bytes never sit whole in this process: two OOM kills came from
+    `await upload.read()` holding entire files alongside the extractor's
+    models (2026-09-05). Returns (path, digest, size); the caller owns the
+    temp file and must unlink it. Over-limit uploads are refused with an
+    honest 413 before they can take the pod down."""
+    suffix = os.path.splitext(upload.filename or "")[1] or ".bin"
+    digest = hashlib.sha256()
+    size = 0
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = await upload.read(65536)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(f"{upload.filename!r} exceeds the "
+                                f"{MAX_UPLOAD_BYTES // (1024 * 1024)}MB upload "
+                                f"limit. Nothing was catalogued or indexed."))
+                digest.update(chunk)
+                out.write(chunk)
+    except BaseException:
+        os.unlink(path)
+        raise
+    return path, f"sha256:{digest.hexdigest()}", size
 
 
 @app.post("/spaces/{space_name}/documents/upload-file",
@@ -474,18 +512,22 @@ async def upload_document_file(space_name: str,
     except DocumentError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    data = await file.read()
+    path, digest, size = await _spool_upload(file)
     filename = file.filename or "uploaded_document"
     try:
-        extraction = extract(data, filename)
-    except DocumentError as e:
-        # 415, not a placeholder (Rule 5.3). The file is not catalogued and not
-        # indexed, because a catalogue entry is a claim the document is in the
-        # corpus.
-        raise HTTPException(status_code=415, detail=str(e)) from e
+        try:
+            extraction = extract_path(path, filename)
+        except DocumentError as e:
+            # 415, not a placeholder (Rule 5.3). The file is not catalogued and
+            # not indexed, because a catalogue entry is a claim the document is
+            # in the corpus.
+            raise HTTPException(status_code=415, detail=str(e)) from e
+    finally:
+        os.unlink(path)
 
-    document = await _ingest(key, filename, data, extraction.text, extraction,
-                             file.content_type, filename, "file_upload")
+    document = await _ingest(key, filename, digest, size, extraction.text,
+                             extraction, file.content_type, filename,
+                             "file_upload")
     return _upload_response(document, key)
 
 
@@ -517,17 +559,27 @@ async def upload_multiple_document_files(space_name: str,
     failed: List[Dict[str, Any]] = []
 
     for upload in files:
-        data = await upload.read()
         filename = upload.filename or "uploaded_document"
         try:
-            extraction = extract(data, filename)
-        except DocumentError as e:
-            failed.append({"filename": filename, "stage": "extraction",
-                           "error": str(e)})
+            path, digest, size = await _spool_upload(upload)
+        except HTTPException as e:
+            failed.append({"filename": filename, "stage": "spool",
+                           "error": e.detail})
             continue
         try:
-            document = await _ingest(key, filename, data, extraction.text, extraction,
-                                     upload.content_type, filename, "file_upload")
+            try:
+                extraction = extract_path(path, filename)
+            except DocumentError as e:
+                failed.append({"filename": filename, "stage": "extraction",
+                               "error": str(e)})
+                continue
+        finally:
+            os.unlink(path)
+        try:
+            document = await _ingest(key, filename, digest, size,
+                                     extraction.text, extraction,
+                                     upload.content_type, filename,
+                                     "file_upload")
         except Exception as e:
             logger.exception("ingest failed for %s", filename)
             failed.append({"filename": filename, "stage": "ingest", "error": str(e)})
