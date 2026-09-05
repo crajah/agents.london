@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 
 USAGE_TABLE = "usage_events"
 
+# The system ledger (user directive 2026-09-05): ONE table in the platform's
+# own realm, one vertex per organisation, every event an APPEND-ONLY data row
+# -- the same mechanism as any other post-graph history. Each row carries the
+# database timestamp, so extraction by time range is an indexed scan (see
+# marty infra/postgres/performance-indexes.sql for the composite index), and
+# the payload keeps org, project, user-adjacent metadata for filtering.
+SYSTEM_REALM = "platform_system"
+CONSUMPTION_TABLE = "consumption"
+
 # The Consumption Unit (user directive 2026-09-05): ONE unit for every data
 # processing action -- ingestion, RAG, model inference -- denominated in
 # bytes processed. A token to a model is considered 4 bytes, so an event
@@ -281,6 +290,15 @@ class Meter:
                         await client.add_vertex(
                             USAGE_TABLE, realm=org_id, space=e.project_id,
                             payload=e.to_payload())
+                    # the system ledger: appended, never updated. The write
+                    # is fully async -- it rides the same flush task, after
+                    # the per-org rows, and its failure is the batch's
+                    # failure (accounting incomplete, loudly).
+                    pk = await self._consumption_vertex(client, org_id)
+                    for e in events:
+                        await client.add_vertex_data(
+                            table_name=CONSUMPTION_TABLE, realm=SYSTEM_REALM,
+                            vertex_id=pk, payload=e.to_payload())
                 self.written += len(events)
             except Exception:
                 self.dropped += len(events)
@@ -290,6 +308,30 @@ class Meter:
                 logger.exception(
                     "failed to write %d usage events for org '%s'; accounting for "
                     "this period is now incomplete", len(events), org_id)
+
+    _consumption_pks: Dict[str, int] = {}
+
+    async def _consumption_vertex(self, client, org_id: str) -> int:
+        """The org's anchor vertex in the system consumption table, created
+        once and cached; every event is a data row appended beneath it."""
+        pk = self._consumption_pks.get(org_id)
+        if pk is not None:
+            return pk
+        await client.create_vertex_table(CONSUMPTION_TABLE, realm=SYSTEM_REALM)
+        rows = await client._fetch(
+            f"SELECT id FROM "
+            f"{client._get_table_ref(CONSUMPTION_TABLE, SYSTEM_REALM)} "
+            f"WHERE realm = $1 AND payload->>'org_id' = $2 LIMIT 1",
+            SYSTEM_REALM, org_id)
+        if rows:
+            pk = int(rows[0]["id"])
+        else:
+            vertex = await client.add_vertex(
+                CONSUMPTION_TABLE, realm=SYSTEM_REALM, space=org_id,
+                payload={"org_id": org_id, "kind": "consumption_anchor"})
+            pk = int(vertex.id)
+        self._consumption_pks[org_id] = pk
+        return pk
 
     async def _ensure_ledger(self, client, org_id: str) -> None:
         """Create the ledger table for one realm, once, tolerating a race.
@@ -321,3 +363,31 @@ def configure(client_factory, **kw) -> Meter:
     global METER
     METER = Meter(client_factory=client_factory, **kw)
     return METER
+
+
+async def consumption_between(client, org_id: str, start_iso: str,
+                              end_iso: str) -> List[Dict[str, Any]]:
+    """Extract one org's consumption rows for a time range, oldest first.
+
+    Reads the append-only system ledger by the DATABASE timestamp of each
+    row -- the moment the ledger accepted it -- with each payload carrying
+    its own `occurred_at` for the operation's true moment. The composite
+    index (realm, id, timestamp) makes this a range scan at any history
+    size."""
+    table_ref = client._get_table_ref(CONSUMPTION_TABLE, SYSTEM_REALM)
+    data_ref = client._get_table_ref(CONSUMPTION_TABLE + "_data", SYSTEM_REALM)
+    rows = await client._fetch(
+        f"SELECT d.payload, d.timestamp FROM {data_ref} d "
+        f"JOIN {table_ref} t ON t.realm = d.realm AND t.id = d.id "
+        f"WHERE d.realm = $1 AND t.payload->>'org_id' = $2 "
+        f"AND d.timestamp >= $3::timestamptz AND d.timestamp < $4::timestamptz "
+        f"ORDER BY d.timestamp",
+        SYSTEM_REALM, org_id, start_iso, end_iso)
+    out = []
+    for r in rows:
+        payload = r["payload"]
+        if isinstance(payload, str):
+            import json as _json
+            payload = _json.loads(payload)
+        out.append({**payload, "ledger_at": r["timestamp"].isoformat()})
+    return out

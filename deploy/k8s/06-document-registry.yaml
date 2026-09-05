@@ -57,6 +57,8 @@ spec:
             - configMapRef:
                 name: litellm-config
           env:
+            - name: RAG_SCHEMA_PER_REALM
+              value: "1"
             - name: DOCREG_INTERNAL_TOKEN
               valueFrom:
                 secretKeyRef:

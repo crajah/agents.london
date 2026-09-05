@@ -10,7 +10,9 @@ from metering import BYTES_PER_TOKEN, Meter, UsageEvent
 class FakeClient:
     def __init__(self, fail=False):
         self.written = []
+        self.appended = []          # system-ledger data rows
         self.fail = fail
+        self._pk = 0
 
     async def create_vertex_table(self, table, realm=None, vector_dim=None):
         pass
@@ -19,6 +21,20 @@ class FakeClient:
         if self.fail:
             raise RuntimeError("database is down")
         self.written.append((realm, payload))
+        self._pk += 1
+        return type("V", (), {"id": self._pk})()
+
+    def _get_table_ref(self, table, realm):
+        return f"{realm}.{table}"
+
+    async def _fetch(self, query, *args):
+        return []                    # no existing anchor: one gets created
+
+    async def add_vertex_data(self, table_name=None, realm=None,
+                              vertex_id=None, payload=None):
+        if self.fail:
+            raise RuntimeError("database is down")
+        self.appended.append((realm, vertex_id, payload))
 
 
 def factory_for(client):
@@ -69,7 +85,8 @@ async def test_flush_writes_grouped_by_organisation():
     m.record(UsageEvent(org_id="org_b", kind="llm_call", tokens_input=20))
     await m._flush(m._take_batch())
     realms = {r for r, _ in client.written}
-    assert realms == {"org_a", "org_b"}
+    # the two org ledgers, plus each org's anchor in the system ledger
+    assert realms == {"org_a", "org_b", "platform_system"}
     assert m.written == 2
 
 
@@ -125,3 +142,17 @@ def test_metrics_never_fail_the_caller():
     sink.enabled = False
     sink.observe(UsageEvent(org_id="org", project_id="p", kind="llm_call",
                             tokens_input=1, tokens_output=1))
+
+
+@pytest.mark.asyncio
+async def test_every_event_lands_in_the_system_ledger_too():
+    client = FakeClient()
+    m = Meter(client_factory=factory_for(client))
+    m.record(UsageEvent(org_id="org_a", kind="llm_call", tokens_input=10))
+    m.record(UsageEvent(org_id="org_a", kind="document_ingest", bytes=500))
+    await m._flush(m._take_batch())
+    from metering import SYSTEM_REALM
+    rows = [p for r, _, p in client.appended if r == SYSTEM_REALM]
+    assert len(rows) == 2
+    assert {p["kind"] for p in rows} == {"llm_call", "document_ingest"}
+    assert all("consumption_units" in p and "occurred_at" in p for p in rows)
