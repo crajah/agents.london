@@ -510,6 +510,11 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         agent_uuid=agent.agent_uuid, situation="at_" + (at_pile or "large"),
         options=tuple(options),
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
+                 "world_ask": ({"text": ctx["open_world_ask"].get("text", ""),
+                                "age_s": max(0.0, now -
+                                             ctx["open_world_ask"]
+                                             .get("at", now))}
+                               if ctx.get("open_world_ask") else None),
                  "portal_to": near_portal.get("to_world") if near_portal else None,
                  "portal_xy": [near_portal["x"], near_portal["y"]] if near_portal else None,
                  "portal_colours": near_portal.get("dest_colours") if near_portal else None,

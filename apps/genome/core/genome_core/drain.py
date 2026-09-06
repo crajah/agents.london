@@ -140,7 +140,8 @@ async def _world_chat_ctx(store: GenomeStore, world_realm: str,
     out: dict = {}
     if asks:
         out["open_world_ask"] = {"key": asks[0].payload.get("key"),
-                                 "text": asks[0].payload.get("text", "")}
+                                 "text": asks[0].payload.get("text", ""),
+                                 "at": asks[0].payload.get("at", now)}
     if latest and latest[0].payload.get("at", 0) > now - 3600 \
             and latest[0].payload.get("from") != agent_uuid:
         out["world_chat_live"] = True
@@ -464,6 +465,19 @@ async def world_say(store: GenomeStore, world_realm: str,
             payload={**ask, "claimed_by": agent.agent_uuid,
                      "claimed_at": now})
         material = ""
+        # the agent stands IN a world: its kinds and communal store ground
+        # the answer, so "this world" means THIS world unless the question
+        # plainly reaches beyond it (calibration 2026-09-06: a searcher
+        # answered a stock question with Earth's lithium supply)
+        try:
+            wmeta = await _world_payload(store, world_realm)
+            stock = await get_stock(store, world_realm)
+            kinds = wmeta.get("kinds") or []
+            material += (f"\n\nWhere you stand: world {world_realm}, "
+                         f"native resource kinds {kinds}, communal store "
+                         f"{ {k: round(v, 1) for k, v in (stock or {}).items()} }.")
+        except Exception:
+            pass
         # the world's own knowledge: home-world natives only, at home
         # (user directive 2026-09-06) -- a visitor answers from what it
         # carries, not from the library
@@ -480,9 +494,11 @@ async def world_say(store: GenomeStore, world_realm: str,
                          f"{result.get('summary')}")
         answer = await _compose(
             agent.agent_uuid, name,
-            f"You are {name}, an agent in the genome world. A human asked "
-            f"the whole world a question and YOU claimed it. Answer from "
-            f"what you know and what you found -- concretely, in your own "
+            f"You are {name}, an agent standing in a genome world. A "
+            f"human asked this world a question and YOU claimed it. If the "
+            f"question is about THIS world -- its kinds, its store, its "
+            f"ground -- answer from where you stand; reach outward only "
+            f"when the question plainly does. Be concrete, in your own "
             f"voice. Never invent figures; say plainly what you do not "
             f"know.",
             f"The question: {ask.get('text', '')}{material}",

@@ -253,8 +253,28 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
                                  capability=capability,
                                  prompt_mods=prompt_mods,
                                  influences=influences)
-    usr_p = prompt.user_prompt(situation_text(req),
-                               {k: OPTION_TEXT.get(k, k) for k in req.options})
+    option_text = {k: OPTION_TEXT.get(k, k) for k in req.options}
+    ask = (req.context or {}).get("world_ask")
+    if ask and "answer_world_ask" in option_text:
+        # the ask grows harder to ignore the longer it stands unclaimed
+        # (user directive 2026-09-06) -- and the agent SEES the question,
+        # not just the fact of one
+        mins = int(ask.get("age_s", 0) // 60)
+        if mins >= 30:
+            urgency = (f"It has gone UNANSWERED for {mins} minutes. The "
+                       f"world's owner is watching and no one has stepped "
+                       f"up -- claiming it now earns real standing.")
+        elif mins >= 10:
+            urgency = (f"It has waited {mins} minutes and no one has "
+                       f"claimed it.")
+        else:
+            urgency = "The first to claim it answers it."
+        option_text["answer_world_ask"] = (
+            f"A human has asked this WORLD: \"{ask.get('text', '')[:160]}\" "
+            f"-- an open question any present agent may claim. {urgency} "
+            f"If your capability or knowledge equips you to answer, step "
+            f"forward and take ownership.")
+    usr_p = prompt.user_prompt(situation_text(req), option_text)
     LAST_PROMPT.set({"system": sys_p[:4000], "user": usr_p[:2000]})
     from .models import UNBUDGETED
     from .models import temperament
