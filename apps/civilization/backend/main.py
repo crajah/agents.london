@@ -1354,6 +1354,25 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
 COMPOSE_MATERIALIZE_ON_MISS = os.getenv("COMPOSE_MATERIALIZE_ON_MISS", "1") == "1"
 
 
+async def _any_registered_parent(org_id: str, project_id: str) -> Optional[str]:
+    """A registered agent id to parent a new worker to. The registry requires
+    provenance edges to point at an agent it knows, and the default founder
+    (`progenitor-...`) is not itself registered, so a fresh worker is refused
+    unless it descends from something real.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(f"{AGENT_REGISTRY_URL.rstrip('/')}/agents",
+                                   params={"org_id": org_id, "project_id": project_id})
+        if res.status_code == 200:
+            for row in res.json().get("agents", []):
+                if row.get("agent_id"):
+                    return row["agent_id"]
+    except Exception as e:
+        logger.warning("could not resolve a registered parent: %s", e)
+    return None
+
+
 async def _materialize_for_need(org_id: str, project_id: str, goal: str,
                                 need: str, emit=None) -> Optional[Dict[str, Any]]:
     """No registered agent fits this stage, so make one (route 1 to a billion:
@@ -1376,9 +1395,11 @@ async def _materialize_for_need(org_id: str, project_id: str, goal: str,
         f"complete result for your stage. Do not ask questions — act.")
     await report("materializing", {"need": need, "name": name})
     try:
+        parent = await _any_registered_parent(org_id, project_id)
         made = await civilization_engine.materialize_worker_agent(
             org_id=org_id, project_id=project_id, user_id="system-compose",
             agent_name=name, telos=need, system_prompt=system_prompt,
+            parent_agent_id=parent,   # provenance must point at a registered agent
             tools=[])   # pin nothing: a pure-LLM specialist the registry will accept
         if isinstance(made, dict) and made.get("registered_in_registry") is False:
             await report("materialize_failed",
