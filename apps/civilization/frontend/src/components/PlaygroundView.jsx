@@ -16,7 +16,9 @@ import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
 import AutoFormatDetectorRenderer from './AutoFormatDetectorRenderer';
+import RunDetailModal from './RunDetailModal';
 
 /**
  * From a prompt to an answer, with the work visible in between.
@@ -208,6 +210,7 @@ export default function PlaygroundView({ state }) {
   const [history, setHistory] = useState([]);
   const [viewingId, setViewingId] = useState(null);   // null = the live run
   const runRef = useRef(null);   // the run being assembled, saved when it ends
+  const [detailOpen, setDetailOpen] = useState(false);   // the drill-down
 
   useEffect(() => {
     if (!historyKey) { setHistory([]); return; }
@@ -416,6 +419,48 @@ export default function PlaygroundView({ state }) {
     persist(history.filter((h) => h.id !== id));
     if (viewingId === id) newRun();
   };
+
+  // The run currently on screen, assembled for the drill-down: a saved run if
+  // one is selected, otherwise whatever the live stream has produced so far.
+  const currentRun = useMemo(() => {
+    if (viewingId) return history.find((h) => h.id === viewingId) || null;
+    if (!answer && !stages.length) return null;
+    return { id: 'live', prompt, at: runStartedAt || Date.now(),
+             intake, plan, unmatched, pipeline, stages, answer };
+  }, [viewingId, history, prompt, runStartedAt, intake, plan, unmatched,
+      pipeline, stages, answer]);
+
+  // Catalogue a proven combination as one reusable agent (Phase 5). The
+  // composed pipeline is already published and pinned; this promotes it into
+  // the agent registry so it is discoverable and A2A-invocable like any agent.
+  const [cataloguing, setCataloguing] = useState(false);
+  const onCatalogue = async (run) => {
+    const tool = run?.pipeline?.mcp_tool || run?.answer?.mcp_tool;
+    const pipelineId = run?.pipeline?.pipeline_id || run?.answer?.pipeline_id;
+    if (!tool && !pipelineId) return;
+    const name = window.prompt(
+      'Name this combination as a reusable agent:',
+      (run.prompt || 'Composed agent').slice(0, 60));
+    if (!name) return;
+    setCataloguing(true);
+    const { data, error: err } = await attempt(api.post('/api/agents/catalogue-combination', {
+      pipeline_id: pipelineId, mcp_tool: tool, name,
+      goal: run.prompt || '', project_id: projectId, org_id: orgId,
+      stages: (run.stages || []).map((s) => ({
+        step: s.step, agent_name: s.agent_name,
+        version: s.version, content_hash: s.content_hash })),
+    }));
+    setCataloguing(false);
+    if (err || !data?.ok) {
+      setError((err && (err.userMessage || err.message)) || data?.detail
+               || 'Could not catalogue this combination.');
+      return;
+    }
+    setError(null);
+    setDetailOpen(false);
+    setCatalogued({ name, agent_id: data.agent_id });
+  };
+  const [catalogued, setCatalogued] = useState(null);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -718,6 +763,13 @@ export default function PlaygroundView({ state }) {
                   {(answer.duration_ms / 1000).toFixed(1)}s total
                 </Typography>
               )}
+              {!answer.failed && !answer.refused && (stages.length > 0 || answer.direct) && (
+                <Button size="small" variant="outlined"
+                        startIcon={<AccountTreeOutlinedIcon sx={{ fontSize: 15 }} />}
+                        onClick={() => setDetailOpen(true)}>
+                  How this was built
+                </Button>
+              )}
             </Stack>
           </Stack>
 
@@ -753,7 +805,20 @@ export default function PlaygroundView({ state }) {
           </Typography>
         </Paper>
       )}
+
+      {catalogued && (
+        <Alert severity="success" onClose={() => setCatalogued(null)}
+               sx={{ fontSize: '0.82rem' }}>
+          Catalogued <strong>{catalogued.name}</strong> as a reusable agent. It
+          is now in the Agent Registry and can be composed into future
+          pipelines like any other agent.
+        </Alert>
+      )}
     </Box>
+
+    <RunDetailModal run={currentRun} open={detailOpen}
+                    onClose={() => setDetailOpen(false)}
+                    onCatalogue={cataloguing ? undefined : onCatalogue} />
     </Box>
   );
 }

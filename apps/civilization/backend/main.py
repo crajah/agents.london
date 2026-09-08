@@ -667,6 +667,37 @@ async def materialize_agent(req: MaterializeAgentRequest):
     })
     return res
 
+
+@app.post("/api/agents/catalogue-combination")
+async def catalogue_combination(req: CatalogueCombinationRequest):
+    """Catalogue a proven multi-agent run as a single reusable agent.
+
+    The playground composed and executed a pipeline; the registry already
+    published and pinned it. This keeps it under a human name so it can be
+    found and reused -- a pipeline of agents becomes a pipeline of one, ready
+    to be a stage inside the next, larger deal.
+    """
+    if not (req.pipeline_id or req.mcp_tool):
+        raise HTTPException(status_code=422,
+                            detail="Nothing to catalogue: no pipeline was composed for this run.")
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="A name is required.")
+    res = await civilization_engine.save_catalogued_combination(
+        org_id=req.org_id, project_id=req.project_id, name=name,
+        goal=req.goal, pipeline_id=req.pipeline_id, mcp_tool=req.mcp_tool,
+        stages=req.stages)
+    await broadcast_ws_event({"type": "combination_catalogued", "data": res})
+    return res
+
+
+@app.get("/api/projects/{project_id}/catalogued-combinations")
+async def list_catalogued_combinations(project_id: str,
+                                       org_id: str = Query(DEFAULT_ORG_ID)):
+    """The combinations catalogued in this project, newest first."""
+    combos = await civilization_engine.list_catalogued_combinations(org_id, project_id)
+    return {"combinations": combos}
+
 @app.get("/api/runs")
 async def list_pipeline_runs(project_id: Optional[str] = Query(None),
                              org_id: str = Query(DEFAULT_ORG_ID),
@@ -1177,6 +1208,16 @@ async def conductor_orchestrate(req: ConductorRequest):
 async def react_execute(req: ReactRequest):
     res = await civilization_engine.run_react_loop(req.org_id, req.project_id, req.prompt)
     return res
+
+class CatalogueCombinationRequest(BaseModel):
+    org_id: str = Field(default=DEFAULT_ORG_ID)
+    project_id: str
+    name: str
+    goal: str = ""
+    pipeline_id: Optional[str] = None
+    mcp_tool: Optional[str] = None
+    stages: Optional[List[Dict[str, Any]]] = None
+
 
 class DiscoveryRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")

@@ -345,6 +345,59 @@ class PlatformStoreMixin:
         finally:
             await client.close()
 
+    async def save_catalogued_combination(self, org_id: str, project_id: str,
+                                           name: str, goal: str,
+                                           pipeline_id: Optional[str],
+                                           mcp_tool: Optional[str],
+                                           stages: Optional[List[Dict[str, Any]]] = None
+                                           ) -> Dict[str, Any]:
+        """A proven multi-agent combination, kept as a single reusable agent.
+
+        The composed pipeline is already published and pinned in the registry;
+        this records it under a human name, project-scoped, so it can be found
+        and reused -- a pipeline of agents catalogued as a pipeline of one.
+        """
+        client = await self._get_pg_client(project_id)
+        try:
+            await client.create_vertex_table("catalogued_combinations",
+                                             realm=project_id)
+            agent_id = f"combo_{secrets.token_hex(6)}"
+            payload = {
+                "agent_id": agent_id, "kind": "catalogued_combination",
+                "org_id": org_id, "project_id": project_id,
+                "name": name, "goal": goal,
+                "pipeline_id": pipeline_id, "mcp_tool": mcp_tool,
+                "stages": [{"step": s.get("step"), "agent_name": s.get("agent_name"),
+                            "version": s.get("version"),
+                            "content_hash": s.get("content_hash")}
+                           for s in (stages or [])],
+                "stage_count": len(stages or []),
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            await client.add_vertex(table_name="catalogued_combinations",
+                                    realm=project_id, space=agent_id,
+                                    payload=payload)
+            return {"ok": True, **payload}
+        finally:
+            await client.close()
+
+    async def list_catalogued_combinations(self, org_id: str, project_id: str
+                                           ) -> List[Dict[str, Any]]:
+        client = await self._get_pg_client(project_id)
+        try:
+            await client.create_vertex_table("catalogued_combinations",
+                                             realm=project_id)
+            vertices = await client.get_vertices(
+                table_name="catalogued_combinations", realm=project_id)
+            out = [getattr(v, "payload", v) for v in vertices]
+            out.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+            return out
+        except Exception as e:
+            logger.warning(f"catalogued combinations fetch failed: {e}")
+            return []
+        finally:
+            await client.close()
+
     async def get_agent_version_history(self, project_id: str, agent_id: str,
                                         org_id: str = "org_default"
                                         ) -> List[Dict[str, Any]]:

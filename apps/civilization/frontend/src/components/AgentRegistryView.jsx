@@ -15,6 +15,17 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
   const [agents, setAgents] = useState([]);
 
   const [loadError, setLoadError] = useState(null);
+  const [combos, setCombos] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await attempt(
+        api.get(`/api/projects/${state.projectId}/catalogued-combinations`));
+      if (!cancelled && data) setCombos(data.combinations || []);
+    })();
+    return () => { cancelled = true; };
+  }, [state.projectId, state.orgId, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +93,45 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
           Materialize Worker Agent
         </Button>
       </Box>
+
+      {/* Catalogued combinations: proven multi-agent runs kept as single,
+          reusable agents. A pipeline of agents is a pipeline of one. */}
+      {combos.length > 0 && (
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#a78bfa', mb: 1 }}>
+            Catalogued combinations ({combos.length})
+          </Typography>
+          <Grid container spacing={2}>
+            {combos.map((c) => (
+              <Grid item xs={12} sm={6} md={4} key={c.agent_id}>
+                <Card sx={{ bgcolor: 'rgba(167,139,250,0.06)',
+                            border: '1px solid rgba(167,139,250,0.25)', height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{c.name}</Typography>
+                    <Typography variant="caption" color="text.secondary"
+                                sx={{ display: '-webkit-box', WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical', overflow: 'hidden', mt: 0.5 }}>
+                      {c.goal}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1, flexWrap: 'wrap' }}>
+                      <Chip size="small" label={`${c.stage_count} agent${c.stage_count === 1 ? '' : 's'}`}
+                            sx={{ height: 18, fontSize: '0.6rem' }} />
+                      {c.mcp_tool && (
+                        <Tooltip title="Copy the handle this combination is invoked by">
+                          <Chip size="small" variant="outlined" label={c.mcp_tool}
+                                onClick={() => navigator.clipboard?.writeText(c.mcp_tool)}
+                                sx={{ height: 18, fontSize: '0.58rem',
+                                      fontFamily: '"JetBrains Mono", monospace', cursor: 'pointer' }} />
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      )}
 
       {/* Caste Filter Tabs */}
       <Tabs
