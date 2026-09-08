@@ -668,6 +668,16 @@ async def materialize_agent(req: MaterializeAgentRequest):
     return res
 
 
+class CatalogueCombinationRequest(BaseModel):
+    org_id: str = Field(default=DEFAULT_ORG_ID)
+    project_id: str
+    name: str
+    goal: str = ""
+    pipeline_id: Optional[str] = None
+    mcp_tool: Optional[str] = None
+    stages: Optional[List[Dict[str, Any]]] = None
+
+
 @app.post("/api/agents/catalogue-combination")
 async def catalogue_combination(req: CatalogueCombinationRequest):
     """Catalogue a proven multi-agent run as a single reusable agent.
@@ -1208,16 +1218,6 @@ async def conductor_orchestrate(req: ConductorRequest):
 async def react_execute(req: ReactRequest):
     res = await civilization_engine.run_react_loop(req.org_id, req.project_id, req.prompt)
     return res
-
-class CatalogueCombinationRequest(BaseModel):
-    org_id: str = Field(default=DEFAULT_ORG_ID)
-    project_id: str
-    name: str
-    goal: str = ""
-    pipeline_id: Optional[str] = None
-    mcp_tool: Optional[str] = None
-    stages: Optional[List[Dict[str, Any]]] = None
-
 
 class DiscoveryRequest(BaseModel):
     org_id: str = Field(default="org_london_meta")
