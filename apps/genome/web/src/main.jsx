@@ -1,5 +1,5 @@
 // Chrome is React; the canvas is not (interface-spec Rules 6.1/6.2).
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createWorldCanvas } from "./world/canvas.js";
 
@@ -85,34 +85,52 @@ function Chats({ onOpen }) {
 
 
 function WorldChat({ realm, isOwner }) {
-  // the world's open chat (user directive 2026-09-05): the owner asks the
-  // WHOLE WORLD; present agents compete to claim and answer; documents
-  // posted here become the world's own knowledge
+  // the world's open chat (user directives 2026-09-05/08): SESSIONS, like
+  // a normal chat -- each thread is a session in the top-left list; the
+  // owner opens new ones, agents compete inside them, and agents may open
+  // sessions of their OWN when they need a human (kind: agent_ask)
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState([]);
+  const [active, setActive] = useState(null);   // thread key | null = list
+  const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const [mode, setMode] = useState("ask");     // ask = open a claimable
-  // question; say = just talk. Replying inside a thread is always talk.
-  const [replyTo, setReplyTo] = useState(null); // {thread, name}
-  const load = () => fetch(`${API}/worlds/${realm}/world-chat`)
+  const [mode, setMode] = useState("ask");      // first message of a new
+  // session: ask = claimable question; say = open conversation
+  const load = () => fetch(`${API}/worlds/${realm}/world-chat?limit=200`)
     .then(r => r.ok ? r.json() : [])
     .then(d => Array.isArray(d) && setMsgs(d))
     .catch(() => {});
   useEffect(() => {
     if (!realm) return;
+    setActive(null); setComposing(false);
     load(); const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [realm]);
+  // sessions: threads, newest activity first
+  const sessions = useMemo(() => {
+    const by = new Map();
+    for (const m of msgs) {
+      const t = m.thread || m.key;
+      if (!by.has(t)) by.set(t, []);
+      by.get(t).push(m);
+    }
+    return [...by.entries()].map(([t, list]) => ({
+      thread: t, list,
+      first: list[0], last: list[list.length - 1],
+      needsYou: list[0].kind === "agent_ask"
+        && !list.some(m => String(m.from || "").startsWith("user:")),
+      openAsk: list.some(m => m.kind === "ask" && !m.claimed_by),
+    })).sort((a, b) => (b.last.at || 0) - (a.last.at || 0));
+  }, [msgs]);
+  const current = active && sessions.find(s => s.thread === active);
   const send = async () => {
     if (!draft.trim()) return;
     setErr(null);
-    // a send that fails must SAY so, and one that succeeds must show at
-    // once -- the old shape swallowed both and typed words just vanished
     try {
-      const body = replyTo
-        ? { text: draft, ask: false, thread: replyTo.thread }
+      const body = active
+        ? { text: draft, ask: false, thread: active }
         : { text: draft, ask: mode === "ask" };
       const r = await fetch(`${API}/worlds/${realm}/world-chat`, {
         method: "POST", credentials: "include",
@@ -121,7 +139,7 @@ function WorldChat({ realm, isOwner }) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(d.error || d.detail || `send failed (${r.status})`); return; }
       setDraft("");
-      setReplyTo(null);
+      if (!active && d.key) { setActive(d.key); setComposing(false); }
       load();
     } catch (e) {
       setErr(String(e.message || e));
@@ -132,81 +150,119 @@ function WorldChat({ realm, isOwner }) {
     setBusy(true);
     const fd = new FormData();
     fd.append("file", file);
+    if (active) fd.append("thread", active);
     await fetch(`${API}/worlds/${realm}/world-chat/upload`, {
       method: "POST", credentials: "include", body: fd }).catch(() => {});
     setBusy(false);
+    load();
   };
   if (!realm) return null;
+  const needsCount = sessions.filter(s => s.needsYou).length;
+  const bubble = (m, i) => (
+    <div key={i} className="mb-2">
+      <div className="text-xs flex gap-1 items-center">
+        {(m.colour_pair || []).map((c, j) =>
+          <span key={j} className="inline-block w-2 h-2 rounded-full"
+                style={{ background: c }} />)}
+        <span className={m.kind === "ask" || m.kind === "document"
+          ? "text-emerald-500/80" : m.kind === "answer"
+          ? "text-violet-400/80" : m.kind === "agent_ask"
+          ? "text-amber-400/90" : "text-sky-400/70"}>
+          {m.name || m.from}
+          {m.kind === "ask" && (m.claimed_by ? " — claimed" : " — open ask")}
+          {m.kind === "answer" && " answers"}
+          {m.kind === "agent_ask" && " — needs you"}
+        </span>
+      </div>
+      <div className={"rounded px-2 py-1 whitespace-pre-wrap " +
+        (m.kind === "answer"
+          ? "bg-violet-950/50 border border-violet-800/40"
+          : m.kind === "document"
+          ? "bg-emerald-950/40 border border-emerald-800/40"
+          : m.kind === "agent_ask"
+          ? "bg-amber-950/40 border border-amber-700/40"
+          : String(m.from || "").startsWith("user:")
+          ? "bg-sky-950/50 border border-sky-800/40"
+          : "bg-neutral-800")}>
+        {m.text}
+      </div>
+    </div>);
   return (
-    <div className="absolute bottom-3 right-3 z-30 w-96 text-sm">
+    <div className="absolute top-3 left-3 z-30 w-96 text-sm">
       {!open &&
         <button onClick={() => setOpen(true)}
-                className="ml-auto block bg-neutral-800 border
-                           border-neutral-600 rounded-full px-3 py-1.5
-                           shadow-lg">
-          🗣 world chat{msgs.length > 0 && ` (${msgs.length})`}</button>}
+                className="block bg-neutral-800 border border-neutral-600
+                           rounded-full px-3 py-1.5 shadow-lg">
+          🗣 world chat{sessions.length > 0 && ` (${sessions.length})`}
+          {needsCount > 0 &&
+            <span className="ml-1 text-amber-400">🙋{needsCount}</span>}
+        </button>}
       {open && (
         <div className="bg-neutral-900/95 border border-neutral-600
-                        rounded-lg shadow-2xl flex flex-col max-h-[26rem]">
+                        rounded-lg shadow-2xl flex flex-col max-h-[28rem]">
           <div className="flex items-center px-3 py-2 border-b
-                          border-neutral-700">
-            <strong>🗣 world chat</strong>
-            <span className="opacity-40 text-xs ml-2">agents compete to
-              answer</span>
+                          border-neutral-700 gap-2">
+            {current
+              ? <button className="opacity-70" title="All sessions"
+                        onClick={() => { setActive(null);
+                                         setComposing(false); }}>←</button>
+              : <strong>🗣 world chat</strong>}
+            {current &&
+              <span className="truncate flex-1 opacity-80">
+                {current.first.text.slice(0, 48)}</span>}
+            {!current &&
+              <span className="opacity-40 text-xs">agents compete to
+                answer</span>}
             <span className="flex-1" />
+            {!current && isOwner &&
+              <button className="text-xs px-2 py-0.5 rounded
+                                 bg-emerald-900/60 border border-emerald-700"
+                      onClick={() => { setComposing(true); setActive(null);
+                                       setErr(null); }}>
+                + new</button>}
             <button className="opacity-60"
                     onClick={() => setOpen(false)}>✕</button>
           </div>
           <div className="flex-1 overflow-y-auto p-2">
-            {msgs.length === 0 &&
-              <div className="opacity-50 p-2">Nothing said yet. Ask this
-                world a question — any agent standing here may claim it
-                and answer with whatever its capability affords.</div>}
-            {msgs.map((m, i) => (
-              <div key={i} className="mb-2">
-                <div className="text-xs flex gap-1 items-center">
-                  {(m.colour_pair || []).map((c, j) =>
+            {!current && !composing && sessions.length === 0 &&
+              <div className="opacity-50 p-2">No sessions yet. Start one —
+                ask this world a question and any agent standing here may
+                claim it and answer with whatever its capability
+                affords.</div>}
+            {!current && !composing && sessions.map(s => (
+              <button key={s.thread}
+                      className="w-full text-left mb-1 rounded px-2 py-1.5
+                                 bg-neutral-800 hover:bg-neutral-700
+                                 border border-neutral-700"
+                      onClick={() => setActive(s.thread)}>
+                <div className="flex items-center gap-1 text-xs mb-0.5">
+                  {(s.first.colour_pair || []).map((c, j) =>
                     <span key={j} className="inline-block w-2 h-2
                                              rounded-full"
                           style={{ background: c }} />)}
-                  <span className={m.kind === "ask" || m.kind === "document"
-                    ? "text-emerald-500/80" : m.kind === "answer"
-                    ? "text-violet-400/80" : "text-sky-400/70"}>
-                    {m.name || m.from}
-                    {m.kind === "ask" && (m.claimed_by
-                      ? " — claimed" : " — open ask")}
-                    {m.kind === "answer" && " answers"}
+                  <span className={s.needsYou ? "text-amber-400"
+                    : s.openAsk ? "text-emerald-500/80"
+                    : "text-sky-400/70"}>
+                    {s.first.name || s.first.from}
+                    {s.needsYou && " 🙋 needs you"}
+                    {!s.needsYou && s.openAsk && " — open ask"}
                   </span>
+                  <span className="flex-1" />
+                  <span className="opacity-40">{s.list.length}</span>
                 </div>
-                <div className={"rounded px-2 py-1 whitespace-pre-wrap " +
-                  (m.kind === "answer"
-                    ? "bg-violet-950/50 border border-violet-800/40"
-                    : m.kind === "document"
-                    ? "bg-emerald-950/40 border border-emerald-800/40"
-                    : "bg-neutral-800")}>
-                  {m.text}
-                  {isOwner &&
-                    <button className="block text-xs underline opacity-40
-                                       hover:opacity-80 mt-0.5"
-                            onClick={() => setReplyTo({
-                              thread: m.thread || m.key,
-                              name: m.name || m.from })}>
-                      ↩ reply in thread</button>}
-                </div>
-              </div>))}
+                <div className="truncate opacity-80">{s.first.text}</div>
+              </button>))}
+            {(current ? current.list : []).map(bubble)}
+            {composing &&
+              <div className="opacity-50 p-2">A new session. An
+                <b> ask</b> is a claimable question agents compete to
+                answer; <b>say</b> just opens a conversation.</div>}
           </div>
           {err &&
             <div className="text-amber-400 text-xs px-2 py-1">{err}</div>}
-          {isOwner && replyTo && (
-            <div className="flex items-center gap-2 px-2 pt-1 text-xs
-                            text-sky-300/80">
-              replying to {replyTo.name}
-              <button className="opacity-60"
-                      onClick={() => setReplyTo(null)}>✕</button>
-            </div>)}
-          {isOwner && (
+          {isOwner && (current || composing) && (
             <div className="flex gap-1 p-2 border-t border-neutral-700">
-              {!replyTo &&
+              {!active &&
                 <button className={"px-2 py-1 rounded text-xs border " +
                     (mode === "ask"
                       ? "bg-emerald-900/60 border-emerald-700"
@@ -218,10 +274,10 @@ function WorldChat({ realm, isOwner }) {
                           setMode(mode === "ask" ? "say" : "ask")}>
                   {mode === "ask" ? "ask" : "say"}</button>}
               <input className="flex-1 bg-neutral-800 px-2 py-1 rounded"
-                     placeholder={replyTo ? "reply…"
+                     placeholder={active ? "reply…"
                        : mode === "ask" ? "ask your world…"
                        : "say something to your world…"}
-                     value={draft}
+                     value={draft} autoFocus
                      onChange={e => setDraft(e.target.value)}
                      onKeyDown={e => e.key === "Enter" && send()} />
               <label className={"px-2 py-1 rounded bg-neutral-800 border " +
@@ -233,7 +289,7 @@ function WorldChat({ realm, isOwner }) {
               </label>
               <button onClick={send}
                       className="px-2 py-1 bg-emerald-800 rounded">
-                ask</button>
+                send</button>
             </div>)}
         </div>)}
     </div>);

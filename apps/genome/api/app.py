@@ -247,7 +247,9 @@ async def world_chat_post(realm: str, payload: dict,
 async def world_chat_upload(realm: str,
                             request: __import__("fastapi").Request,
                             file: __import__("fastapi").UploadFile =
-                            __import__("fastapi").File(...)):
+                            __import__("fastapi").File(...),
+                            thread: str | None =
+                            __import__("fastapi").Form(None)):
     """A document posted into the world's chat becomes WORLD KNOWLEDGE
     (user directive 2026-09-05): catalogued and indexed in the document
     registry under this world's own project, where agents can retrieve it
@@ -307,7 +309,7 @@ async def world_chat_upload(realm: str,
     await app.state.pg.add_vertex("world_chats", realm=realm,
         space="default", payload={
             "key": f"wc-{_uu.uuid4().hex[:12]}",
-            "thread": f"wc-{_uu.uuid4().hex[:12]}",
+            "thread": thread or f"wc-{_uu.uuid4().hex[:12]}",
             "from": f"user:{uid}", "name": "the owner",
             "kind": "document", "text": f"\U0001F4C4 {filename} -- "
             + ("indexed into this world's knowledge"
