@@ -1832,30 +1832,10 @@ async def playground_stream(req: PlaygroundStreamRequest):
             decision = await _intake_decision(req.org_id, req.project_id, req.prompt)
             await emit("intake", decision)
 
-            route = str(decision.get("route", "PIPELINE")).upper()
-            if route == "REFUSE":
-                await emit("complete", {
-                    "answer": decision.get("refusal_reason")
-                              or "This request was refused at intake.",
-                    "refused": True, "failed": False,
-                    "duration_ms": int((datetime.now(timezone.utc) - started)
-                                       .total_seconds() * 1000)})
-                return
-            if route == "SIMPLE_CHAT" and decision.get("answer"):
-                # The Praetor already answered it. Composing a pipeline for a
-                # greeting would be theatre, and would cost real tokens.
-                await emit("complete", {
-                    "answer": decision["answer"], "failed": False,
-                    "direct": True,
-                    "duration_ms": int((datetime.now(timezone.utc) - started)
-                                       .total_seconds() * 1000)})
-                return
-
-            # A factual, current-info question is answered directly from the
-            # web: the search tool returns a sourced summary, and no agent
-            # persona can override a fact. This is the honest path for a
-            # lookup — before, such a query was either refused or forced
-            # through agents that invented an answer.
+            # A factual, current-info QUESTION is answered directly from a web
+            # search — before route handling, because intake refuses such
+            # queries on the stale belief that live data is unavailable; it
+            # now is. The tool returns a sourced summary no agent can override.
             _published_now = await _published_tool_ids(req.org_id, req.project_id)
             _web_ok = _published_now is None or "mcp-web-search" in _published_now
             if _web_ok and _is_web_lookup(req.prompt):
@@ -1874,6 +1854,25 @@ async def playground_stream(req: PlaygroundStreamRequest):
                         "duration_ms": int((datetime.now(timezone.utc) - started)
                                            .total_seconds() * 1000)})
                     return
+
+            route = str(decision.get("route", "PIPELINE")).upper()
+            if route == "REFUSE":
+                await emit("complete", {
+                    "answer": decision.get("refusal_reason")
+                              or "This request was refused at intake.",
+                    "refused": True, "failed": False,
+                    "duration_ms": int((datetime.now(timezone.utc) - started)
+                                       .total_seconds() * 1000)})
+                return
+            if route == "SIMPLE_CHAT" and decision.get("answer"):
+                # The Praetor already answered it. Composing a pipeline for a
+                # greeting would be theatre, and would cost real tokens.
+                await emit("complete", {
+                    "answer": decision["answer"], "failed": False,
+                    "direct": True,
+                    "duration_ms": int((datetime.now(timezone.utc) - started)
+                                       .total_seconds() * 1000)})
+                return
 
             composed = await _compose_pipeline(req.org_id, req.project_id,
                                                req.prompt, emit=emit)
