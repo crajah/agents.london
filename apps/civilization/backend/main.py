@@ -1476,6 +1476,8 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
     preexisting = await _registered_agent_ids(org_id, project_id)
     resolved, unmatched = [], []
     seen_steps = set()
+    used_ids = set()   # no agent fills two stages of one pipeline: a real
+    # combination is distinct specialists, not one generic worker reused
     for stage in stages:
         await report("matching", {"step": stage["step"], "need": stage["need"]})
         found = await _registry_discover_agents(org_id, project_id,
@@ -1483,22 +1485,23 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         loose = found[0] if found else None
         dist = loose.get("match_distance") if loose else None
         close_enough = dist is None or dist <= COMPOSE_MATCH_MAX_DISTANCE
+        already_used = bool(loose) and loose.get("agent_id") in used_ids
         reuse_ok = (bool(loose) and loose.get("agent_id") in preexisting
-                    and close_enough)
+                    and close_enough and not already_used)
         agent = loose if reuse_ok else None
         if agent is None and COMPOSE_MATERIALIZE_ON_MISS:
             made = await _materialize_for_need(org_id, project_id, goal,
                                                stage["need"], emit)
             if made:
                 agent = made
-                if made.get("agent_id"):
-                    preexisting.add(made["agent_id"])   # its own stage may reuse it
         if agent is None:
             agent = loose   # a loose match beats no pipeline at all
         if agent is None:
             unmatched.append(stage)
             await report("unmatched", {"step": stage["step"], "need": stage["need"]})
             continue
+        if agent.get("agent_id"):
+            used_ids.add(agent["agent_id"])
         step = stage["step"]
         # Step identity is the step, not the agent (AG §3.4) — the same agent
         # may legitimately serve two stages, but two steps cannot share a name.
