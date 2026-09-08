@@ -1354,6 +1354,25 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
 COMPOSE_MATERIALIZE_ON_MISS = os.getenv("COMPOSE_MATERIALIZE_ON_MISS", "1") == "1"
 
 
+async def _registered_agent_ids(org_id: str, project_id: str) -> set:
+    """The agent ids already in the registry for this project, before a
+    compose run adds any. Used to tell a genuine reuse (an agent that existed)
+    from a magnet (a worker this run just made, which should not be
+    cross-assigned to every later stage)."""
+    ids = set()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(f"{AGENT_REGISTRY_URL.rstrip('/')}/agents",
+                                   params={"org_id": org_id, "project_id": project_id})
+        if res.status_code == 200:
+            for row in res.json().get("agents", []):
+                if row.get("agent_id"):
+                    ids.add(row["agent_id"])
+    except Exception as e:
+        logger.warning("could not list registered agent ids: %s", e)
+    return ids
+
+
 async def _any_registered_parent(org_id: str, project_id: str) -> Optional[str]:
     """A registered agent id to parent a new worker to. The registry requires
     provenance edges to point at an agent it knows, and the default founder
@@ -1445,19 +1464,30 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
                     "the work as a sequence."))
     await report("decomposed", {"stages": stages, "count": len(stages)})
 
-    # RAG over the agent graph, one need at a time (AG §10).
+    # RAG over the agent graph, one need at a time (AG §10). A real
+    # combination wants a specialist PER need, so a worker this run just made
+    # is not allowed to become the match for every later stage: reuse only an
+    # agent that existed before the run; otherwise make a dedicated one.
+    preexisting = await _registered_agent_ids(org_id, project_id)
     resolved, unmatched = [], []
     seen_steps = set()
     for stage in stages:
         await report("matching", {"step": stage["step"], "need": stage["need"]})
         found = await _registry_discover_agents(org_id, project_id,
                                                 stage["need"], top_k=1)
-        if not found and COMPOSE_MATERIALIZE_ON_MISS:
+        loose = found[0] if found else None
+        reuse_ok = bool(loose) and loose.get("agent_id") in preexisting
+        agent = loose if reuse_ok else None
+        if agent is None and COMPOSE_MATERIALIZE_ON_MISS:
             made = await _materialize_for_need(org_id, project_id, goal,
                                                stage["need"], emit)
             if made:
-                found = [made]
-        if not found:
+                agent = made
+                if made.get("agent_id"):
+                    preexisting.add(made["agent_id"])   # its own stage may reuse it
+        if agent is None:
+            agent = loose   # a loose match beats no pipeline at all
+        if agent is None:
             unmatched.append(stage)
             await report("unmatched", {"step": stage["step"], "need": stage["need"]})
             continue
@@ -1467,7 +1497,6 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         while step in seen_steps:
             step = f"{step}_2"
         seen_steps.add(step)
-        agent = found[0]
         resolved.append({"step": step, "need": stage["need"], "agent": agent})
         await report("matched", {
             "step": step, "need": stage["need"],
