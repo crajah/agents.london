@@ -1351,6 +1351,52 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
     return await _compose_pipeline(req.org_id, req.project_id, req.query)
 
 
+COMPOSE_MATERIALIZE_ON_MISS = os.getenv("COMPOSE_MATERIALIZE_ON_MISS", "1") == "1"
+
+
+async def _materialize_for_need(org_id: str, project_id: str, goal: str,
+                                need: str, emit=None) -> Optional[Dict[str, Any]]:
+    """No registered agent fits this stage, so make one (route 1 to a billion:
+    create an agent on the fly when the existing ones are not good enough).
+
+    Best-effort and honest: the worker is materialised and registered, then we
+    re-run discovery so the returned agent carries the registry's own slug and
+    pin — what a stage needs to actually invoke it. If it has not become
+    discoverable within a few seconds (the RAG index catching up), we give up
+    and let the stage stay unmatched, which is no worse than before.
+    """
+    async def report(ev, pl):
+        if emit:
+            await emit(ev, pl)
+    name = (need[:48] or "Composed specialist").strip()
+    system_prompt = (
+        f"You are a specialist agent inside a composed pipeline. Your sole "
+        f"job is this stage: {need}. The larger goal is: {goal}. You receive "
+        f"the previous stage's output as your prompt; produce a concrete, "
+        f"complete result for your stage. Do not ask questions — act.")
+    await report("materializing", {"need": need, "name": name})
+    try:
+        await civilization_engine.materialize_worker_agent(
+            org_id=org_id, project_id=project_id, user_id="system-compose",
+            agent_name=name, telos=need, system_prompt=system_prompt)
+    except Exception as e:
+        logger.warning("on-the-fly materialisation failed for %r: %s", need, e)
+        await report("materialize_failed", {"need": need, "error": str(e)})
+        return None
+    # Re-discover so the agent carries a slug and pin. RAG indexing may lag,
+    # so retry briefly rather than assume immediate visibility.
+    for _ in range(4):
+        found = await _registry_discover_agents(org_id, project_id, need, top_k=1)
+        if found:
+            await report("materialized", {"need": need,
+                                          "agent_name": found[0].get("name"),
+                                          "agent_id": found[0].get("agent_id")})
+            return found[0]
+        await asyncio.sleep(1.0)
+    await report("materialize_pending", {"need": need})
+    return None
+
+
 async def _compose_pipeline(org_id: str, project_id: str, goal: str,
                             emit=None) -> Dict[str, Any]:
     """Decompose a goal, resolve each stage to a published agent, publish it.
@@ -1379,6 +1425,11 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         await report("matching", {"step": stage["step"], "need": stage["need"]})
         found = await _registry_discover_agents(org_id, project_id,
                                                 stage["need"], top_k=1)
+        if not found and COMPOSE_MATERIALIZE_ON_MISS:
+            made = await _materialize_for_need(org_id, project_id, goal,
+                                               stage["need"], emit)
+            if made:
+                found = [made]
         if not found:
             unmatched.append(stage)
             await report("unmatched", {"step": stage["step"], "need": stage["need"]})
@@ -1402,10 +1453,10 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
     if len(resolved) < 2:
         raise HTTPException(
             status_code=409,
-            detail=(f"Only {len(resolved)} of {len(stages)} stages matched a "
-                    f"registered agent, which is not enough to compose a "
-                    f"pipeline. Register agents for: "
-                    f"{'; '.join(s['need'] for s in unmatched)}"))
+            detail=(f"Only {len(resolved)} of {len(stages)} stages could be "
+                    f"staffed even after trying to create agents on the fly, "
+                    f"which is not enough to compose a pipeline. Still "
+                    f"unstaffed: {'; '.join(s['need'] for s in unmatched)}"))
 
     text_in = {"type": "object",
                "properties": {"prompt": {"type": "string",

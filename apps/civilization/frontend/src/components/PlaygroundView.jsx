@@ -211,6 +211,7 @@ export default function PlaygroundView({ state }) {
   const [viewingId, setViewingId] = useState(null);   // null = the live run
   const runRef = useRef(null);   // the run being assembled, saved when it ends
   const [detailOpen, setDetailOpen] = useState(false);   // the drill-down
+  const [created, setCreated] = useState([]);   // agents made on the fly
 
   useEffect(() => {
     if (!historyKey) { setHistory([]); return; }
@@ -260,6 +261,7 @@ export default function PlaygroundView({ state }) {
   const reset = () => {
     setPhase(null); setIntake(null); setPlan([]); setUnmatched([]);
     setPipeline(null); setStages([]); setAnswer(null); setError(null);
+    setCreated([]);
   };
 
   /** Fold one server event into the view. Nothing is added that did not arrive. */
@@ -349,6 +351,28 @@ export default function PlaygroundView({ state }) {
         setAnswer(data);
         if (r) r.answer = data;
         setPhase('answer');
+        break;
+
+      case 'materializing':
+        // no registered agent fit this stage, so one is being created
+        setStages((prev) => {
+          const next = prev.some((s) => s.step === (data.step || data.need))
+            ? prev
+            : [...prev, { step: data.need, need: data.need, status: 'matching',
+                          creating: true }];
+          if (r) r.stages = next;
+          return next;
+        });
+        break;
+
+      case 'materialized':
+        setCreated((prev) => prev.includes(data.agent_name || data.need)
+          ? prev : [...prev, data.agent_name || data.need]);
+        break;
+
+      case 'materialize_failed':
+      case 'materialize_pending':
+        // left unmatched; the plan panel already names what went unstaffed
         break;
 
       case 'error':
@@ -699,6 +723,15 @@ export default function PlaygroundView({ state }) {
             </Alert>
           )}
         </Paper>
+      )}
+
+      {created.length > 0 && (
+        <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
+          {created.length} agent{created.length === 1 ? '' : 's'} created on the
+          fly for stages no registered agent could staff:{' '}
+          <strong>{created.join(', ')}</strong>. They are now registered and
+          reusable.
+        </Alert>
       )}
 
       {/* The published composition */}
