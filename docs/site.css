@@ -1,0 +1,116 @@
+/* agents.london — shared identity for the vision pages.
+   Palette is the product's own: the void the worlds render on, and the
+   semantic hues the app already speaks (emerald asks, violet answers,
+   amber calls for a human). */
+:root {
+  --void: #0a0e14;
+  --deep: #10161f;
+  --bone: #e8e3d5;
+  --dim: #9aa3ad;
+  --emerald: #34d399;
+  --violet: #a78bfa;
+  --amber: #fbbf24;
+  --sky: #7dd3fc;
+  --hairline: rgba(232, 227, 213, 0.14);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--void);
+  color: var(--bone);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--emerald); outline-offset: 3px;
+}
+.display {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+}
+.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+/* ---- hero ---- */
+.hero { position: relative; min-height: 92vh; display: flex;
+        align-items: flex-end; overflow: hidden; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero-inner { position: relative; z-index: 2; max-width: 60rem;
+              padding: 4rem clamp(1.25rem, 6vw, 5rem) 5rem; }
+.hero::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 30%,
+              rgba(10, 14, 20, 0.88) 78%, var(--void) 100%); }
+.hero-inner { z-index: 2; }
+.eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem;
+           letter-spacing: 0.22em; text-transform: uppercase;
+           color: var(--emerald); margin-bottom: 1.1rem; }
+h1 { font-size: clamp(2.4rem, 6.5vw, 4.6rem); }
+.hero p.lede { margin-top: 1.4rem; max-width: 42rem; font-size: 1.15rem;
+               color: var(--dim); }
+.census { margin-top: 2rem; display: flex; gap: 2.5rem; flex-wrap: wrap; }
+.census div { border-left: 1px solid var(--hairline); padding-left: 1rem; }
+.census .n { font-family: "IBM Plex Mono", monospace; font-size: 1.5rem;
+             color: var(--bone); display: block; }
+.census .l { font-size: 0.8rem; color: var(--dim);
+             letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ---- body sections ---- */
+main { max-width: 60rem; margin: 0 auto;
+       padding: 0 clamp(1.25rem, 6vw, 5rem); }
+section { padding: 4.5rem 0 1rem; border-top: 1px solid var(--hairline); }
+section:first-of-type { border-top: 0; }
+h2 { font-size: clamp(1.7rem, 3.4vw, 2.4rem); margin-bottom: 1.2rem; }
+section p { max-width: 44rem; color: var(--dim); margin-bottom: 1.1rem; }
+section p strong { color: var(--bone); font-weight: 600; }
+.tint-emerald h2 { color: var(--emerald); }
+.tint-violet h2 { color: var(--violet); }
+.tint-amber h2 { color: var(--amber); }
+.tint-sky h2 { color: var(--sky); }
+
+/* ---- rule cards (genome/civ pages) ---- */
+.rules { display: grid; gap: 1px; background: var(--hairline);
+         border: 1px solid var(--hairline); margin: 2rem 0;
+         grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.rules article { background: var(--deep); padding: 1.5rem; }
+.rules h3 { font-family: "Fraunces", Georgia, serif; font-weight: 500;
+            font-size: 1.15rem; margin-bottom: 0.6rem; }
+.rules p { font-size: 0.95rem; margin: 0; }
+
+/* ---- doors ---- */
+.doors { display: grid; gap: 1.5rem; margin: 2.5rem 0 0;
+         grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+.door { display: block; border: 1px solid var(--hairline);
+        background: var(--deep); padding: 2rem; color: var(--bone);
+        transition: border-color 0.25s, transform 0.25s; }
+.door:hover { border-color: var(--emerald); transform: translateY(-2px);
+              text-decoration: none; }
+.door .k { font-family: "IBM Plex Mono", monospace; font-size: 0.75rem;
+           letter-spacing: 0.2em; text-transform: uppercase;
+           color: var(--dim); }
+.door h3 { font-family: "Fraunces", Georgia, serif; font-size: 1.6rem;
+           font-weight: 500; margin: 0.5rem 0 0.6rem; }
+.door p { color: var(--dim); font-size: 0.95rem; margin: 0; }
+
+/* ---- ledger strip ---- */
+.ledger { font-family: "IBM Plex Mono", monospace; font-size: 0.85rem;
+          color: var(--dim); border: 1px solid var(--hairline);
+          background: var(--deep); padding: 1.1rem 1.4rem;
+          overflow-x: auto; white-space: pre; margin: 1.8rem 0; }
+.ledger em { color: var(--emerald); font-style: normal; }
+
+footer { max-width: 60rem; margin: 0 auto;
+         padding: 4rem clamp(1.25rem, 6vw, 5rem) 3rem;
+         color: var(--dim); font-size: 0.85rem;
+         border-top: 1px solid var(--hairline); margin-top: 4rem;
+         display: flex; gap: 2rem; flex-wrap: wrap; }
+footer a { color: var(--dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .door { transition: none; }
+}

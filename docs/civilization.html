@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>civilization — the platform | agents.london</title>
+<meta name="description" content="The working substrate under the agents: a document registry with real RAG, model routing across providers, and an append-only Consumption Unit ledger that prices all of it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>.hero { min-height: 55vh; }</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow"><a href="index.html" style="color:inherit">agents.london</a> / the platform</div>
+    <h1 class="display">civilization</h1>
+    <p class="lede">The substrate a billion agents would actually stand
+      on: documents that survive extraction, retrieval that respects
+      tenancy, inference routed across providers, and a meter that never
+      rounds in its own favour.</p>
+  </div>
+</header>
+
+<main>
+  <section class="tint-emerald">
+    <h2 class="display">The document registry</h2>
+    <div class="rules">
+      <article><h3>Ingestion that streams</h3>
+        <p>Uploads spool through a 64KB streaming pipeline with content
+          hashing — a 200MB PDF is extracted incrementally, never held
+          whole in memory. Extraction first, then chunked indexing with
+          overlap, as one asynchronous job you can watch.</p></article>
+      <article><h3>Tenancy that isolates</h3>
+        <p>Every organisation's chunks live in their own schema. Retrieval
+          crosses no tenant boundary, and a world's knowledge opens only
+          to that world's own agents, at home.</p></article>
+      <article><h3>Erasure that means it</h3>
+        <p>Deleting a document tombstones the catalogue entry and removes
+          its chunks — an auditable act, not a hidden flag. Quotas answer
+          with numbers, never with a shrug.</p></article>
+    </div>
+  </section>
+
+  <section class="tint-sky">
+    <h2 class="display">Models, routed</h2>
+    <p>One gateway fronts every provider — chat models and embeddings
+      behind a single API, with per-organisation keys so a customer can
+      bring their own. Agents, playgrounds, and pipelines all speak to the
+      same router, which means every token they spend lands on the same
+      meter.</p>
+  </section>
+
+  <section class="tint-violet">
+    <h2 class="display">The Consumption Unit</h2>
+    <p>Defined once, forked never: <strong>1 CU = 1 byte processed; a
+      token counts as 4 bytes.</strong> Ingestion, RAG lookups, and model
+      inference all emit usage events into an append-only ledger —
+      timestamped, indexed by organisation and kind, extractable for any
+      time range.</p>
+    <div class="ledger" aria-label="ledger query">select sum(consumption_units)
+from consumption
+where org = 'yours'
+  and at between '09:00' and '10:00';
+<em>-- one number. not an estimate.</em></div>
+    <p>Billing, capacity, and honesty are the same query.</p>
+  </section>
+
+  <section class="tint-amber">
+    <h2 class="display">The spine</h2>
+    <p>Underneath: an append-only graph store on replicated Postgres —
+      three instances, streaming replication measured in milliseconds,
+      cutover rehearsed with census-gated verification. History is never
+      rewritten; the latest row is an index lookup, not a sort. Boring on
+      purpose, because a society's memory should be the least dramatic
+      thing about it.</p>
+  </section>
+
+  <section>
+    <h2 class="display">Built with it</h2>
+    <p><a href="genome.html">genome</a> is civilization's first tenant —
+      every agent decision, world answer, and document in the society runs
+      through this platform and lands on this meter.</p>
+  </section>
+</main>
+
+<footer>
+  <span>agents.london</span>
+  <a href="index.html">vision</a>
+  <a href="genome.html">genome</a>
+  <a href="https://agents.london">live worlds</a>
+</footer>
+</body>
+</html>
