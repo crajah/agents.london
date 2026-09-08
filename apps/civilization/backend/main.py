@@ -1629,6 +1629,47 @@ class PlaygroundStreamRequest(BaseModel):
         default=None, description="agent:{slug}@{version} to run alone")
 
 
+_WEB_SIGNALS = (
+    "current", "latest", "today", "now ", "recent", "price", "share ",
+    "stock", "quote", "market", "news", "exchange rate", "spot", "as of",
+    "who is", "who won", "when did", "weather", "live ", "real-time",
+    "up to date", "up-to-date", "this year", "2024", "2025", "2026",
+)
+
+
+def _needs_web(text: str) -> bool:
+    """A rough read on whether a stage needs facts from outside the project's
+    own documents — current events, prices, anything time-bound."""
+    t = (text or "").lower()
+    return any(sig in t for sig in _WEB_SIGNALS)
+
+
+async def _web_search(query: str) -> Optional[Dict[str, Any]]:
+    """Call the seeded web-search tool directly (model-router grounding). The
+    Playground agent runtime runs agents as plain completions and does not
+    invoke their pinned tools, so a stage that needs the web is grounded HERE:
+    real, sourced results are fetched and handed to the agent, which then has
+    facts to answer from instead of inventing them."""
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            res = await client.post(
+                f"{TOOL_REGISTRY_URL.rstrip('/')}/tools/web-search",
+                json={"query": (query or "")[:500], "num_results": 5})
+        if res.status_code != 200:
+            logger.warning("web-search grounding returned %s", res.status_code)
+            return None
+        body = res.json()
+        if not body.get("summary"):
+            return None
+        results = body.get("results") or []
+        sources = [r.get("link") or r.get("url") for r in results
+                   if isinstance(r, dict) and (r.get("link") or r.get("url"))]
+        return {"summary": body["summary"], "sources": sources[:5]}
+    except Exception as e:
+        logger.warning("web-search grounding failed: %s", e)
+        return None
+
+
 async def _published_tool_ids(org_id: str,
                               project_id: Optional[str] = None) -> Optional[List[str]]:
     """Which tools this realm actually has, or None if the registry is unreachable.
@@ -1802,19 +1843,38 @@ async def playground_stream(req: PlaygroundStreamRequest):
             stages = composed["stages"]
             carried = req.prompt
             outputs = []
+            published = await _published_tool_ids(req.org_id, req.project_id)
+            web_ok = published is None or "mcp-web-search" in published
             for index, stage in enumerate(stages):
                 mcp_tool = f"agent:{stage['agent_slug']}@{stage['version']}"
+                # A stage that needs the world outside the project is grounded
+                # in real, sourced web results before the agent runs, because
+                # the agent runtime will not call the tool itself.
+                prompt_for_agent = carried
+                if web_ok and _needs_web(f"{stage['need']} {req.prompt}"):
+                    wr = await _web_search(stage["need"] or req.prompt or carried)
+                    if wr:
+                        await emit("web_grounded", {
+                            "step": stage["step"],
+                            "query": (stage["need"] or req.prompt)[:140],
+                            "sources": wr["sources"]})
+                        prompt_for_agent = (
+                            f"{carried}\n\n--- LIVE WEB RESULTS (authoritative; "
+                            f"answer from these and cite the sources, never invent "
+                            f"figures) ---\n{wr['summary']}"
+                            + (f"\n\nSources: {', '.join(wr['sources'])}"
+                               if wr["sources"] else ""))
                 await emit("step_start", {
                     "step": stage["step"], "index": index, "total": len(stages),
                     "need": stage["need"], "agent": mcp_tool,
                     "agent_name": stage["agent_name"],
                     "version": stage["version"],
                     "content_hash": stage["content_hash"],
-                    "input": carried})
+                    "input": prompt_for_agent})
                 begin = datetime.now(timezone.utc)
                 try:
                     out = await _invoke_agent(req.org_id, req.project_id,
-                                              mcp_tool, carried)
+                                              mcp_tool, prompt_for_agent)
                 except Exception as e:
                     ms = int((datetime.now(timezone.utc) - begin).total_seconds() * 1000)
                     await emit("step_error", {
