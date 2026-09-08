@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { api, attempt } from '../utils/api';
 import { casteColor } from '../utils/caste';
 import { FALLBACK_DEFAULT_MODEL } from '../utils/models';
-import { Box, Typography, Button, Grid, Card, CardContent, Chip, Stack, Tabs, Tab , Tooltip, Alert} from '@mui/material';
+import { Box, Typography, Button, Chip, Tabs, Tab, Tooltip, Alert, Paper,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AddIcon from '@mui/icons-material/Add';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -108,42 +111,52 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
           <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#a78bfa', mb: 1 }}>
             Catalogued combinations ({combos.length})
           </Typography>
-          <Grid container spacing={2}>
-            {combos.map((c) => (
-              <Grid item xs={12} sm={6} md={4} key={c.agent_id}>
-                <Card sx={{ bgcolor: 'rgba(167,139,250,0.06)',
-                            border: '1px solid rgba(167,139,250,0.25)', height: '100%' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{c.name}</Typography>
-                    <Typography variant="caption" color="text.secondary"
-                                sx={{ display: '-webkit-box', WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical', overflow: 'hidden', mt: 0.5 }}>
-                      {c.goal}
-                    </Typography>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={`${c.stage_count} agent${c.stage_count === 1 ? '' : 's'}`}
-                            sx={{ height: 18, fontSize: '0.6rem' }} />
-                      <Box sx={{ flex: 1 }} />
-                      <Tooltip title="Remove from the list">
-                        <Chip size="small" variant="outlined" label="remove"
-                              onClick={() => deleteCombo(c.agent_id)}
-                              sx={{ height: 18, fontSize: '0.58rem', cursor: 'pointer',
-                                    color: '#f87171', borderColor: 'rgba(248,113,113,0.3)' }} />
-                      </Tooltip>
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead sx={{ backgroundColor: 'rgba(9, 13, 22, 0.8)' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Goal</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }} align="right">Agents</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Handle</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {combos.map((c) => (
+                  <TableRow key={c.agent_id} hover>
+                    <TableCell sx={{ fontWeight: 600 }}>{c.name}</TableCell>
+                    <TableCell sx={{ color: 'text.secondary', maxWidth: 340,
+                                     whiteSpace: 'nowrap', overflow: 'hidden',
+                                     textOverflow: 'ellipsis' }}>
+                      <Tooltip title={c.goal || ''}><span>{c.goal}</span></Tooltip>
+                    </TableCell>
+                    <TableCell align="right">{c.stage_count}</TableCell>
+                    <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace',
+                                     fontSize: '0.75rem', color: '#93c5fd' }}>
+                      {c.mcp_tool || '—'}
                       {c.mcp_tool && (
                         <Tooltip title="Copy the handle this combination is invoked by">
-                          <Chip size="small" variant="outlined" label={c.mcp_tool}
-                                onClick={() => navigator.clipboard?.writeText(c.mcp_tool)}
-                                sx={{ height: 18, fontSize: '0.58rem',
-                                      fontFamily: '"JetBrains Mono", monospace', cursor: 'pointer' }} />
+                          <IconButton size="small"
+                                      onClick={() => navigator.clipboard?.writeText(c.mcp_tool)}>
+                            <ContentCopyIcon sx={{ fontSize: 13 }} />
+                          </IconButton>
                         </Tooltip>
                       )}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Remove from the list">
+                        <IconButton size="small" onClick={() => deleteCombo(c.agent_id)}
+                                    sx={{ color: '#f87171' }}>
+                          <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Box>
       )}
 
@@ -160,103 +173,88 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
         <Tab value="auditor" label="Evaluators (6)" />
       </Tabs>
 
-      {/* Agents Grid */}
-      <Grid container spacing={2.5}>
-        {filteredAgents.map((a) => {
-          const config = agentModels[a.agent_id] || {};
-          const assignedModel = config.modelId || FALLBACK_DEFAULT_MODEL;
-          const llmDesc = config.description || a.telos;
-
-          return (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={a.agent_id}>
-              <Card
-                onClick={() => setSelectedAgent({ ...a, assignedModel, llmDescription: llmDesc })}
-                sx={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    borderColor: '#3b82f6'
-                  }
-                }}
-              >
-                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Chip label={a.caste.toUpperCase()} size="small" color={casteColor(a.caste)} sx={{ fontWeight: 700, fontSize: '0.65rem' }} />
-                    <VerifiedUserIcon sx={{ fontSize: 16, color: '#10b981' }} />
-                  </Stack>
-
-                  <Typography variant="h6" sx={{ fontSize: '1.02rem', fontWeight: 700 }}>
-                    {a.name}
-                  </Typography>
-
-                  <Stack direction="row" spacing={0.8}>
-                    <Chip label={a.cog_func} size="small" color="primary" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
-                    <Chip label={a.topo} size="small" color="secondary" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
-                  </Stack>
-
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', flex: 1, lineHeight: 1.5 }}>
-                    {llmDesc}
-                  </Typography>
-
-                  <Chip
-                    icon={<MemoryIcon sx={{ fontSize: 14 }} />}
-                    label={assignedModel}
-                    size="small"
-                    color="primary"
-                    variant="outlined"
-                    sx={{ fontSize: '0.68rem', fontFamily: '"JetBrains Mono", monospace' }}
-                  />
-
-                  <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: '0.75rem' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                      Key: {a.pubkey}
-                    </Typography>
+      {/* Agents table: one row per agent — a ledger reads as a ledger. Click a
+          row for the dossier (model assignment, keys, full telos). */}
+      <TableContainer component={Paper}>
+        <Table size="small" sx={{ minWidth: 720 }}>
+          <TableHead sx={{ backgroundColor: 'rgba(9, 13, 22, 0.8)' }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 700 }}>Agent</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Caste</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Cognition</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Version</TableCell>
+              <TableCell sx={{ fontWeight: 700 }} align="right">Tokens</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredAgents.map((a) => {
+              const config = agentModels[a.agent_id] || {};
+              const assignedModel = config.modelId || FALLBACK_DEFAULT_MODEL;
+              const llmDesc = config.description || a.telos;
+              return (
+                <TableRow key={a.agent_id} hover sx={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedAgent({ ...a, assignedModel, llmDescription: llmDesc })}>
+                  <TableCell>
+                    <Tooltip title={llmDesc || ''}>
+                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                        <VerifiedUserIcon sx={{ fontSize: 14, color: '#10b981' }} />
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.name}</Typography>
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={(a.caste || '').toUpperCase()} size="small"
+                          color={casteColor(a.caste)}
+                          sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700 }} />
+                  </TableCell>
+                  <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>
+                    {a.cog_func}{a.topo ? ` · ${a.topo}` : ''}
+                  </TableCell>
+                  <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace',
+                                   fontSize: '0.75rem', color: '#60a5fa' }}>
+                    <MemoryIcon sx={{ fontSize: 12, mr: 0.5, verticalAlign: 'middle' }} />
+                    {assignedModel}
+                  </TableCell>
+                  <TableCell>
                     {/* The version is what a pipeline pins, and the content hash
-                        is what proves the pinned definition has not moved
-                        underneath it. An agent shown without them is one you
-                        cannot reproduce (F.21). */}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="caption" color="text.secondary">Version:</Typography>
-                      {a.version ? (
-                        <Tooltip title={a.content_hash ? `content hash ${a.content_hash}` : 'no content hash recorded'}>
-                          <Typography
-                            variant="caption"
-                            sx={{ fontFamily: '"JetBrains Mono", monospace', fontWeight: 700, color: '#38bdf8' }}
-                          >
-                            v{a.version}
-                            {a.content_hash && (
-                              <span style={{ color: '#94a3b8', fontWeight: 400 }}>
-                                {' '}· {String(a.content_hash).slice(0, 12)}
-                              </span>
-                            )}
-                          </Typography>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="This agent exists in the graph but has no published version in the registry, so it cannot be pinned.">
-                          <Typography variant="caption" sx={{ color: '#f59e0b', fontWeight: 700 }}>
-                            unpublished
-                          </Typography>
-                        </Tooltip>
-                      )}
-                    </Box>
+                        proves the pinned definition has not moved (F.21). */}
+                    {a.version ? (
+                      <Tooltip title={a.content_hash ? `content hash ${a.content_hash}` : 'no content hash recorded'}>
+                        <Typography variant="caption"
+                                    sx={{ fontFamily: '"JetBrains Mono", monospace',
+                                          fontWeight: 700, color: '#38bdf8' }}>
+                          v{a.version}
+                          {a.content_hash && (
+                            <span style={{ color: '#94a3b8', fontWeight: 400 }}>
+                              {' '}· {String(a.content_hash).slice(0, 10)}
+                            </span>
+                          )}
+                        </Typography>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Exists in the graph but has no published version, so it cannot be pinned.">
+                        <Typography variant="caption" sx={{ color: '#f59e0b', fontWeight: 700 }}>
+                          unpublished
+                        </Typography>
+                      </Tooltip>
+                    )}
                     {a.version_status && a.version_status !== 'active' && (
-                      <Typography variant="caption" sx={{ color: '#f59e0b' }}>
-                        Status: {a.version_status}
+                      <Typography variant="caption" sx={{ color: '#f59e0b', display: 'block' }}>
+                        {a.version_status}
                       </Typography>
                     )}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="caption" color="text.secondary">Tokens:</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#10b981' }}>{a.tokens} CR</Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          );
-        })}
-      </Grid>
+                  </TableCell>
+                  <TableCell align="right" sx={{ color: '#10b981', fontWeight: 700,
+                                                 fontSize: '0.8rem' }}>
+                    {a.tokens != null ? `${a.tokens} CR` : '—'}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {/* Detail Modal */}
       {selectedAgent && (

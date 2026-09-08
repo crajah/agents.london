@@ -9,8 +9,7 @@ const SIDE_EFFECT_MEANING = {
 };
 
 import {
-  Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Grid, Card, CardContent, Stack
-, Tooltip, Alert} from '@mui/material';
+  Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Tooltip, Alert } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import MemoryIcon from '@mui/icons-material/Memory';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -81,33 +80,39 @@ export default function ToolRegistryView({ state, onAddTool, reloadToken = 0 }) 
           <MemoryIcon sx={{ fontSize: 20 }} /> Available LLM Router Endpoints (/v1/models)
         </Typography>
 
-        <Grid container spacing={2}>
-          {availableModels.map((m) => (
-            <Grid item xs={12} sm={6} md={2.4} key={m.id}>
-              <Card sx={{ backgroundColor: 'rgba(9, 13, 22, 0.7)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                    <Chip label={m.status} size="small" color="success" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
-                    <CheckCircleIcon sx={{ fontSize: 14, color: '#10b981' }} />
-                  </Stack>
-
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Provider</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">Context window</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {availableModels.map((m) => (
+                <TableRow key={m.id} hover>
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <CheckCircleIcon sx={{ fontSize: 13, color: '#10b981', mr: 0.75,
+                                           verticalAlign: 'middle' }} />
                     {m.name}
-                  </Typography>
-
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.72rem' }}>
-                    {m.provider}
-                  </Typography>
-
-                  <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'text.secondary' }}>
-                    <span>Context: <strong>{typeof m.context_window === 'number' ? m.context_window.toLocaleString() : (m.context || '128,000')}</strong></span>
-                    <span>Status: <strong style={{ color: '#10b981' }}>{m.status || 'ACTIVE'}</strong></span>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+                  </TableCell>
+                  <TableCell sx={{ color: 'text.secondary' }}>{m.provider}</TableCell>
+                  <TableCell align="right"
+                             sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.78rem' }}>
+                    {typeof m.context_window === 'number'
+                      ? m.context_window.toLocaleString() : (m.context || '—')}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={m.status || 'ACTIVE'} size="small" color="success"
+                          sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </Paper>
 
       {/* MCP Tools Table */}
