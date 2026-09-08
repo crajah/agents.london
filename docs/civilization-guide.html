@@ -29,9 +29,10 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
   <div class="hero-inner">
     <div class="eyebrow"><a href="index.html" style="color:inherit">agents.london</a> / <a href="civilization.html" style="color:inherit">civilization</a> / user guide</div>
     <h1 class="display">Working the platform</h1>
-    <p class="lede">Civilization is the workbench side of agents.london:
-      agents you can talk to, a playground to run them in, registries for
-      tools and documents, and a meter under all of it. This guide walks
+    <p class="lede">Civilization is the workbench side of agents.london: one
+      surface where a goal becomes a pipeline of specialist agents — a
+      negotiation desk composed on demand — plus registries for agents,
+      tools, and documents, and a meter under all of it. This guide walks
       the sidebar, top to bottom.</p>
   </div>
 </header>
@@ -48,26 +49,23 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
         do is scoped to the project you are standing in.</p>
     </div></div>
 
-    <div class="step"><div class="g">02 · chat</div><div>
-      <h3>Chatbot — talk to an agent</h3>
-      <p>The <kbd>Chatbot</kbd> view is a direct line to a working agent.
-        Conversations are saved as sessions you can return to. The agent
-        answers with its tools and its project's documents behind it, so
-        the more you have registered and uploaded, the more it can
-        actually do.</p>
+    <div class="step"><div class="g">02 · ask</div><div>
+      <h3>Playground — the one prompt surface</h3>
+      <p>The <kbd>Playground</kbd> is where you talk to civilization. Give it
+        a goal in plain words and watch it compose: a founder routes the
+        request, a planner breaks it into stages, each stage is matched to a
+        published agent, the pipeline is pinned, and then each agent runs on
+        the output of the one before it — every step showing its real inputs,
+        outputs, and timings. You can also run a single published agent
+        directly, or stop a run mid-flight.</p>
+      <p>Runs are kept. The rail on the left holds every run for this
+        project — click one to replay the whole thing (plan, agents, answer),
+        start a new one, or delete it. (The old Chatbot was a thinner door
+        onto a weaker engine and has been retired; this is the single
+        surface now.)</p>
     </div></div>
 
-    <div class="step"><div class="g">03 · play</div><div>
-      <h3>Playground — run and publish</h3>
-      <p>The <kbd>Playground</kbd> is where you exercise an agent
-        deliberately: pick the model it should run on, give it a task,
-        and watch the run. A configuration worth keeping can be
-        <strong>published</strong> so others can call it. If you bring
-        your own model key (<kbd>BYOM</kbd>), runs are routed through it —
-        and billed to it.</p>
-    </div></div>
-
-    <div class="step"><div class="g">04 · compose</div><div>
+    <div class="step"><div class="g">03 · compose</div><div>
       <h3>Discovery — describe a goal, get a team</h3>
       <p>In <kbd>Discovery</kbd>, describe a goal that needs more than one
         pair of hands — the platform proposes the multi-agent
@@ -77,7 +75,7 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
         and what flows between them.</p>
     </div></div>
 
-    <div class="step"><div class="g">05 · register</div><div>
+    <div class="step"><div class="g">04 · register</div><div>
       <h3>Agents and tools</h3>
       <p>The <kbd>Agent Registry</kbd> holds the population: prime agents,
         genesis nodes, and the ontological registry that types them. From
@@ -90,7 +88,7 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
         project can be granted it.</p>
     </div></div>
 
-    <div class="step"><div class="g">06 · file</div><div>
+    <div class="step"><div class="g">05 · file</div><div>
       <h3>Documents — the registry</h3>
       <p>The <kbd>Documents</kbd> view is your project's library. Upload a
         file or paste text; extraction and indexing run as a job you can
@@ -103,7 +101,7 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
         you used, how much remains — never with a shrug.</p>
     </div></div>
 
-    <div class="step"><div class="g">07 · inspect</div><div>
+    <div class="step"><div class="g">06 · inspect</div><div>
       <h3>Sessions and guardrails</h3>
       <p><kbd>Sessions</kbd> is the shared memory of agent work: every
         revision recorded with the step that wrote it, so you can walk
@@ -113,7 +111,7 @@ kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
         audited</strong> rather than silently dropped.</p>
     </div></div>
 
-    <div class="step"><div class="g">08 · account</div><div>
+    <div class="step"><div class="g">07 · account</div><div>
       <h3>Read the meter</h3>
       <p>Everything above lands on the same meter: <strong>1 Consumption
         Unit per byte processed, a token counted as four bytes</strong> —
