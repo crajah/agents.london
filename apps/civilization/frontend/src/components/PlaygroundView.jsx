@@ -200,6 +200,32 @@ export default function PlaygroundView({ state }) {
   const abortRef = useRef(null);
   const answerRef = useRef(null);
 
+  // Runs are kept, so this is a place you return to, not a spinner you watch
+  // once. Each finished run is saved whole (its plan, its agents, its answer)
+  // per project; selecting one replays it read-only from the same state the
+  // live stream fills, so nothing renders differently for a past run.
+  const historyKey = projectId ? `agents_london_playground_${projectId}` : null;
+  const [history, setHistory] = useState([]);
+  const [viewingId, setViewingId] = useState(null);   // null = the live run
+  const runRef = useRef(null);   // the run being assembled, saved when it ends
+
+  useEffect(() => {
+    if (!historyKey) { setHistory([]); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(historyKey) || '[]');
+      setHistory(Array.isArray(saved) ? saved : []);
+    } catch { setHistory([]); }
+    setViewingId(null);
+  }, [historyKey]);
+
+  const persist = useCallback((next) => {
+    setHistory(next);
+    if (historyKey) {
+      try { localStorage.setItem(historyKey, JSON.stringify(next.slice(0, 50))); }
+      catch { /* a full disk should not break the run */ }
+    }
+  }, [historyKey]);
+
   useEffect(() => {
     let cancelled = false;
     fetchModels().then((catalogue) => {
@@ -235,6 +261,7 @@ export default function PlaygroundView({ state }) {
 
   /** Fold one server event into the view. Nothing is added that did not arrive. */
   const onEvent = useCallback((name, data) => {
+    const r = runRef.current;
     switch (name) {
       case 'accepted':
         setPhase('intake');
@@ -242,62 +269,82 @@ export default function PlaygroundView({ state }) {
 
       case 'intake':
         setIntake(data);
+        if (r) r.intake = data;
         setPhase('plan');
         break;
 
       case 'decomposed':
         setPlan(data.stages || []);
+        if (r) r.plan = data.stages || [];
         setPhase('match');
         break;
 
       case 'matching':
         setStages((prev) => {
-          if (prev.some((s) => s.step === data.step)) return prev;
-          return [...prev, { step: data.step, need: data.need, status: 'matching' }];
+          const next = prev.some((s) => s.step === data.step) ? prev
+            : [...prev, { step: data.step, need: data.need, status: 'matching' }];
+          if (r) r.stages = next;
+          return next;
         });
         break;
 
       case 'matched':
-        setStages((prev) => prev.map((s) => (s.step === data.step
-          ? { ...s, ...data, status: 'pending' } : s)));
+        setStages((prev) => {
+          const next = prev.map((s) => (s.step === data.step
+            ? { ...s, ...data, status: 'pending' } : s));
+          if (r) r.stages = next;
+          return next;
+        });
         break;
 
       case 'unmatched':
         // Named, never dropped: a pipeline quietly missing a stage produces a
         // confident partial answer.
-        setUnmatched((prev) => [...prev, data]);
-        setStages((prev) => prev.filter((s) => s.step !== data.step));
+        setUnmatched((prev) => { const n = [...prev, data]; if (r) r.unmatched = n; return n; });
+        setStages((prev) => { const n = prev.filter((s) => s.step !== data.step); if (r) r.stages = n; return n; });
         break;
 
       case 'published':
         setPipeline(data);
+        if (r) r.pipeline = data;
         setPhase('run');
         break;
 
       case 'step_start':
         setStages((prev) => {
-          const next = prev.some((s) => s.step === data.step)
+          const seeded = prev.some((s) => s.step === data.step)
             ? prev
             : [...prev, { step: data.step }];
-          return next.map((s) => (s.step === data.step
+          const next = seeded.map((s) => (s.step === data.step
             ? { ...s, ...data, status: 'running', startedAt: Date.now(), error: null }
             : s));
+          if (r) r.stages = next;
+          return next;
         });
         break;
 
       case 'step_end':
-        setStages((prev) => prev.map((s) => (s.step === data.step
-          ? { ...s, ...data, status: data.failed ? 'failed' : 'done' } : s)));
+        setStages((prev) => {
+          const next = prev.map((s) => (s.step === data.step
+            ? { ...s, ...data, status: data.failed ? 'failed' : 'done' } : s));
+          if (r) r.stages = next;
+          return next;
+        });
         break;
 
       case 'step_error':
-        setStages((prev) => prev.map((s) => (s.step === data.step
-          ? { ...s, status: 'failed', error: data.error, duration_ms: data.duration_ms }
-          : s)));
+        setStages((prev) => {
+          const next = prev.map((s) => (s.step === data.step
+            ? { ...s, status: 'failed', error: data.error, duration_ms: data.duration_ms }
+            : s));
+          if (r) r.stages = next;
+          return next;
+        });
         break;
 
       case 'complete':
         setAnswer(data);
+        if (r) r.answer = data;
         setPhase('answer');
         break;
 
@@ -313,6 +360,14 @@ export default function PlaygroundView({ state }) {
   const handleRun = async () => {
     if (!prompt.trim() || !projectId || running) return;
     reset();
+    setViewingId(null);
+    const asked = prompt.trim();
+    runRef.current = {
+      id: `run_${Date.now()}`, prompt: asked, at: Date.now(),
+      mode, agent: mode === 'agent' ? chosenAgent : null,
+      intake: null, plan: [], unmatched: [], pipeline: null,
+      stages: [], answer: null,
+    };
     setRunning(true);
     setRunStartedAt(Date.now());
     const controller = new AbortController();
@@ -321,8 +376,8 @@ export default function PlaygroundView({ state }) {
     try {
       await stream('/api/playground/stream',
         mode === 'agent' && chosenAgent
-          ? { prompt: prompt.trim(), agent: chosenAgent }
-          : { prompt: prompt.trim() },
+          ? { prompt: asked, agent: chosenAgent }
+          : { prompt: asked },
         onEvent,
         { signal: controller.signal });
     } catch (e) {
@@ -330,7 +385,36 @@ export default function PlaygroundView({ state }) {
     } finally {
       setRunning(false);
       abortRef.current = null;
+      // Keep the run if it reached an answer or ran any agent — an aborted
+      // empty run is not worth a history slot.
+      const r = runRef.current;
+      if (r && (r.answer || r.stages.length)) {
+        persist([{ ...r }, ...history.filter((h) => h.id !== r.id)]);
+        setViewingId(r.id);
+      }
     }
+  };
+
+  /** Show a saved run using the same panels the live stream fills. */
+  const loadRun = (run) => {
+    if (running) return;
+    setViewingId(run.id);
+    setIntake(run.intake); setPlan(run.plan || []);
+    setUnmatched(run.unmatched || []); setPipeline(run.pipeline);
+    setStages(run.stages || []); setAnswer(run.answer);
+    setError(null); setPhase(run.answer ? 'answer' : 'run');
+    setPrompt(run.prompt || '');
+  };
+
+  const newRun = () => {
+    if (running) return;
+    reset(); setViewingId(null); setPrompt('');
+  };
+
+  const deleteRun = (id, e) => {
+    e?.stopPropagation();
+    persist(history.filter((h) => h.id !== id));
+    if (viewingId === id) newRun();
   };
 
   const handleStop = () => {
@@ -347,7 +431,71 @@ export default function PlaygroundView({ state }) {
   const canRun = Boolean(prompt.trim()) && Boolean(projectId) && !running;
 
   return (
-    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%', overflowY: 'auto' }}>
+    <Box sx={{ display: 'flex', height: '100%', minHeight: 0 }}>
+      {/* Runs kept: a place you return to, not a spinner watched once. */}
+      <Paper elevation={0} sx={{
+        width: { xs: 0, md: 260 }, display: { xs: 'none', md: 'flex' },
+        flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.08)',
+        bgcolor: 'rgba(9, 13, 22, 0.5)', overflow: 'hidden',
+      }}>
+        <Box sx={{ p: 1.5 }}>
+          <Button fullWidth variant="outlined" size="small"
+                  onClick={newRun} disabled={running}
+                  startIcon={<PlayArrowIcon sx={{ fontSize: 14 }} />}>
+            New run
+          </Button>
+        </Box>
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+          {history.length === 0 && (
+            <Typography variant="caption" sx={{ color: '#64748b', px: 1 }}>
+              No runs yet. Give the civilisation a goal and it will keep the
+              whole run here — plan, agents, answer.
+            </Typography>
+          )}
+          {history.map((h) => {
+            const active = viewingId === h.id;
+            return (
+              <Paper key={h.id} elevation={0} onClick={() => loadRun(h)}
+                sx={{
+                  p: 1, mb: 0.75, cursor: 'pointer', borderRadius: 1.5,
+                  bgcolor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+                  border: `1px solid ${active ? 'rgba(56,189,248,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  '&:hover': { bgcolor: 'rgba(56,189,248,0.08)' },
+                }}>
+                <Stack direction="row" alignItems="flex-start" spacing={0.5}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" sx={{
+                      color: '#e2e8f0', fontWeight: 600, display: '-webkit-box',
+                      WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}>
+                      {h.prompt || '(untitled run)'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mt: 0.25 }}>
+                      {h.answer?.failed ? 'halted' : h.answer?.refused ? 'refused'
+                        : `${(h.stages || []).length} stage${(h.stages || []).length === 1 ? '' : 's'}`}
+                      {' · '}{new Date(h.at).toLocaleTimeString()}
+                    </Typography>
+                  </Box>
+                  <IconButton size="small" onClick={(e) => deleteRun(h.id, e)}
+                              sx={{ p: 0.25, color: '#475569' }}>
+                    <StopIcon sx={{ fontSize: 13 }} />
+                  </IconButton>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Box>
+      </Paper>
+
+    <Box sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%', overflowY: 'auto' }}>
+      {viewingId && !running && (
+        <Alert severity="info" icon={false} sx={{ fontSize: '0.78rem' }}
+               action={<Button size="small" onClick={newRun}>New run</Button>}>
+          Viewing a saved run. Start a new run to compose again.
+        </Alert>
+      )}
       {/* The ask */}
       <Paper sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(15, 23, 42, 0.75)' }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
@@ -605,6 +753,7 @@ export default function PlaygroundView({ state }) {
           </Typography>
         </Paper>
       )}
+    </Box>
     </Box>
   );
 }

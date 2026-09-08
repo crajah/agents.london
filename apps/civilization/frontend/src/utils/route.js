@@ -13,11 +13,14 @@
  */
 
 export const VIEWS = [
-  'chatbot', 'playground', 'discovery', 'civilization',
+  'playground', 'discovery', 'civilization',
   'agents', 'tools', 'documents', 'sessions', 'guardrails',
 ];
 
-export const DEFAULT_VIEW = 'chatbot';
+// The Playground engine is the one prompt surface now — Chatbot was a second,
+// thinner door onto a weaker engine and was retired (2026-09-08). A stale
+// #/chatbot link falls back here rather than blanking.
+export const DEFAULT_VIEW = 'playground';
 
 /** What the current URL says. Unknown views fall back rather than blanking. */
 export function readRoute(hash = window.location.hash) {

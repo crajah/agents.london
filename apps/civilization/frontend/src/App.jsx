@@ -3,7 +3,6 @@ import { ThemeProvider, CssBaseline, Box, useMediaQuery } from '@mui/material';
 import { darkTheme, lightTheme } from './theme';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import ChatbotView from './components/ChatbotView';
 import PlaygroundView from './components/PlaygroundView';
 import CivilizationGraphView from './components/CivilizationGraphView';
 import AgentRegistryView from './components/AgentRegistryView';
@@ -262,7 +261,6 @@ export default function App() {
 
             {/* Active View Panel */}
             <Box component="main" sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2 } }}>
-              {currentTab === 'chatbot' && <ChatbotView state={state} />}
               {currentTab === 'playground' && <PlaygroundView state={state} />}
               {currentTab === 'discovery' && <AgentDiscoveryView state={state} />}
               {currentTab === 'civilization' && <CivilizationGraphView state={state} onOpenMaterialize={() => setMaterializeModalOpen(true)} reloadToken={state.populationVersion || 0} />}

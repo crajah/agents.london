@@ -1106,9 +1106,16 @@ class AgentInteractRequest(BaseModel):
     session_id: Optional[str] = None
     isolation_mode: str = Field(default="isolated", description="'isolated' scopes to this project, 'shared' spans all projects in the org")
 
-@app.post("/api/agent/interact")
+@app.post("/api/agent/interact", deprecated=True)
 async def agent_interact(req: AgentInteractRequest):
-    """Uses LLM Intent Router to evaluate user prompt and dynamically dispatch execution:
+    """DEPRECATED (2026-09-08). The Chatbot that called this was retired in
+    favour of the Playground engine (/api/playground/stream), which is the
+    single prompt surface now: a goal becomes a composed, version-pinned
+    pipeline of registered agents, executed with the work visible. This route
+    (the in-process ADK prime-trio) is kept only so an external caller does
+    not break; the UI no longer reaches it. Prefer /api/playground/stream.
+
+    Uses LLM Intent Router to evaluate user prompt and dynamically dispatch execution:
     SIMPLE_CHAT, RAG_QUERY, MULTI_AGENT_ORCHESTRATION, REACT_TOOL_LOOP, or MULTI_TURN_CONVERSATION.
     """
     res = await civilization_engine.process_user_prompt_with_llm(
