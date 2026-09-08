@@ -1376,9 +1376,15 @@ async def _materialize_for_need(org_id: str, project_id: str, goal: str,
         f"complete result for your stage. Do not ask questions — act.")
     await report("materializing", {"need": need, "name": name})
     try:
-        await civilization_engine.materialize_worker_agent(
+        made = await civilization_engine.materialize_worker_agent(
             org_id=org_id, project_id=project_id, user_id="system-compose",
-            agent_name=name, telos=need, system_prompt=system_prompt)
+            agent_name=name, telos=need, system_prompt=system_prompt,
+            tools=[])   # pin nothing: a pure-LLM specialist the registry will accept
+        if isinstance(made, dict) and made.get("registered_in_registry") is False:
+            await report("materialize_failed",
+                         {"need": need,
+                          "error": made.get("registration_error", "registry refused the agent")})
+            return None
     except Exception as e:
         logger.warning("on-the-fly materialisation failed for %r: %s", need, e)
         await report("materialize_failed", {"need": need, "error": str(e)})

@@ -1208,7 +1208,7 @@ class GoogleADKCivilizationEngine(PlatformStoreMixin, AbstractCivilizationEngine
             "telos": telos,
             "version": "v1.0.0",
             "system_prompt": system_prompt,
-            "tools": tools or ["mcp-pgvector-search"],
+            "tools": (tools if tools is not None else ["mcp-pgvector-search"]),
             "memory_policy": {"policy_type": "shared_session", "session_segregation": True, "read_access": True, "write_access": True},
             "guardrails": guardrails_payload,
             "token_balance": 10000000.0,
