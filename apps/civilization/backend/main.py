@@ -1352,6 +1352,11 @@ async def compose_dag_pipeline(req: DiscoveryRequest):
 
 
 COMPOSE_MATERIALIZE_ON_MISS = os.getenv("COMPOSE_MATERIALIZE_ON_MISS", "1") == "1"
+# A match further than this is not a fit — it is the nearest of a thin field.
+# Calibrated live: a specialist scored 0.19 on its own need and 0.49 on an
+# unrelated one, so 0.4 keeps true matches and rejects the magnet a lone
+# generic agent would otherwise become for every stage.
+COMPOSE_MATCH_MAX_DISTANCE = float(os.getenv("COMPOSE_MATCH_MAX_DISTANCE", "0.4"))
 
 
 async def _registered_agent_ids(org_id: str, project_id: str) -> set:
@@ -1476,7 +1481,10 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         found = await _registry_discover_agents(org_id, project_id,
                                                 stage["need"], top_k=1)
         loose = found[0] if found else None
-        reuse_ok = bool(loose) and loose.get("agent_id") in preexisting
+        dist = loose.get("match_distance") if loose else None
+        close_enough = dist is None or dist <= COMPOSE_MATCH_MAX_DISTANCE
+        reuse_ok = (bool(loose) and loose.get("agent_id") in preexisting
+                    and close_enough)
         agent = loose if reuse_ok else None
         if agent is None and COMPOSE_MATERIALIZE_ON_MISS:
             made = await _materialize_for_need(org_id, project_id, goal,
