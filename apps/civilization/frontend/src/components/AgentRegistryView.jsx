@@ -27,6 +27,13 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
     return () => { cancelled = true; };
   }, [state.projectId, state.orgId, reloadToken]);
 
+  const deleteCombo = async (agentId) => {
+    if (!window.confirm('Remove this catalogued combination from the list?')) return;
+    await attempt(api.del(
+      `/api/projects/${state.projectId}/catalogued-combinations/${agentId}?org_id=${encodeURIComponent(state.orgId || 'org_default')}`));
+    setCombos((prev) => prev.filter((c) => c.agent_id !== agentId));
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -116,6 +123,13 @@ export default function AgentRegistryView({ state, onOpenMaterialize, reloadToke
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1, flexWrap: 'wrap' }}>
                       <Chip size="small" label={`${c.stage_count} agent${c.stage_count === 1 ? '' : 's'}`}
                             sx={{ height: 18, fontSize: '0.6rem' }} />
+                      <Box sx={{ flex: 1 }} />
+                      <Tooltip title="Remove from the list">
+                        <Chip size="small" variant="outlined" label="remove"
+                              onClick={() => deleteCombo(c.agent_id)}
+                              sx={{ height: 18, fontSize: '0.58rem', cursor: 'pointer',
+                                    color: '#f87171', borderColor: 'rgba(248,113,113,0.3)' }} />
+                      </Tooltip>
                       {c.mcp_tool && (
                         <Tooltip title="Copy the handle this combination is invoked by">
                           <Chip size="small" variant="outlined" label={c.mcp_tool}

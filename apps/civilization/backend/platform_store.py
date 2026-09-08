@@ -389,12 +389,37 @@ class PlatformStoreMixin:
                                              realm=project_id)
             vertices = await client.get_vertices(
                 table_name="catalogued_combinations", realm=project_id)
-            out = [getattr(v, "payload", v) for v in vertices]
+            out = [getattr(v, "payload", v) for v in vertices
+                   if not getattr(v, "payload", v).get("deleted")]
             out.sort(key=lambda r: r.get("created_at", ""), reverse=True)
             return out
         except Exception as e:
             logger.warning(f"catalogued combinations fetch failed: {e}")
             return []
+        finally:
+            await client.close()
+
+    async def delete_catalogued_combination(self, org_id: str, project_id: str,
+                                            agent_id: str) -> Dict[str, Any]:
+        """Tombstone a catalogued combination (append-only: it is marked
+        deleted, not physically removed, so the record of what once existed
+        survives). It then drops out of the list."""
+        client = await self._get_pg_client(project_id)
+        try:
+            await client.create_vertex_table("catalogued_combinations",
+                                             realm=project_id)
+            vertices = await client.get_vertices(
+                table_name="catalogued_combinations", realm=project_id)
+            for v in vertices:
+                pl = getattr(v, "payload", v)
+                if pl.get("agent_id") == agent_id and not pl.get("deleted"):
+                    await client.upsert_vertex(
+                        table_name="catalogued_combinations", realm=project_id,
+                        vertex_id=v.id, space=agent_id,
+                        payload={**pl, "deleted": True,
+                                 "deleted_at": datetime.utcnow().isoformat()})
+                    return {"ok": True, "agent_id": agent_id}
+            return {"ok": False, "error": "not found"}
         finally:
             await client.close()
 

@@ -708,6 +708,19 @@ async def list_catalogued_combinations(project_id: str,
     combos = await civilization_engine.list_catalogued_combinations(org_id, project_id)
     return {"combinations": combos}
 
+
+@app.delete("/api/projects/{project_id}/catalogued-combinations/{agent_id}")
+async def delete_catalogued_combination(project_id: str, agent_id: str,
+                                        org_id: str = Query(DEFAULT_ORG_ID)):
+    """Remove a catalogued combination from the list (tombstoned, not erased)."""
+    res = await civilization_engine.delete_catalogued_combination(
+        org_id, project_id, agent_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404,
+                            detail=res.get("error", "not found"))
+    await broadcast_ws_event({"type": "combination_deleted", "data": res})
+    return res
+
 @app.get("/api/runs")
 async def list_pipeline_runs(project_id: Optional[str] = Query(None),
                              org_id: str = Query(DEFAULT_ORG_ID),
