@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>civilization — user guide | agents.london</title>
+<meta name="description" content="How to work in civilization: sign in, talk to agents, run the playground, discover multi-agent plans, manage documents and tools, and read the meter.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.hero { min-height: 42vh; }
+.step { display: flex; gap: 1.4rem; margin: 2.2rem 0; }
+.step .g { font-family: "IBM Plex Mono", monospace; color: var(--violet);
+           font-size: 0.85rem; white-space: nowrap; padding-top: 0.3rem; }
+.step h3 { font-family: "Fraunces", Georgia, serif; font-weight: 500;
+           font-size: 1.3rem; margin-bottom: 0.5rem; }
+.step p { margin-bottom: 0.7rem; }
+kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.85em;
+      background: var(--deep); border: 1px solid var(--hairline);
+      border-radius: 3px; padding: 0.1em 0.45em; color: var(--bone); }
+@media (max-width: 40rem) { .step { flex-direction: column; gap: 0.3rem; } }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow"><a href="index.html" style="color:inherit">agents.london</a> / <a href="civilization.html" style="color:inherit">civilization</a> / user guide</div>
+    <h1 class="display">Working the platform</h1>
+    <p class="lede">Civilization is the workbench side of agents.london:
+      agents you can talk to, a playground to run them in, registries for
+      tools and documents, and a meter under all of it. This guide walks
+      the sidebar, top to bottom.</p>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="step"><div class="g">01 · enter</div><div>
+      <h3>Sign in</h3>
+      <p>Open <a href="https://agents.london/civilization">agents.london/civilization</a>
+        and sign in with <strong>Google or Microsoft</strong> — the same
+        two doors as genome, through the same identity service. Your
+        organisation and first project are created on arrival; the project
+        tabs along the top switch between workspaces, and everything you
+        do is scoped to the project you are standing in.</p>
+    </div></div>
+
+    <div class="step"><div class="g">02 · chat</div><div>
+      <h3>Chatbot — talk to an agent</h3>
+      <p>The <kbd>Chatbot</kbd> view is a direct line to a working agent.
+        Conversations are saved as sessions you can return to. The agent
+        answers with its tools and its project's documents behind it, so
+        the more you have registered and uploaded, the more it can
+        actually do.</p>
+    </div></div>
+
+    <div class="step"><div class="g">03 · play</div><div>
+      <h3>Playground — run and publish</h3>
+      <p>The <kbd>Playground</kbd> is where you exercise an agent
+        deliberately: pick the model it should run on, give it a task,
+        and watch the run. A configuration worth keeping can be
+        <strong>published</strong> so others can call it. If you bring
+        your own model key (<kbd>BYOM</kbd>), runs are routed through it —
+        and billed to it.</p>
+    </div></div>
+
+    <div class="step"><div class="g">04 · compose</div><div>
+      <h3>Discovery — describe a goal, get a team</h3>
+      <p>In <kbd>Discovery</kbd>, describe a goal that needs more than one
+        pair of hands — the platform proposes the multi-agent
+        collaboration to meet it, drawing on the agents and tools in the
+        registry. The <kbd>Agent Graph</kbd> view shows the resulting
+        civilization as a living network: who exists, who talks to whom,
+        and what flows between them.</p>
+    </div></div>
+
+    <div class="step"><div class="g">05 · register</div><div>
+      <h3>Agents and tools</h3>
+      <p>The <kbd>Agent Registry</kbd> holds the population: prime agents,
+        genesis nodes, and the ontological registry that types them. From
+        here you can <strong>materialize</strong> a new agent into a
+        project. Registered agents can carry an ed25519 signing key —
+        only a real, verifying signature earns the
+        <em>verified</em> badge.</p>
+      <p>The <kbd>Tools</kbd> registry is the catalogue of capabilities
+        agents may hold — register a tool once and any agent in the
+        project can be granted it.</p>
+    </div></div>
+
+    <div class="step"><div class="g">06 · file</div><div>
+      <h3>Documents — the registry</h3>
+      <p>The <kbd>Documents</kbd> view is your project's library. Upload a
+        file or paste text; extraction and indexing run as a job you can
+        watch, and large uploads stream — a 200MB PDF is handled
+        incrementally, never held whole. Once indexed, a document is
+        retrievable by every agent in the project, chunk by chunk, inside
+        your organisation's own schema and no one else's.</p>
+      <p>Deleting a document means it: the catalogue entry is tombstoned
+        and its chunks are removed. Quotas answer with numbers — how much
+        you used, how much remains — never with a shrug.</p>
+    </div></div>
+
+    <div class="step"><div class="g">07 · inspect</div><div>
+      <h3>Sessions and guardrails</h3>
+      <p><kbd>Sessions</kbd> is the shared memory of agent work: every
+        revision recorded with the step that wrote it, so you can walk
+        backwards from any answer to how it was made.
+        <kbd>Guardrails</kbd> is the other half of trust: policy checks on
+        what agents attempt, with violations <strong>blocked and
+        audited</strong> rather than silently dropped.</p>
+    </div></div>
+
+    <div class="step"><div class="g">08 · account</div><div>
+      <h3>Read the meter</h3>
+      <p>Everything above lands on the same meter: <strong>1 Consumption
+        Unit per byte processed, a token counted as four bytes</strong> —
+        ingestion, retrieval, and inference alike, written to an
+        append-only ledger as it happens. Usage views show the
+        month-to-date; when a quota is hit, the error names the numbers.
+        What you did and what it cost are the same record.</p>
+    </div></div>
+  </section>
+</main>
+
+<footer>
+  <span>agents.london</span>
+  <a href="civilization.html">about civilization</a>
+  <a href="genome-guide.html">genome guide</a>
+  <a href="https://agents.london/civilization">enter civilization</a>
+</footer>
+</body>
+</html>
