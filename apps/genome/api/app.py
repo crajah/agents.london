@@ -695,7 +695,22 @@ async def my_digest(request: __import__("fastapi").Request,
 
 
 @app.get("/agents/{agent_uuid}/chat", tags=["Agent"])
-async def agent_chat_history(agent_uuid: str, limit: int = 30):
+async def agent_chat_history(agent_uuid: str,
+                             request: __import__("fastapi").Request,
+                             limit: int = 30):
+    """The owner's private line to their agent (user directive 2026-09-08):
+    readable by the owner or an admin, nobody else."""
+    from fastapi.responses import JSONResponse
+    uid = _uid(request)
+    rows = await app.state.pg.find_vertices("agents", realm="genome_agents",
+                                            filters={"key": agent_uuid},
+                                            limit=1)
+    if not rows:
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    if rows[0].payload.get("owner_user_id") != uid \
+            and not _admin_ok(request):
+        return JSONResponse({"error": "only this agent's owner may read "
+                                      "its instructions"}, status_code=403)
     try:
         rows = await app.state.pg.get_vertices("chats", realm="genome_agents")
     except Exception:
@@ -741,16 +756,11 @@ async def agent_chat(agent_uuid: str, payload: dict,
         kind = "instruction"
         extra = {"objectives": objectives[:3]}
     else:
-        # assertion (13.5): a stranger's words are EVIDENCE, never command --
-        # they join a bounded "heard" list, marked with their unverified
-        # nature in the prompt, and displace nothing the owner said
-        heard = (apl.get("heard") or [])[-4:] + [{"text": text, "from": uid}]
-        await app.state.pg.upsert_vertex("agents", realm="genome_agents",
-                                         vertex_id=int(rows[0].id),
-                                         space=agent_uuid,
-                                         payload={**apl, "heard": heard})
-        kind = "assertion"
-        extra = {"heard": len(heard)}
+        # only the owner instructs (user directive 2026-09-08): a stranger
+        # gets a refusal, not a side door. The old assertion path let any
+        # signed-in user steer any agent through its "heard" list.
+        return JSONResponse({"error": "only this agent's owner may "
+                                      "instruct it"}, status_code=403)
     await app.state.pg.add_vertex("chats", realm="genome_agents", payload={
         "key": f"chat-{_u.uuid4().hex[:12]}", "agent_uuid": agent_uuid,
         "from": uid, "kind": kind, "text": text, "at": _t.time()})
@@ -1519,9 +1529,20 @@ async def me(request: __import__("fastapi").Request):
 
 
 @app.get("/agents/{agent_uuid}", tags=["Agent"])
-async def get_agent(agent_uuid: str):
-    """Any agent, anywhere (genome-spec Rule 13.1): genotype AND expression."""
-    return await snapshot.agent_inspect(app.state.pg, agent_uuid)
+async def get_agent(agent_uuid: str,
+                    request: __import__("fastapi").Request):
+    """Any agent, anywhere (genome-spec Rule 13.1): genotype AND expression.
+    "yours" tells the caller whether THIS agent is theirs to instruct --
+    the owner id itself is never exposed."""
+    out = await snapshot.agent_inspect(app.state.pg, agent_uuid)
+    uid = _uid(request)
+    if isinstance(out, dict):
+        rows = await app.state.pg.find_vertices(
+            "agents", realm="genome_agents",
+            filters={"key": agent_uuid}, limit=1)
+        owner = rows[0].payload.get("owner_user_id") if rows else None
+        out["yours"] = bool(uid) and owner == uid
+    return out
 
 
 @app.get("/agents/{agent_uuid}/decisions", tags=["Agent"])

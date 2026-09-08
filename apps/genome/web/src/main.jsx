@@ -1138,15 +1138,18 @@ function AgentModal({ inspect, onClose }) {
   const [draft, setDraft] = useState("");
   const [chatErr, setChatErr] = useState(null);
   const load = () =>
-    fetch(`${API}/agents/${inspect.agent_uuid}/chat`)
-      .then(r => r.json()).then(setChat).catch(() => {});
+    fetch(`${API}/agents/${inspect.agent_uuid}/chat`,
+          { credentials: "include" })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => Array.isArray(d) && setChat(d)).catch(() => {});
   useEffect(() => {
+    if (!inspect.yours) return;   // the line is private: owner only
     load();
     // the agent replies on its own clock -- minutes after the instruction,
     // once the pursuit succeeds -- so the open panel keeps listening
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
-  }, [inspect.agent_uuid]);
+  }, [inspect.agent_uuid, inspect.yours]);
   const send = async () => {
     if (!draft.trim()) return;
     const r = await fetch(`${API}/agents/${inspect.agent_uuid}/chat`, {
@@ -1428,15 +1431,19 @@ side of the capability economy.">born plain</span>}
                 </button>))}
             </>}
           </div>
+          {!inspect.yours &&
+            <div className="w-1/2 flex items-center justify-center p-6
+                            text-center opacity-50">
+              Only this agent's owner may instruct it. You can watch it
+              live, and meet it in the world chat.</div>}
+          {inspect.yours &&
           <div className="w-1/2 flex flex-col">
             <div className="flex-1 overflow-y-auto p-4">
               <h4 className="opacity-70 mb-2">Instructions</h4>
               {chat.length === 0 &&
                 <div className="opacity-50">Nothing said yet. An instruction
-                  becomes this agent's top objective — obeyed to the limit of
-                  its Amenability. A stranger's words arrive as an
-                  ASSERTION — evidence the agent may weigh or dismiss,
-                  never a command.</div>}
+                  becomes this agent's top objective — obeyed to the limit
+                  of its Amenability.</div>}
               {chat.map((m, i) => (
                 <div key={i} className="mb-2">
                   <div className={"text-xs " + (m.kind === "instruction"
@@ -1466,7 +1473,7 @@ side of the capability economy.">born plain</span>}
                       className="px-3 py-1.5 bg-emerald-700 rounded">
                 instruct</button>
             </div>
-          </div>
+          </div>}
         </div>
       </div>
     </div>);
@@ -1628,7 +1635,7 @@ function App() {
         {me?.authenticated && <Settings />}
         {me?.authenticated && <Connections />}
         {me?.authenticated &&
-          <Chats onOpen={(u) => setInspect({ agent_uuid: u })} />}
+          <Chats onOpen={(u) => setInspect({ agent_uuid: u, yours: true })} />}
         {me?.authenticated && <Bell />}
         {me?.authenticated && me.world_realm && realm === me.world_realm &&
           <button title="Materialise a further agent: 2 units from each of
@@ -1766,7 +1773,8 @@ whole game -- the commons market is how the far kinds arrive."
             setInspect({ agent_uuid: uuid });
             try {
               const [r, rd] = await Promise.all([
-                fetch(`${API}/agents/${uuid}`),
+                fetch(`${API}/agents/${uuid}`,
+                      { credentials: "include" }),
                 fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
               const base = r.ok ? await r.json() : { agent_uuid: uuid };
               const dec = rd.ok ? await rd.json() : [];
