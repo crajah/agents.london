@@ -186,6 +186,28 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             carrying = None
         else:
             carrying_name = live.get("name")
+    # human help is a RESOURCE (user directive 2026-09-08): an agent that
+    # asked its owner for help watches the thread it opened; the reply is
+    # heard as owner-sourced word and the call closes. A call unanswered
+    # for six hours expires -- the owner's attention was offered, not owed.
+    ha = agent_payload.get("human_ask")
+    if ha:
+        reply = await _human_reply(store, ha)
+        if reply is not None:
+            newp = _word.hear(dict(agent_payload),
+                              f"Your owner answers your call for help: "
+                              f"{reply[:400]}",
+                              f"user:{agent_payload.get('owner_user_id')}",
+                              relays=0, owner_sourced=True)
+            newp.pop("human_ask", None)
+            await store.put_agent(agent.agent_uuid, newp)
+            agent_payload.clear()
+            agent_payload.update(newp)
+        elif now - ha.get("at", now) > 21600:
+            newp = dict(agent_payload)
+            newp.pop("human_ask", None)
+            await store.put_agent(agent.agent_uuid, newp)
+            agent_payload.pop("human_ask", None)
     return {"genotype": agent_payload.get("genotype") or {},
             "time_scale": world_payload.get("time_scale", 1.0),
             "carrying_site": carrying, "carrying_name": carrying_name,
@@ -194,6 +216,8 @@ async def engine_ctx(store: GenomeStore, world_realm: str,
             "skill": (agent_payload.get("capability") or {}).get("name"),
             "crew_size": len(agent_payload.get("crew") or []),
             "has_objective": bool(agent_payload.get("objectives")),
+            "objective_text": (agent_payload.get("objectives") or [None])[0],
+            "awaiting_human": bool(agent_payload.get("human_ask")),
             **(await _world_chat_ctx(store, world_realm, agent.agent_uuid,
                                      now)),
             "known_remote_holders": [
@@ -441,6 +465,24 @@ def _world_knowledge(world_realm: str, question: str) -> str:
         return ""
 
 
+async def _human_reply(store: GenomeStore, ha: dict) -> str | None:
+    """The owner's reply, if any, in the thread this agent opened when it
+    called for human help -- None while the call still stands."""
+    try:
+        rows = await store._c.find_vertices(
+            "world_chats", realm=ha.get("realm", ""),
+            filters={"thread": ha.get("thread")},
+            order_by="at", descending=True, limit=6)
+    except Exception:
+        return None
+    for r in rows:
+        p = r.payload
+        if str(p.get("from", "")).startswith("user:") \
+                and p.get("at", 0) > ha.get("at", 0):
+            return p.get("text", "")
+    return None
+
+
 async def world_say(store: GenomeStore, world_realm: str,
                     agent: engine.AgentView, agent_payload: dict,
                     ask_key: str | None, mode: str, now: float) -> str:
@@ -448,9 +490,47 @@ async def world_say(store: GenomeStore, world_realm: str,
     is taken by the FIRST agent to reach it -- the race is the competition
     -- and answered with whatever the winner's capability affords (a Web
     Search holder searches first). "join": a remark into the standing
-    conversation. Every message is a vertex in the world's own realm."""
+    conversation. "seek_human": the agent itself opens a session addressed
+    to its owner -- human help as a resource (user directive 2026-09-08).
+    Every message is a vertex in the world's own realm."""
     name = agent_payload.get("name", agent.agent_uuid)
     cap = (agent_payload.get("capability") or {})
+    if mode == "seek_human":
+        # the ask lands in the agent's HOME world, where its owner speaks
+        home = agent_payload.get("home_realm") or world_realm
+        objective = (agent_payload.get("objectives") or [""])[0] or ""
+        ask_text = await _compose(
+            agent.agent_uuid, name,
+            f"You are {name}, an agent in the genome world. Your own means "
+            f"have failed your objective, and you are spending a scarce "
+            f"resource: your owner's attention. Ask them for help in one "
+            f"or two sentences -- say plainly what you are trying to do "
+            f"and what stopped you. No flattery, no apology.",
+            f"Your objective: {objective or 'none recorded'}\n"
+            f"What stopped you: no agent you know holds a capability that "
+            f"advances it, and your searches have not.",
+            max_out=80) or (f"I need your help: I cannot advance "
+                            f"\"{objective[:160]}\" with what I know "
+                            f"and hold.")
+        await store._c.create_vertex_table("world_chats", realm=home)
+        key = f"wc-{uuidlib.uuid4().hex[:12]}"
+        await store._c.add_vertex(
+            "world_chats", realm=home, space="default",
+            payload={"key": key, "thread": key, "from": agent.agent_uuid,
+                     "name": name,
+                     "colour_pair": agent_payload.get("colour_pair"),
+                     "kind": "agent_ask", "text": ask_text[:600],
+                     "at": now})
+        rq = dict(agent_payload)
+        rq["human_ask"] = {"thread": key, "realm": home, "at": now}
+        await store.put_agent(agent.agent_uuid, rq)
+        agent_payload["human_ask"] = rq["human_ask"]
+        owner = agent_payload.get("owner_user_id") \
+            or (await _world_payload(store, home)).get("owner_user_id")
+        if owner:
+            notify.emit_bg(store._c, owner, "agents", "agent_ask",
+                           f"{name} asks for your help: {ask_text[:240]}")
+        return "world_chat:sought_human"
     if mode == "claim" and ask_key:
         rows = await store._c.find_vertices("world_chats", realm=world_realm,
                                             filters={"key": ask_key}, limit=1)

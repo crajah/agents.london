@@ -110,3 +110,36 @@ class ClaimRace(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HumanHelpOption(unittest.TestCase):
+    """Human help as a resource (user directive 2026-09-08): offered only
+    when the objective has outrun the agent's own means, one call at a
+    time."""
+
+    def _req(self, **ctx):
+        base = {"has_objective": True, "known_remote_holders": [],
+                "awaiting_human": False}
+        base.update(ctx)
+        return engine._decide_here(_view(), [], {}, ctx=base, now=100.0)
+
+    def test_a_stuck_objective_offers_the_call(self):
+        self.assertIn("seek_human_help", self._req().options)
+
+    def test_a_known_holder_withholds_it(self):
+        self.assertNotIn("seek_human_help", self._req(
+            known_remote_holders=[("u2", "Web Search")]).options)
+
+    def test_one_open_call_at_a_time(self):
+        self.assertNotIn("seek_human_help",
+                         self._req(awaiting_human=True).options)
+
+    def test_no_objective_no_call(self):
+        self.assertNotIn("seek_human_help",
+                         self._req(has_objective=False).options)
+
+    def test_choosing_it_seeks_a_human(self):
+        eff = engine.apply_choice(
+            engine.Choice(option="seek_human_help"), _view(), [], 100.0,
+            {}, [], 1.0, {})
+        self.assertEqual(eff.world_say, (None, "seek_human"))

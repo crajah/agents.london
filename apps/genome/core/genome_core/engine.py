@@ -488,6 +488,12 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     # ...and a live conversation may be joined by anyone with something to say
     elif ctx.get("world_chat_live") and not ctx.get("spoke_in_world_chat"):
         options.append("join_world_chat")
+    # human help is a RESOURCE (user directive 2026-09-08): an agent whose
+    # objective has outrun its own means -- no known holder to broker with
+    # -- may spend its owner's attention, one open call at a time
+    if ctx.get("has_objective") and not ctx.get("known_remote_holders") \
+            and not ctx.get("awaiting_human"):
+        options.append("seek_human_help")
     # capability brokerage (8.6): a known REMOTE holder may be asked to
     # perform -- the favour creates a relationship, not a purchase
     if ctx.get("known_remote_holders"):
@@ -510,6 +516,9 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         agent_uuid=agent.agent_uuid, situation="at_" + (at_pile or "large"),
         options=tuple(options),
         context={"cargo_total": agent.cargo_total(), "at_pile": at_pile,
+                 "objective": ((ctx.get("objective_text") or "")[:200]
+                               or None),
+                 "awaiting_human": ctx.get("awaiting_human", False),
                  "world_ask": ({"text": ctx["open_world_ask"].get("text", ""),
                                 "age_s": max(0.0, now -
                                              ctx["open_world_ask"]
@@ -867,6 +876,11 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
     if choice.option == "join_world_chat":
         return Effects(world_say=(None, "join"),
                        schedule=("decide", now + 300.0 / max(1.0, time_scale),
+                                 agent.agent_uuid, {}))
+
+    if choice.option == "seek_human_help":
+        return Effects(world_say=(None, "seek_human"),
+                       schedule=("decide", now + 600.0 / max(1.0, time_scale),
                                  agent.agent_uuid, {}))
 
     if choice.option == "request_service":

@@ -106,6 +106,14 @@ OPTION_TEXT = {
     "join_world_chat": "The world's open conversation is live. Add a short "
                        "remark if you genuinely have something to "
                        "contribute.",
+    "seek_human_help": "Your owner's objective has outrun your own means: "
+                       "no agent you know can advance it. Your owner -- a "
+                       "human -- is a RESOURCE you may call on, but a "
+                       "scarce one: you get one open call at a time, and "
+                       "attention spent idly is standing lost. Open a chat "
+                       "session in your home world and ask for help ONLY "
+                       "if searching, travelling and brokering have "
+                       "genuinely failed you.",
     "request_service": "Pursue your owner's question or objective through "
                        "another agent: one you know holds a capability (a "
                        "web search, a chronicle, an appraisal) that could "
