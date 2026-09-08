@@ -1644,6 +1644,23 @@ def _needs_web(text: str) -> bool:
     return any(sig in t for sig in _WEB_SIGNALS)
 
 
+_LOOKUP_STARTS = ("what", "who", "when", "where", "which", "how much",
+                  "how many", "is ", "are ", "does ", "did ", "will ")
+
+
+def _is_web_lookup(prompt: str) -> bool:
+    """A factual/current-info QUESTION, not a multi-step deliverable. Such a
+    request is answered directly from a web search — a pipeline of one — rather
+    than composed into a pipeline of agents that would each impose their own
+    format on a simple fact."""
+    p = (prompt or "").strip().lower()
+    if not _needs_web(p):
+        return False
+    if len(p) > 240:              # long briefs are deliverables, not lookups
+        return False
+    return p.endswith("?") or p.startswith(_LOOKUP_STARTS)
+
+
 async def _web_search(query: str) -> Optional[Dict[str, Any]]:
     """Call the seeded web-search tool directly (model-router grounding). The
     Playground agent runtime runs agents as plain completions and does not
@@ -1833,6 +1850,30 @@ async def playground_stream(req: PlaygroundStreamRequest):
                     "duration_ms": int((datetime.now(timezone.utc) - started)
                                        .total_seconds() * 1000)})
                 return
+
+            # A factual, current-info question is answered directly from the
+            # web: the search tool returns a sourced summary, and no agent
+            # persona can override a fact. This is the honest path for a
+            # lookup — before, such a query was either refused or forced
+            # through agents that invented an answer.
+            _published_now = await _published_tool_ids(req.org_id, req.project_id)
+            _web_ok = _published_now is None or "mcp-web-search" in _published_now
+            if _web_ok and _is_web_lookup(req.prompt):
+                wr = await _web_search(req.prompt)
+                if wr and wr.get("summary"):
+                    await emit("web_grounded", {"step": "web-lookup",
+                                                "query": req.prompt[:140],
+                                                "sources": wr["sources"]})
+                    ans = wr["summary"]
+                    if wr["sources"]:
+                        ans += "\n\nSources:\n" + "\n".join(
+                            f"- {u}" for u in wr["sources"])
+                    await emit("complete", {
+                        "answer": ans, "failed": False, "direct": True,
+                        "web_lookup": True,
+                        "duration_ms": int((datetime.now(timezone.utc) - started)
+                                           .total_seconds() * 1000)})
+                    return
 
             composed = await _compose_pipeline(req.org_id, req.project_id,
                                                req.prompt, emit=emit)
