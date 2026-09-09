@@ -296,9 +296,22 @@ OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
 # load (held-out-composition eval, 2026-09-10: 15/20 failed to plan). The fix is
 # robustness within our own models, not a different family: try each planner in
 # turn until one yields a usable plan. An explicit Playground pick overrides.
+# Civilization's composition path runs on a capable model (user decision
+# 2026-09-10): gemini-3.6-flash is the planner, the composer (intake routing),
+# and the model every agent CREATED for a composition is pinned to. The
+# everyday genome/default model is unchanged; an explicit Playground pick still
+# overrides. A self-hosted fallback keeps a gemini outage from failing compose.
+COMPOSER_MODEL = os.getenv("COMPOSER_MODEL", "gemini-3.6-flash")
 PLANNER_MODELS = [m.strip() for m in
-                  os.getenv("PLANNER_MODELS", "MiniMax-M2.7,DeepSeek-V3.2").split(",")
+                  os.getenv("PLANNER_MODELS",
+                            f"{COMPOSER_MODEL},{COMPOSER_MODEL},DeepSeek-V3.2").split(",")
                   if m.strip()]
+# The LLM-judge panel scores open-ended output; deliberately a DIFFERENT family
+# from the composer, so a model never grades its own work (self-preference bias).
+JUDGE_MODELS = [m.strip() for m in
+                os.getenv("JUDGE_MODELS",
+                          "MiniMax-M2.7,gemma-4-31B-it,gpt-oss-120b").split(",")
+                if m.strip()]
 OPENAI_API_KEY = require_env("OPENAI_API_KEY")
 POSTGRES_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
 
@@ -1446,7 +1459,7 @@ async def _materialize_for_need(org_id: str, project_id: str, goal: str,
             agent_name=name, telos=need, system_prompt=system_prompt,
             parent_agent_id=parent,   # provenance must point at a registered agent
             tools=[],   # pin nothing: a pure-LLM specialist the registry will accept
-            model=model)   # the chosen model, so the new specialist runs on it
+            model=model or COMPOSER_MODEL)   # composed agents run on the composer model
         if isinstance(made, dict) and made.get("registered_in_registry") is False:
             await report("materialize_failed",
                          {"need": need,
@@ -1743,7 +1756,7 @@ async def _intake_decision(org_id: str, project_id: str, prompt: str,
             res = await client.post(
                 f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                json={"model": model or DEFAULT_LLM_MODEL, "temperature": 0.0,
+                json={"model": model or COMPOSER_MODEL, "temperature": 0.0,
                       "max_tokens": 900,
                       "response_format": {"type": "json_object"},
                       "messages": [
