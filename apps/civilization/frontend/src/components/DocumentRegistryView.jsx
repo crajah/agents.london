@@ -19,8 +19,11 @@ import {
   Divider,
   Tab,
   Tabs,
-  Alert
-, LinearProgress} from '@mui/material';
+  Alert,
+  LinearProgress,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  IconButton, Tooltip } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FolderIcon from '@mui/icons-material/Folder';
 import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -89,6 +92,18 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
     fetchSpaces();
     fetchDocuments();
   }, [fetchSpaces, fetchDocuments]);
+
+  const handleDeleteDocument = async (doc) => {
+    const docId = doc.document_id || doc.doc_id || doc.id;
+    if (!docId) return;
+    if (!window.confirm(
+      `Erase "${doc.document_name || doc.filename || docId}"? Its chunks leave `
+      + 'the RAG index and its content is removed; a content-free tombstone remains.')) return;
+    const { error } = await attempt(api.del(
+      `/api/projects/${projectId}/documents/${encodeURIComponent(docId)}`));
+    if (error) { setLoadError(error); return; }
+    fetchDocuments();
+  };
 
   const handleCreateSpace = async () => {
     if (!newSpaceName.trim()) return;
@@ -434,21 +449,63 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                   No documents persisted in space ‘{selectedSpace}’ yet. Upload files or text above.
                 </Typography>
               ) : (
-                <Stack spacing={1} sx={{ maxHeight: 220, overflowY: 'auto' }}>
-                  {documents.map((doc, idx) => (
-                    <Paper key={idx} elevation={0} sx={{ p: 1.2, bgcolor: 'rgba(9, 13, 22, 0.7)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.82rem' }} noWrap>
-                          {doc.document_name || doc.filename || 'Uploaded Document'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                          Space: <strong style={{ color: '#38bdf8' }}>{doc.space_name}</strong> • Method: {doc.extraction_method || 'api'} • Length: {doc.content_length || 0} chars
-                        </Typography>
-                      </Box>
-                      <Chip label="Persisted (post-graph)" size="small" color="primary" sx={{ height: 18, fontSize: '0.6rem' }} />
-                    </Paper>
-                  ))}
-                </Stack>
+                <TableContainer sx={{ maxHeight: 300 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700 }}>Document</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Space</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Size</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Indexed</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Rev</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {documents.map((doc, idx) => {
+                        const docId = doc.document_id || doc.doc_id || doc.id;
+                        const size = doc.content_length ?? doc.size_bytes ?? doc.size;
+                        return (
+                          <TableRow key={docId || idx} hover>
+                            <TableCell sx={{ fontWeight: 600, maxWidth: 220,
+                                             whiteSpace: 'nowrap', overflow: 'hidden',
+                                             textOverflow: 'ellipsis' }}>
+                              <Tooltip title={docId || ''}>
+                                <span>{doc.document_name || doc.filename || 'Uploaded Document'}</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell sx={{ color: '#38bdf8', fontSize: '0.78rem' }}>
+                              {doc.document_space || doc.space_name || '—'}
+                            </TableCell>
+                            <TableCell align="right"
+                                       sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
+                              {size != null ? size.toLocaleString() : '—'}
+                            </TableCell>
+                            <TableCell>
+                              {/* Catalogued-but-not-indexed cannot be cited; the
+                                  difference is shown, never blended. */}
+                              <Chip size="small"
+                                    label={doc.indexed === false ? 'catalogued' : 'indexed'}
+                                    color={doc.indexed === false ? 'warning' : 'success'}
+                                    sx={{ height: 17, fontSize: '0.6rem', fontWeight: 700 }} />
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontSize: '0.75rem' }}>
+                              {doc.revision ?? 1}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="Erase: chunks leave the RAG index; a content-free tombstone remains">
+                                <IconButton size="small" onClick={() => handleDeleteDocument(doc)}
+                                            sx={{ color: '#f87171' }}>
+                                  <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
             </Paper>
           </Stack>

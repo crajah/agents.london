@@ -2648,6 +2648,25 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
 
     return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
 
+@app.delete("/api/projects/{project_id}/documents/{doc_id}")
+async def delete_project_document(project_id: str, doc_id: str,
+                                  org_id: str = Query(DEFAULT_ORG_ID)):
+    """Erase a document: its chunks leave the RAG index, its retained text and
+    revisions go, and a content-free tombstone remains in the catalogue. This
+    is the registry's right-to-erasure path, not a hidden flag."""
+    try:
+        async with _docreg_client(timeout=30.0) as client:
+            res = await client.post(
+                f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/documents/"
+                f"{doc_id}/erase", params={"org_id": org_id})
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"Document registry unreachable: {e}") from e
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text[:300])
+    return res.json()
+
+
 class UploadTextBody(BaseModel):
     document_name: str
     content: str
