@@ -131,7 +131,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Size the ark so no single world's resources suffice; require agents from different owners to combine. Test coalitions against <span class="have">held-out organisations</span> whose private tools the focal agents never met — the Melting Pot resident / visitor / universalization protocol.</dd>
         <dt>Metric</dt><dd class="metric">focal per-capita return · ark-completion rate · complementarity <span class="pill std">standard</span></dd>
-        <dt>You have</dt><dd class="have">Construction sites + berths record who contributed which materials; worlds-as-orgs already enforce the private-knowledge boundary; portals let held-out agents enter.</dd>
+        <dt>We have</dt><dd class="have">Construction sites + berths record who contributed which materials; worlds-as-orgs already enforce the private-knowledge boundary; portals let held-out agents enter.</dd>
       </dl>
     </div>
     <div class="claim g">
@@ -140,7 +140,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd><strong>Mechanism ablation:</strong> disable one affordance at a time — the favour ledger, relayed testimony, genotype variance — holding all else fixed. An effect that vanishes was carried by that mechanism. Compare against <strong>scripted-cooperator</strong> and <strong>random-choice</strong> floors.</dd>
         <dt>Metric</dt><dd class="metric">Δ coalition formation per ablation · lift over random/scripted · Shapley contribution per agent <span class="pill std">standard</span></dd>
-        <dt>You have</dt><dd class="have">Event-sourced append-only state → exact counterfactual replay; favour ledgers give Shapley attribution and free-rider detection directly.</dd>
+        <dt>We have</dt><dd class="have">Event-sourced append-only state → exact counterfactual replay; favour ledgers give Shapley attribution and free-rider detection directly.</dd>
       </dl>
     </div>
     <div class="claim g">
@@ -149,7 +149,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Sweep the flood countdown and scarcity; define a coalition <strong>order parameter</strong> (fraction in the supply chain, or ark throughput) and look for a sharp <strong>phase transition</strong> at a critical deadline. Build a <strong>Schelling diagram</strong> first to prove the task is a real dilemma, not a trivial coordination game.</dd>
         <dt>Metric</dt><dd class="metric">order parameter vs. countdown · survival time · efficiency / equality / sustainability / peace <span class="pill std">standard</span> <span class="pill edge">framing: leading-edge</span></dd>
-        <dt>You have</dt><dd class="have">The flood clock is already an operator-set variable; the CU ledger prices each run; construction progress is timestamped.</dd>
+        <dt>We have</dt><dd class="have">The flood clock is already an operator-set variable; the CU ledger prices each run; construction progress is timestamped.</dd>
       </dl>
     </div>
     <div class="claim g">
@@ -158,7 +158,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Instrument each agent's <strong>private reasoning</strong> against its <strong>public world-chat message</strong>; measure how far a counterpart's belief about a private value moves given public messages alone, and plot the <strong>coordination-vs-leakage Pareto curve</strong>. Reference deal quality against a computable optimum.</dd>
         <dt>Metric</dt><dd class="metric">belief-movement (VPS) leakage · private-CoT ↔ public-message divergence · surplus capture vs. optimum <span class="pill edge">leading-edge</span></dd>
-        <dt>You have</dt><dd class="have">world_chats logs every public message with author and time; the decider's prompt/response is the private channel; favour ledgers are the realised “deal.”</dd>
+        <dt>We have</dt><dd class="have">world_chats logs every public message with author and time; the decider's prompt/response is the private channel; favour ledgers are the realised “deal.”</dd>
       </dl>
     </div>
 
@@ -194,7 +194,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Build a <strong>held-out-composition test set</strong>: goals whose solution needs a pipeline, where each founder is validated on its own stage but <strong>no single founder solves the whole</strong>. Report a <strong>productivity curve</strong>: success vs. pipeline depth.</dd>
         <dt>Metric</dt><dd class="metric">% decomposable · % end-to-end success · % needing a new agent · success vs. depth <span class="pill std">standard method</span></dd>
-        <dt>You have</dt><dd class="have">Run records + stage I/O per pipeline; on-the-fly materialisation tags stages with no match; the CU ledger prices each.</dd>
+        <dt>We have</dt><dd class="have">Run records + stage I/O per pipeline; on-the-fly materialisation tags stages with no match; the CU ledger prices each.</dd>
       </dl>
     </div>
     <div class="claim c">
@@ -203,7 +203,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd><strong>Compute-matched</strong> single-strong-model vs. composed-pipeline on the same battery — hold total tokens/cost constant (an internal study found ~80% of a multi-agent “win” was just token spend). Then <strong>leave-one-out</strong> each stage to measure its marginal value.</dd>
         <dt>Metric</dt><dd class="metric">success Δ at equal cost · marginal value per stage · MAST failure-mode attribution <span class="pill edge">contested area</span></dd>
-        <dt>You have</dt><dd class="have">The CU ledger makes cost the control variable for free; the model picker sets the single-model baseline; stage I/O localises the first failing stage.</dd>
+        <dt>We have</dt><dd class="have">The CU ledger makes cost the control variable for free; the model picker sets the single-model baseline; stage I/O localises the first failing stage.</dd>
       </dl>
     </div>
     <div class="claim c">
@@ -212,7 +212,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Run the same pinned pipeline <strong>k times</strong> and report <strong>pass^k</strong> (all k succeed) — a catalogued agent is a promise of repeatability. Then a <strong>cold-vs-warm</strong> curve: solve a goal stream with an empty vs. populated catalogue; measure <strong>retrieval precision/recall</strong> separately.</dd>
         <dt>Metric</dt><dd class="metric">pass^k · cold-vs-warm success &amp; cost curve · retrieval precision/recall <span class="pill std">standard</span></dd>
-        <dt>You have</dt><dd class="have">Catalogued combinations persist as version-pinned pipelines; run records give repeat outcomes; the ledger gives the cost curve.</dd>
+        <dt>We have</dt><dd class="have">Catalogued combinations persist as version-pinned pipelines; run records give repeat outcomes; the ledger gives the cost curve.</dd>
       </dl>
     </div>
     <div class="claim c">
@@ -221,7 +221,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
       <dl>
         <dt>Experiment</dt><dd>Report every result as a point in <strong>(accuracy, $, latency)</strong> space (the HAL cost-accuracy frontier) — the most expensive model is rarely Pareto-optimal. Swap the per-stage model to test whether the bottleneck is model or composition quality. Verify by <strong>execution</strong> where possible; reserve a <strong>different-family</strong> LLM judge, position-swapped, for open-ended stages.</dd>
         <dt>Metric</dt><dd class="metric">cost-per-solved-task · Pareto frontier · quality Δ per model swap · judge–human agreement <span class="pill std">standard</span></dd>
-        <dt>You have</dt><dd class="have">The CU ledger is a native cost meter; the model picker makes per-stage model a knob; version pinning makes any run reproducible.</dd>
+        <dt>We have</dt><dd class="have">The CU ledger is a native cost meter; the model picker makes per-stage model a knob; version pinning makes any run reproducible.</dd>
       </dl>
     </div>
 
@@ -256,7 +256,7 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
   </section>
 
   <section class="tint-emerald">
-    <h2 class="display">The instrumentation you already have</h2>
+    <h2 class="display">The instrumentation we already have</h2>
     <p>Most of this regime is normally the hard part to build. Here it is largely
       already recorded — the strongest argument for running it now.</p>
     <ul class="spine">

@@ -2006,14 +2006,16 @@ async def playground_stream(req: PlaygroundStreamRequest):
 DECOMPOSE_SYSTEM = """\
 You break a goal into an ordered list of independent processing stages.
 
-Reply with ONLY a JSON array of objects, no prose and no code fences. Each
-object has:
+Return a JSON OBJECT of the form {"stages": [ ... ]} and nothing else. Each
+element of "stages" has:
   "step": a short snake_case identifier
   "need": one sentence describing the CAPABILITY required, written as a
           description of what a worker does — not as an instruction
 
-Produce between 2 and 4 stages. Order them so each stage consumes the previous
-stage's output.
+Produce between 2 and 4 stages, ordered so each consumes the previous stage's
+output. The goal may be underspecified or name data it does not include — plan
+the CAPABILITY stages anyway. Never ask for clarification, never refuse, never
+add prose: always return the JSON object.
 """
 
 
@@ -2038,6 +2040,7 @@ async def _decompose_goal(goal: str, model: Optional[str] = None) -> List[Dict[s
                     f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                     json={"model": planner, "temperature": 0.0, "max_tokens": 700,
+                          "response_format": {"type": "json_object"},
                           "messages": [{"role": "system", "content": DECOMPOSE_SYSTEM},
                                        {"role": "user", "content": goal}]})
             if res.status_code != 200:
@@ -2047,10 +2050,19 @@ async def _decompose_goal(goal: str, model: Optional[str] = None) -> List[Dict[s
             fenced = re.search(r"```(?:json)?\s*(.+?)```", text, re.S)
             if fenced:
                 text = fenced.group(1).strip()
-            start, end = text.find("["), text.rfind("]")
-            if start == -1 or end == -1:
-                last = "no JSON array in the reply"; continue
-            raw = json.loads(text[start:end + 1]); break
+            # object mode: {"stages":[...]}; fall back to the first bare array
+            obj_s, obj_e = text.find("{"), text.rfind("}")
+            arr_s, arr_e = text.find("["), text.rfind("]")
+            if obj_s != -1 and obj_e != -1:
+                try:
+                    o = json.loads(text[obj_s:obj_e + 1])
+                    if isinstance(o.get("stages"), list):
+                        raw = o["stages"]; break
+                except json.JSONDecodeError:
+                    pass
+            if arr_s == -1 or arr_e == -1:
+                last = "no JSON stages in the reply"; continue
+            raw = json.loads(text[arr_s:arr_e + 1]); break
         except json.JSONDecodeError as e:
             last = f"plan did not parse: {e}"; continue
         except Exception as e:
