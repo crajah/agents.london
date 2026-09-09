@@ -292,6 +292,13 @@ async def create_authority_session(req: AuthoritySessionRequest):
 
 
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
+# Goal decomposition returns unusable JSON often enough to 502 a compose under
+# load (held-out-composition eval, 2026-09-10: 15/20 failed to plan). The fix is
+# robustness within our own models, not a different family: try each planner in
+# turn until one yields a usable plan. An explicit Playground pick overrides.
+PLANNER_MODELS = [m.strip() for m in
+                  os.getenv("PLANNER_MODELS", "MiniMax-M2.7,DeepSeek-V3.2").split(",")
+                  if m.strip()]
 OPENAI_API_KEY = require_env("OPENAI_API_KEY")
 POSTGRES_URI = os.getenv("POSTGRES_URI", "postgresql://crajah@localhost:5432/postgres")
 
@@ -2016,30 +2023,41 @@ async def _decompose_goal(goal: str, model: Optional[str] = None) -> List[Dict[s
     Models wrap JSON in fences and prose even when told not to, so the first
     well-formed array wins rather than the whole reply being required to parse.
     """
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        res = await client.post(
-            f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": model or DEFAULT_LLM_MODEL, "temperature": 0.0, "max_tokens": 400,
-                  "messages": [{"role": "system", "content": DECOMPOSE_SYSTEM},
-                               {"role": "user", "content": goal}]})
-    if res.status_code != 200:
+    # A single empty/garbled reply must not sink the whole compose: retry a few
+    # times (transient under load), and strip any reasoning-model <think> block
+    # before hunting for the JSON array.
+    # If a model was explicitly picked, honour it (twice, for transient flakiness);
+    # otherwise walk the planner chain — MiniMax, then DeepSeek — until one plans.
+    chain = [model] * 2 if model else list(PLANNER_MODELS)
+    raw = None
+    last = "no attempt made"
+    for planner in chain:
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                res = await client.post(
+                    f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    json={"model": planner, "temperature": 0.0, "max_tokens": 700,
+                          "messages": [{"role": "system", "content": DECOMPOSE_SYSTEM},
+                                       {"role": "user", "content": goal}]})
+            if res.status_code != 200:
+                last = f"{planner} returned {res.status_code}"; continue
+            text = res.json()["choices"][0]["message"]["content"].strip()
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+            fenced = re.search(r"```(?:json)?\s*(.+?)```", text, re.S)
+            if fenced:
+                text = fenced.group(1).strip()
+            start, end = text.find("["), text.rfind("]")
+            if start == -1 or end == -1:
+                last = "no JSON array in the reply"; continue
+            raw = json.loads(text[start:end + 1]); break
+        except json.JSONDecodeError as e:
+            last = f"plan did not parse: {e}"; continue
+        except Exception as e:
+            last = f"{type(e).__name__}: {e}"; continue
+    if raw is None:
         raise HTTPException(status_code=502,
-                            detail=f"The planner model returned {res.status_code}.")
-
-    text = res.json()["choices"][0]["message"]["content"].strip()
-    fenced = re.search(r"```(?:json)?\s*(.+?)```", text, re.S)
-    if fenced:
-        text = fenced.group(1).strip()
-    start, end = text.find("["), text.rfind("]")
-    if start == -1 or end == -1:
-        raise HTTPException(status_code=502,
-                            detail="The planner did not return a usable plan.")
-    try:
-        raw = json.loads(text[start:end + 1])
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=502,
-                            detail=f"The planner's plan did not parse: {e}") from e
+                            detail=f"The planner did not return a usable plan ({last}).")
 
     stages = []
     for index, stage in enumerate(raw):
