@@ -1411,7 +1411,8 @@ async def _any_registered_parent(org_id: str, project_id: str) -> Optional[str]:
 
 
 async def _materialize_for_need(org_id: str, project_id: str, goal: str,
-                                need: str, emit=None) -> Optional[Dict[str, Any]]:
+                                need: str, emit=None,
+                                model: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """No registered agent fits this stage, so make one (route 1 to a billion:
     create an agent on the fly when the existing ones are not good enough).
 
@@ -1437,7 +1438,8 @@ async def _materialize_for_need(org_id: str, project_id: str, goal: str,
             org_id=org_id, project_id=project_id, user_id="system-compose",
             agent_name=name, telos=need, system_prompt=system_prompt,
             parent_agent_id=parent,   # provenance must point at a registered agent
-            tools=[])   # pin nothing: a pure-LLM specialist the registry will accept
+            tools=[],   # pin nothing: a pure-LLM specialist the registry will accept
+            model=model)   # the chosen model, so the new specialist runs on it
         if isinstance(made, dict) and made.get("registered_in_registry") is False:
             await report("materialize_failed",
                          {"need": need,
@@ -1462,7 +1464,7 @@ async def _materialize_for_need(org_id: str, project_id: str, goal: str,
 
 
 async def _compose_pipeline(org_id: str, project_id: str, goal: str,
-                            emit=None) -> Dict[str, Any]:
+                            emit=None, model: Optional[str] = None) -> Dict[str, Any]:
     """Decompose a goal, resolve each stage to a published agent, publish it.
 
     `emit(event, payload)` is an optional async callback, called as each part
@@ -1474,7 +1476,7 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         if emit:
             await emit(event, payload)
 
-    stages = await _decompose_goal(goal)
+    stages = await _decompose_goal(goal, model=model)
     if len(stages) < 2:
         raise HTTPException(
             status_code=422,
@@ -1504,7 +1506,7 @@ async def _compose_pipeline(org_id: str, project_id: str, goal: str,
         agent = loose if reuse_ok else None
         if agent is None and COMPOSE_MATERIALIZE_ON_MISS:
             made = await _materialize_for_need(org_id, project_id, goal,
-                                               stage["need"], emit)
+                                               stage["need"], emit, model=model)
             if made:
                 agent = made
         if agent is None:
@@ -1627,6 +1629,9 @@ class PlaygroundStreamRequest(BaseModel):
     # A single published agent, invoked directly, instead of a composition.
     agent: Optional[str] = Field(
         default=None, description="agent:{slug}@{version} to run alone")
+    # Override the model for planning and any agents created on the fly. A
+    # pre-existing published agent keeps its version-pinned model.
+    model: Optional[str] = Field(default=None)
 
 
 _WEB_SIGNALS = (
@@ -1710,7 +1715,8 @@ async def _published_tool_ids(org_id: str,
         return None
 
 
-async def _intake_decision(org_id: str, project_id: str, prompt: str) -> Dict[str, Any]:
+async def _intake_decision(org_id: str, project_id: str, prompt: str,
+                           model: Optional[str] = None) -> Dict[str, Any]:
     """What the Intake Praetor decides to do with this prompt.
 
     The founder's own registered system prompt, so the decision the playground
@@ -1730,7 +1736,7 @@ async def _intake_decision(org_id: str, project_id: str, prompt: str) -> Dict[st
             res = await client.post(
                 f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                json={"model": DEFAULT_LLM_MODEL, "temperature": 0.0,
+                json={"model": model or DEFAULT_LLM_MODEL, "temperature": 0.0,
                       "max_tokens": 900,
                       "response_format": {"type": "json_object"},
                       "messages": [
@@ -1829,7 +1835,8 @@ async def playground_stream(req: PlaygroundStreamRequest):
                                        .total_seconds() * 1000)})
                 return
 
-            decision = await _intake_decision(req.org_id, req.project_id, req.prompt)
+            decision = await _intake_decision(req.org_id, req.project_id,
+                                              req.prompt, model=req.model)
             await emit("intake", decision)
 
             # A factual, current-info QUESTION is answered directly from a web
@@ -1875,7 +1882,7 @@ async def playground_stream(req: PlaygroundStreamRequest):
                 return
 
             composed = await _compose_pipeline(req.org_id, req.project_id,
-                                               req.prompt, emit=emit)
+                                               req.prompt, emit=emit, model=req.model)
 
             # Execute the published stages in dependency order, feeding each
             # one the previous stage's output — the payload map the pipeline
@@ -2003,7 +2010,7 @@ stage's output.
 """
 
 
-async def _decompose_goal(goal: str) -> List[Dict[str, str]]:
+async def _decompose_goal(goal: str, model: Optional[str] = None) -> List[Dict[str, str]]:
     """Ask the model to break one goal into ordered capability needs.
 
     Models wrap JSON in fences and prose even when told not to, so the first
@@ -2013,7 +2020,7 @@ async def _decompose_goal(goal: str) -> List[Dict[str, str]]:
         res = await client.post(
             f"{OPENAI_API_BASE.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": DEFAULT_LLM_MODEL, "temperature": 0.0, "max_tokens": 400,
+            json={"model": model or DEFAULT_LLM_MODEL, "temperature": 0.0, "max_tokens": 400,
                   "messages": [{"role": "system", "content": DECOMPOSE_SYSTEM},
                                {"role": "user", "content": goal}]})
     if res.status_code != 200:

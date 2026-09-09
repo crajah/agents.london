@@ -1167,6 +1167,7 @@ class GoogleADKCivilizationEngine(PlatformStoreMixin, AbstractCivilizationEngine
         parent_agent_id: Optional[str] = None,
         tools: Optional[List[str]] = None,
         custom_guardrails: Optional[List[str]] = None,
+        model: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Materializes an ADK progeny worker node and registers it in the Agent Registry."""
@@ -1217,7 +1218,11 @@ class GoogleADKCivilizationEngine(PlatformStoreMixin, AbstractCivilizationEngine
             "hash_digest": digest,
             "signature": sig,
             "engine": "GOOGLE_ADK",
-            "status": "MATERIALIZED"
+            "status": "MATERIALIZED",
+            # The version pins its model (registry_contract.to_registration).
+            # A composition can thus be run on a chosen model rather than the
+            # project default -- the picker in the Playground.
+            "model": model or DEFAULT_LLM_MODEL,
         }
 
         # Register with Agent Registry microservice and post-graph table agent_registry

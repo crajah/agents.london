@@ -188,6 +188,7 @@ export default function PlaygroundView({ state }) {
   const [chosenAgent, setChosenAgent] = useState('');
   const [models, setModels] = useState([]);
   const [defaultModel, setDefaultModel] = useState(FALLBACK_DEFAULT_MODEL);
+  const [chosenModel, setChosenModel] = useState('');   // '' = project default
 
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState(null);
@@ -401,11 +402,11 @@ export default function PlaygroundView({ state }) {
     abortRef.current = controller;
 
     try {
-      await stream('/api/playground/stream',
-        mode === 'agent' && chosenAgent
-          ? { prompt: asked, agent: chosenAgent }
-          : { prompt: asked },
-        onEvent,
+      const runBody = mode === 'agent' && chosenAgent
+        ? { prompt: asked, agent: chosenAgent }
+        : { prompt: asked };
+      if (chosenModel) runBody.model = chosenModel;
+      await stream('/api/playground/stream', runBody, onEvent,
         { signal: controller.signal });
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.userMessage || e.message);
@@ -600,6 +601,19 @@ export default function PlaygroundView({ state }) {
                 </Select>
               </FormControl>
             )}
+
+            {mode === 'pipeline' && models.length > 0 && (
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Model</InputLabel>
+                <Select value={chosenModel} label="Model"
+                        onChange={(e) => setChosenModel(e.target.value)}>
+                  <MenuItem value=""><em>Project default ({defaultModel})</em></MenuItem>
+                  {models.map((m) => (
+                    <MenuItem key={m.id} value={m.id}>{m.name || m.id}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
           </Stack>
         </Stack>
 
@@ -634,8 +648,13 @@ export default function PlaygroundView({ state }) {
         )}
         {models.length > 0 && (
           <Typography variant="caption" sx={{ color: '#64748b', mt: 1, display: 'block' }}>
-            Agents run on the model their published version declares; the
-            project default is <strong>{defaultModel}</strong>.
+            {chosenModel
+              ? <>Planning and any agents created on the fly will run on{' '}
+                  <strong>{chosenModel}</strong>; a pre-existing published agent
+                  keeps its version-pinned model.</>
+              : <>Agents run on the model their published version declares; the
+                  project default is <strong>{defaultModel}</strong>. Pick a
+                  model to override it for this run.</>}
           </Typography>
         )}
       </Paper>
