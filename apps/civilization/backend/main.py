@@ -2648,6 +2648,27 @@ async def list_project_documents(project_id: str, space_name: Optional[str] = No
 
     return {"project_id": project_id, "space_name": space_name, "documents": [], "count": 0}
 
+@app.get("/api/projects/{project_id}/documents/stats")
+async def project_documents_stats(project_id: str,
+                                  org_id: str = Query(DEFAULT_ORG_ID),
+                                  space_name: Optional[str] = None):
+    """Per-document graph statistics from the registry: chunks, entities,
+    relations each document contributed to the knowledge graph."""
+    try:
+        async with _docreg_client(timeout=30.0) as client:
+            params = {"org_id": org_id}
+            if space_name:
+                params["document_space"] = space_name
+            res = await client.get(
+                f"{DOCUMENT_REGISTRY_URL}/projects/{project_id}/documents/stats",
+                params=params)
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning("document stats unavailable: %s", e)
+    return {"project_id": project_id, "stats": {}, "count": 0}
+
+
 @app.delete("/api/projects/{project_id}/documents/{doc_id}")
 async def delete_project_document(project_id: str, doc_id: str,
                                   org_id: str = Query(DEFAULT_ORG_ID)):

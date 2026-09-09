@@ -80,12 +80,17 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
     setLoading(false);
   }, [projectId]);
 
+  const [docStats, setDocStats] = useState({});
   const fetchDocuments = useCallback(async () => {
+    const params = selectedSpace === 'all' ? {} : { space_name: selectedSpace };
     const { data, error } = await attempt(api.get(
-      `/api/projects/${projectId}/documents`,
-      { params: selectedSpace === 'all' ? {} : { space_name: selectedSpace } }));
+      `/api/projects/${projectId}/documents`, { params }));
     if (error) { setLoadError(error); setDocuments([]); }
     else { setDocuments(data.documents || []); }
+    // graph statistics ride separately: the list must not wait on them
+    const { data: st } = await attempt(api.get(
+      `/api/projects/${projectId}/documents/stats`, { params }));
+    if (st) setDocStats(st.stats || {});
   }, [projectId, selectedSpace]);
 
   useEffect(() => {
@@ -456,6 +461,9 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                         <TableCell sx={{ fontWeight: 700 }}>Document</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Space</TableCell>
                         <TableCell sx={{ fontWeight: 700 }} align="right">Size</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Chunks</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Entities</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }} align="right">Relations</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Indexed</TableCell>
                         <TableCell sx={{ fontWeight: 700 }} align="right">Rev</TableCell>
                         <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
@@ -465,6 +473,7 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                       {documents.map((doc, idx) => {
                         const docId = doc.document_id || doc.doc_id || doc.id;
                         const size = doc.content_length ?? doc.size_bytes ?? doc.size;
+                        const st = docStats[docId] || null;
                         return (
                           <TableRow key={docId || idx} hover>
                             <TableCell sx={{ fontWeight: 600, maxWidth: 220,
@@ -480,6 +489,22 @@ export default function DocumentRegistryView({ currentProject, orgId }) {
                             <TableCell align="right"
                                        sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
                               {size != null ? size.toLocaleString() : '—'}
+                            </TableCell>
+                            <TableCell align="right"
+                                       sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
+                              {st ? st.chunks : '—'}
+                            </TableCell>
+                            <TableCell align="right"
+                                       sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
+                              {st ? (
+                                <Tooltip title={`${st.entities_current} current · ${st.entities_dormant} dormant`}>
+                                  <span>{st.entities_mentioned}</span>
+                                </Tooltip>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell align="right"
+                                       sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem' }}>
+                              {st ? st.relations : '—'}
                             </TableCell>
                             <TableCell>
                               {/* Catalogued-but-not-indexed cannot be cited; the

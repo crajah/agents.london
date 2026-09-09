@@ -469,6 +469,67 @@ async def list_document_spaces(project_id: str, org_id: str = Query("org_default
     return {"project_id": project_id, "org_id": org_id, "spaces": spaces}
 
 
+@app.get("/projects/{project_id}/documents/stats", tags=["Document Spaces"])
+async def project_document_stats(project_id: str,
+                                 org_id: str = Query("org_default"),
+                                 document_space: Optional[str] = Query(None),
+                                 limit: int = Query(200, ge=1, le=500)):
+    """Per-document graph statistics (post-graph-rag >= 1.13): chunks,
+    entities (current/dormant) and relations each document contributed.
+    Batched — one stats call per space, never one per document."""
+    import dataclasses
+    documents = await doc_store.list_documents(
+        _client(), org_id, project_id,
+        normalise_document_space(document_space) if document_space else None,
+        False, limit=limit, offset=0)
+    by_space: Dict[str, list] = {}
+    for d in documents:
+        by_space.setdefault(d.get("document_space", "default"), []).append(
+            d["document_id"])
+    out: Dict[str, Any] = {}
+    for space, doc_ids in by_space.items():
+        key = SpaceKey(org_id=org_id, project_id=project_id,
+                       document_space=space)
+        async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
+            stats = await rag.documents_stats(doc_ids, space=project_id)
+        for doc_id, st in (stats or {}).items():
+            out[doc_id] = dataclasses.asdict(st) if dataclasses.is_dataclass(st) else st
+    return {"project_id": project_id, "org_id": org_id, "stats": out,
+            "count": len(out)}
+
+
+@app.get("/projects/{project_id}/documents/{doc_id}/graph",
+         tags=["Document Spaces"])
+async def project_document_graph(project_id: str, doc_id: str,
+                                 org_id: str = Query("org_default")):
+    """The subgraph one document contributed: the entities it mentions and
+    the relations it sourced (post-graph-rag >= 1.13)."""
+    document = await doc_store.find_document(_client(), org_id, project_id,
+                                             doc_id)
+    if document is None:
+        raise HTTPException(status_code=404,
+                            detail=f"Unknown document {doc_id!r}.")
+    key = SpaceKey(org_id=org_id, project_id=project_id,
+                   document_space=document.get("document_space", "default"))
+    async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
+        graph = await rag.document_graph(doc_id, space=project_id)
+    return {"project_id": project_id, "document_id": doc_id, **(graph or {})}
+
+
+@app.post("/projects/{project_id}/maintenance/sweep-orphaned-relations",
+          tags=["System"])
+async def sweep_orphaned_relations(project_id: str,
+                                   org_id: str = Query("org_default")):
+    """One-shot repair (post-graph-rag >= 1.13): relations whose endpoint
+    entities are all dormant become dormant too — the fix for relations
+    written before provenance existed, which no deletion could reach."""
+    key = SpaceKey(org_id=org_id, project_id=project_id,
+                   document_space="default")
+    async with doc_rag.engine(key, DB_URI, OPENAI_API_KEY) as rag:
+        swept = await rag.sweep_orphaned_relations(space=project_id)
+    return {"project_id": project_id, "org_id": org_id, "swept": swept}
+
+
 @app.get("/projects/{project_id}/documents", tags=["Document Spaces"])
 async def list_project_documents(project_id: str,
                                  space_name: Optional[str] = Query(None),
