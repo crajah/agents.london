@@ -62,7 +62,11 @@ def optional_env(name: str, default: str) -> str:
 # string "DeepSeek-V3.2" spread across the engine, the router, the judge panel
 # and the manifest generator — so changing model meant finding all thirty, and
 # missing one meant a subsystem quietly kept calling a model nobody else used.
-DEFAULT_LLM_MODEL = optional_env("DEFAULT_LLM_MODEL", "gemini-3.5-flash-lite")
+# MiniMax by default (user decision 2026-09-09): the platform's everyday
+# chat/agent model is MiniMax-M2.7, not a Gemini or GPT model. Gemini remains
+# only where it is a capability, not a preference: web-search grounding
+# (WEB_SEARCH_MODEL) and the frozen embedding space (gemini-embedding-001).
+DEFAULT_LLM_MODEL = optional_env("DEFAULT_LLM_MODEL", "MiniMax-M2.7")
 
 # Entity and relationship extraction for post-graph-rag. Separable from the
 # conversational model because it is a different workload, but defaulted to it

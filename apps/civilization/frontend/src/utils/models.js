@@ -13,7 +13,7 @@
  */
 
 /** Used only until the first fetch resolves, and if the backend is unreachable. */
-export const FALLBACK_DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+export const FALLBACK_DEFAULT_MODEL = 'MiniMax-M2.7';
 export const FALLBACK_EMBEDDING_MODEL = 'gemini-embedding-001';
 
 let cache = null;
