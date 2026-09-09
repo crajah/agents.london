@@ -91,13 +91,72 @@ app.add_middleware(
     allow_origins=[__import__("urllib.parse", fromlist=["urlparse"])
                    .urlparse(os.getenv("GENOME_WEB_BASE",
                                        "http://localhost:5173"))
-                   ._replace(path="", query="", fragment="").geturl()],
+                   ._replace(path="", query="", fragment="").geturl(),
+                   # the public evidence page on GitHub Pages reads /evidence
+                   os.getenv("EVIDENCE_ORIGIN", "https://crajah.github.io")],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/health", tags=["System"])
 async def health():
     return {"status": "ok", "service": "genome-api"}
+
+
+@app.get("/evidence", tags=["System"])
+async def evidence():
+    """Live vital signs for the public evidence page. Descriptive telemetry —
+    honest current state, not proof of any claim. Each metric fails to null
+    rather than 500ing, so a stale query never blanks the whole page."""
+    pg = app.state.pg
+    out: dict = {"at": __import__("time").time()}
+
+    async def one(key, sql):
+        try:
+            row = await pg.fetchrow(sql)
+            out[key] = None if row is None else list(row.values())[0]
+        except Exception as e:
+            logger.warning("evidence metric %s failed: %s", key, e)
+            out[key] = None
+
+    # GENOME
+    await one("worlds",
+        "SELECT count(DISTINCT realm) FROM public.world_meta "
+        "WHERE realm NOT LIKE 'genome_demo%'")
+    await one("agents",
+        "SELECT count(*) FROM public.agents WHERE realm='genome_agents'")
+    await one("agents_in_favour",
+        "SELECT count(*) FROM public.agents WHERE realm='genome_agents' "
+        "AND (payload->'debts' <> '{}'::jsonb OR payload->'credits' <> '{}'::jsonb)")
+    await one("genome_cu_24h",
+        "SELECT coalesce(sum((payload->>'consumption_units')::float)::bigint,0) "
+        "FROM platform_system.consumption_data "
+        "WHERE payload->>'org_id'='genome' AND \"timestamp\" > now()-interval '24 hours'")
+    # CIVILIZATION
+    await one("catalogued_combinations",
+        "SELECT count(*) FROM proj_alpha_civilization.catalogued_combinations "
+        "WHERE coalesce(payload->>'deleted','') <> 'true'")
+    await one("civ_cu_24h",
+        "SELECT coalesce(sum((payload->>'consumption_units')::float)::bigint,0) "
+        "FROM platform_system.consumption_data "
+        "WHERE payload->>'org_id'='org_default' AND \"timestamp\" > now()-interval '24 hours'")
+    # PLATFORM
+    await one("ledger_rows",
+        "SELECT count(*) FROM platform_system.consumption_data")
+
+    # commons in-flight, from the optimised snapshot rather than a heap-sort
+    try:
+        import time as _t
+        snap = await snapshot.world_snapshot(pg, "genome_commons_0")
+        now = _t.time()
+        ags = snap.get("agents", [])
+        out["commons_agents"] = len(ags)
+        out["commons_in_flight"] = sum(
+            1 for a in ags if (a.get("movement") or {}).get("arrives_at", 0) > now)
+    except Exception as e:
+        logger.warning("evidence commons snapshot failed: %s", e)
+        out["commons_agents"] = out.get("commons_agents")
+        out["commons_in_flight"] = None
+    return out
 
 
 # Telemetry (user directive): everything measurable lands in Prometheus and

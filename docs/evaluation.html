@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proving genome &amp; civilization</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#f4f2ec; --panel:#ffffff; --sunk:#efece3;
+  --ink:#1a1e26; --dim:#5c636e; --faint:#8a909a;
+  --line:rgba(20,24,32,0.12); --line-strong:rgba(20,24,32,0.22);
+  --emerald:#0f9d6b; --violet:#7c5cdf; --amber:#b6791b; --sky:#2b7fc4;
+  --emerald-soft:rgba(15,157,107,0.10); --violet-soft:rgba(124,92,223,0.10);
+  --amber-soft:rgba(182,121,27,0.12); --sky-soft:rgba(43,127,196,0.10);
+}
+:root:not([data-theme="light"]){ }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0a0e14; --panel:#111722; --sunk:#0c1119;
+    --ink:#e8e3d5; --dim:#9aa3ad; --faint:#6b7480;
+    --line:rgba(232,227,213,0.13); --line-strong:rgba(232,227,213,0.24);
+    --emerald:#34d399; --violet:#a78bfa; --amber:#fbbf24; --sky:#7dd3fc;
+    --emerald-soft:rgba(52,211,153,0.12); --violet-soft:rgba(167,139,250,0.13);
+    --amber-soft:rgba(251,191,36,0.12); --sky-soft:rgba(125,211,252,0.12);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0a0e14; --panel:#111722; --sunk:#0c1119;
+  --ink:#e8e3d5; --dim:#9aa3ad; --faint:#6b7480;
+  --line:rgba(232,227,213,0.13); --line-strong:rgba(232,227,213,0.24);
+  --emerald:#34d399; --violet:#a78bfa; --amber:#fbbf24; --sky:#7dd3fc;
+  --emerald-soft:rgba(52,211,153,0.12); --violet-soft:rgba(167,139,250,0.13);
+  --amber-soft:rgba(251,191,36,0.12); --sky-soft:rgba(125,211,252,0.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16.5px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;}
+.wrap{max-width:60rem;margin:0 auto;padding:clamp(2rem,5vw,4.5rem) clamp(1.1rem,5vw,3rem) 6rem;}
+.display{font-family:"Fraunces",Georgia,serif;font-weight:500;letter-spacing:-0.015em;
+  line-height:1.1;text-wrap:balance;}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;}
+a{color:var(--sky);text-decoration:none;border-bottom:1px solid transparent;}
+a:hover{border-bottom-color:currentColor;}
+a:focus-visible{outline:2px solid var(--sky);outline-offset:3px;border-radius:2px;}
+
+header.masthead{border-bottom:1px solid var(--line-strong);padding-bottom:2rem;margin-bottom:2.5rem;}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:0.72rem;letter-spacing:0.22em;
+  text-transform:uppercase;color:var(--emerald);margin-bottom:1rem;}
+h1{font-size:clamp(2.1rem,5.5vw,3.4rem);}
+.standfirst{margin-top:1.1rem;max-width:42rem;color:var(--dim);font-size:1.12rem;}
+
+section{margin-top:3.2rem;}
+h2{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:clamp(1.5rem,3.2vw,2rem);
+  letter-spacing:-0.01em;text-wrap:balance;display:flex;align-items:baseline;gap:0.7rem;}
+h2 .tag{font-family:"IBM Plex Mono",monospace;font-size:0.72rem;letter-spacing:0.14em;
+  text-transform:uppercase;font-weight:500;padding:0.2rem 0.5rem;border-radius:4px;}
+.tag.g{color:var(--emerald);background:var(--emerald-soft);}
+.tag.c{color:var(--violet);background:var(--violet-soft);}
+h3{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:1.28rem;margin-top:2rem;text-wrap:balance;}
+section > p{max-width:44rem;color:var(--dim);margin-top:0.9rem;}
+section > p strong,li strong{color:var(--ink);font-weight:600;}
+.lede-strong{color:var(--ink)!important;}
+
+/* claim cards */
+.claim{border:1px solid var(--line);background:var(--panel);border-radius:12px;
+  padding:1.4rem 1.5rem;margin-top:1.4rem;border-left:3px solid var(--edge);}
+.claim.g{--edge:var(--emerald);}
+.claim.c{--edge:var(--violet);}
+.claim-head{display:flex;align-items:baseline;gap:0.7rem;flex-wrap:wrap;}
+.claim-id{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:0.8rem;
+  color:var(--edge);letter-spacing:0.06em;}
+.claim-title{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:1.15rem;flex:1;min-width:14rem;}
+.claim dl{margin-top:1rem;display:grid;grid-template-columns:8.5rem 1fr;gap:0.5rem 1.1rem;}
+.claim dt{font-family:"IBM Plex Mono",monospace;font-size:0.68rem;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--faint);padding-top:0.15rem;}
+.claim dd{color:var(--dim);font-size:0.96rem;}
+.claim dd .have{color:var(--ink);}
+@media(max-width:34rem){.claim dl{grid-template-columns:1fr;gap:0.15rem 0;}
+  .claim dt{margin-top:0.7rem;}}
+
+.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:0.62rem;
+  letter-spacing:0.08em;text-transform:uppercase;padding:0.12rem 0.42rem;border-radius:3px;
+  vertical-align:middle;}
+.pill.std{color:var(--emerald);background:var(--emerald-soft);}
+.pill.edge{color:var(--amber);background:var(--amber-soft);}
+
+.tblwrap{overflow-x:auto;margin-top:1.3rem;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:0.9rem;min-width:34rem;}
+th,td{text-align:left;padding:0.66rem 0.9rem;border-bottom:1px solid var(--line);vertical-align:top;}
+th{font-family:"IBM Plex Mono",monospace;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:500;background:var(--sunk);}
+tr:last-child td{border-bottom:none;}
+td.metric{font-family:"IBM Plex Mono",monospace;font-size:0.82rem;color:var(--ink);white-space:nowrap;}
+td .src{color:var(--faint);font-size:0.82rem;}
+tbody tr:hover{background:var(--sunk);}
+
+.spine{list-style:none;margin-top:1.3rem;display:grid;gap:0.8rem;}
+.spine li{display:grid;grid-template-columns:1.4rem 1fr;gap:0.8rem;color:var(--dim);font-size:0.98rem;}
+.spine li b{color:var(--ink);font-weight:600;}
+.spine .n{font-family:"IBM Plex Mono",monospace;color:var(--sky);font-size:0.85rem;padding-top:0.1rem;}
+
+.note{border-radius:10px;padding:1.15rem 1.35rem;margin-top:1.3rem;font-size:0.97rem;}
+.note.amber{background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);}
+.note.amber b{color:var(--ink);}
+.note.amber .h{font-family:"IBM Plex Mono",monospace;font-size:0.7rem;letter-spacing:0.14em;
+  text-transform:uppercase;color:var(--amber);display:block;margin-bottom:0.5rem;}
+
+.start{counter-reset:step;list-style:none;margin-top:1.3rem;display:grid;gap:0.9rem;}
+.start li{counter-increment:step;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:1rem 1.2rem 1rem 3.2rem;position:relative;color:var(--dim);}
+.start li::before{content:counter(step);position:absolute;left:1rem;top:1rem;
+  font-family:"Fraunces",serif;font-weight:600;font-size:1.3rem;color:var(--sky);
+  line-height:1;width:1.6rem;text-align:center;}
+.start li b{color:var(--ink);}
+.start .eff{font-family:"IBM Plex Mono",monospace;font-size:0.68rem;letter-spacing:0.06em;
+  color:var(--faint);display:block;margin-top:0.35rem;}
+
+.refs{margin-top:1.3rem;column-gap:2.2rem;font-size:0.86rem;color:var(--dim);}
+.refs h3{font-size:1rem;margin-top:1.4rem;color:var(--ink);}
+.refs ul{list-style:none;margin-top:0.5rem;display:grid;gap:0.35rem;}
+.refs li{padding-left:1rem;text-indent:-1rem;line-height:1.45;}
+
+footer{margin-top:4rem;padding-top:1.6rem;border-top:1px solid var(--line);
+  color:var(--faint);font-size:0.82rem;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">agents.london · evaluation plan · 2026-09-09</div>
+  <h1 class="display">Proving genome &amp; civilization</h1>
+  <p class="standfirst">Two theses, stated as testable claims — each mapped to an
+  experiment, a metric borrowed from the literature, and the instrumentation the
+  platform already records. What you can run to show the emergence is genuine
+  and the composition is real, not asserted.</p>
+</header>
+
+<section>
+  <h2>What “prove” can mean here</h2>
+  <p>A live LLM-agent simulation cannot be “proven” the way a theorem is. The
+  honest target, from Epstein’s generative program, is <strong>mechanism
+  sufficiency under stated conditions</strong> — you show a macro-outcome
+  <em>grows</em> from the agents’ own local decisions, not from a scripted
+  orchestration layer. Sufficiency is not uniqueness: many rule-sets can grow the
+  same pattern, so a passed test says “this mechanism is enough to produce this,”
+  never “this is why.” Every claim below is written to that standard, and paired
+  with the control that separates a real effect from an artifact.</p>
+  <p>Three disciplines run under all of it, because a 2026 audit showed cosmetic
+  prompt changes can swing cooperation rates by <strong>76 percentage
+  points</strong>: report <strong>distributions over many seeded runs, not single
+  runs</strong>; <strong>beat an explicit null/random baseline</strong>; and
+  perturb <strong>prompt format and model version</strong>, not just the RNG seed.
+  Match the strength of the claim to the strength of the audit.</p>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="tag g">genome</span> Emergent negotiation across organisations</h2>
+  <p>The thesis: autonomous agents, each holding knowledge and tools private to
+  its world (an organisation), negotiate across those boundaries under scarcity
+  and a deadline to build something no single world can — and the coalition is
+  grown, not scripted.</p>
+
+  <div class="claim g">
+    <div class="claim-head"><span class="claim-id">G1</span>
+      <span class="claim-title">Cross-boundary coalitions form and deliver what no world can alone</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Size the ark so no single world’s resources suffice; require agents from different owners to combine. Test coalitions against <span class="have">held-out organisations</span> whose private tools the focal agents never met — the Melting Pot resident / visitor / universalization protocol.</dd>
+      <dt>Metric</dt><dd class="metric">focal per-capita return · ark-completion rate · complementarity (task needs ≥2 distinct capabilities) <span class="pill std">standard</span></dd>
+      <dt>You have</dt><dd class="have">Construction sites + berths record who contributed which materials; worlds-as-orgs already enforce the private-knowledge boundary (home-realm-only retrieval); portals let held-out agents enter.</dd>
+    </dl>
+  </div>
+
+  <div class="claim g">
+    <div class="claim-head"><span class="claim-id">G2</span>
+      <span class="claim-title">The cooperation is genuinely emergent, not scripted</span></div>
+    <dl>
+      <dt>Experiment</dt><dd><strong>Mechanism ablation:</strong> disable one affordance at a time — the favour ledger, relayed testimony, genotype variance (run a uniform population) — holding all else fixed. An effect that vanishes was carried by that mechanism. Compare against <strong>scripted-cooperator</strong> and <strong>random-choice</strong> floors.</dd>
+      <dt>Metric</dt><dd class="metric">Δ coalition formation per ablation · lift over random/scripted baseline · Shapley contribution per agent <span class="pill std">standard</span></dd>
+      <dt>You have</dt><dd class="have">Event-sourced append-only state → exact counterfactual replay (replay to <span class="mono">t</span>, revoke a tool, continue); favour ledgers (debts/credits) give Shapley attribution and free-rider detection directly.</dd>
+    </dl>
+  </div>
+
+  <div class="claim g">
+    <div class="claim-head"><span class="claim-id">G3</span>
+      <span class="claim-title">The deadline is a genuine forcing function</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Sweep the flood countdown and resource scarcity; define a coalition <strong>order parameter</strong> (fraction of agents in the supply chain, or ark throughput) and look for a sharp <strong>phase transition</strong> at a critical deadline — the signature of collective self-organisation rather than smooth aggregation. Build a <strong>Schelling diagram</strong> first to prove the task is a real dilemma (individual pull against collective), not a trivial coordination game.</dd>
+      <dt>Metric</dt><dd class="metric">order parameter vs. countdown (tipping point) · survival time under scarcity · efficiency / equality / sustainability / peace <span class="pill std">standard</span> <span class="pill edge">framing: leading-edge</span></dd>
+      <dt>You have</dt><dd class="have">The flood clock is already an operator-set variable; the CU ledger prices each run; movement/presence and construction progress are all timestamped.</dd>
+    </dl>
+  </div>
+
+  <div class="claim g">
+    <div class="claim-head"><span class="claim-id">G4</span>
+      <span class="claim-title">Agents negotiate efficiently without leaking private information</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Instrument each agent’s <strong>private reasoning</strong> against its <strong>public world-chat message</strong>; measure how far a counterpart’s belief about a private value moves given public messages alone (the leakage signal), and plot the <strong>coordination-vs-leakage Pareto curve</strong> (CalBench). Reference deal quality against a computable optimum for the favour trade.</dd>
+      <dt>Metric</dt><dd class="metric">belief-movement / VPS leakage · private-CoT ↔ public-message divergence · surplus capture vs. optimum · % individually-irrational deals accepted <span class="pill edge">leading-edge</span></dd>
+      <dt>You have</dt><dd class="have">world_chats logs every public message with author and timestamp; the decider’s prompt/response is capturable as the private channel; favour ledgers are the realised “deal.”</dd>
+    </dl>
+  </div>
+
+  <h3>Genome metric battery</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Dimension</th><th>Metric</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Cooperation is real</td><td class="metric">Schelling diagram; efficiency, equality (1−Gini), sustainability, peace</td><td class="src">Perolat 2017; Hughes 2018</td></tr>
+      <tr><td>Robust, not overfit</td><td class="metric">held-out co-player return (resident/visitor/universalization)</td><td class="src">Melting Pot, Leibo 2021</td></tr>
+      <tr><td>Genuinely emergent</td><td class="metric">mechanism-ablation Δ; lift over random &amp; scripted null</td><td class="src">Epstein 2006; Park 2023</td></tr>
+      <tr><td>Contribution &amp; free-riders</td><td class="metric">Shapley value (semantic Shapley for message flows)</td><td class="src">arXiv 2607.18255 / 2607.18979</td></tr>
+      <tr><td>Coalition stability</td><td class="metric">Nash / core stability; exploitability (best-response gap)</td><td class="src">Coalition-formation 2604.14386</td></tr>
+      <tr><td>Negotiation efficiency</td><td class="metric">surplus capture vs. Perfect Bayesian Equilibrium; rounds-to-agreement</td><td class="src">Supply-chain 2608.07538</td></tr>
+      <tr><td>Reading hidden info</td><td class="metric">Belief Error (reservation value / urgency / stance); oracle-gap decomposition</td><td class="src">TERMS-Bench 2605.13909</td></tr>
+      <tr><td>Privacy held</td><td class="metric">coordination-vs-leakage Pareto; belief-movement (VPS)</td><td class="src">CalBench 2605.09823</td></tr>
+      <tr><td>Forcing function</td><td class="metric">order parameter vs. deadline (phase transition); survival time</td><td class="src">GovSim; phase-transition 1706.01458</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2><span class="tag c">civilization</span> Composition beats construction</h2>
+  <p>The thesis: from a small founding set (~31 composable agents), an arbitrary
+  goal is met by composing a pipeline — creating a specialist on the fly when none
+  fits, and cataloguing proven combinations as reusable agents. The claim is a
+  <strong>systematicity + productivity</strong> claim from compositional-generalization
+  theory: known parts recombine into capability none has alone, and deeper than any
+  seen. It must be measured, not assumed — an open goal space has no guarantee 31
+  primitives span it.</p>
+
+  <div class="claim c">
+    <div class="claim-head"><span class="claim-id">C1</span>
+      <span class="claim-title">Composition creates capability no founder has alone</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Build a <strong>held-out-composition test set</strong>: goals whose solution needs a pipeline, where each founder is individually validated on its own stage but <strong>no single founder solves the whole</strong> — the agent analog of SCAN’s systematic recombination. Report a <strong>productivity curve</strong>: success vs. pipeline depth.</dd>
+      <dt>Metric</dt><dd class="metric">(a) % decomposable · (b) % end-to-end success · (c) % needing a new on-the-fly agent · success vs. depth <span class="pill std">standard method</span></dd>
+      <dt>You have</dt><dd class="have">Run records + stage I/O per pipeline; on-the-fly materialisation already tags which stages had no match; the CU ledger prices each.</dd>
+    </dl>
+  </div>
+
+  <div class="claim c">
+    <div class="claim-head"><span class="claim-id">C2</span>
+      <span class="claim-title">The win is architecture, not just more compute</span></div>
+    <dl>
+      <dt>Experiment</dt><dd><strong>Compute-matched</strong> single-strong-model vs. composed-pipeline on the same goal battery — hold total tokens/cost constant (an internal study found ~80% of a multi-agent “win” was just token spend). Then <strong>leave-one-out</strong> each stage (replace with a pass-through) to measure its marginal value.</dd>
+      <dt>Metric</dt><dd class="metric">success Δ at equal cost · marginal value per stage · MAST failure-mode attribution (design / handoff / verification) <span class="pill edge">contested area</span></dd>
+      <dt>You have</dt><dd class="have">The CU ledger makes cost the control variable for free; the model picker sets the single-model baseline; stage I/O localises the first failing stage.</dd>
+    </dl>
+  </div>
+
+  <div class="claim c">
+    <div class="claim-head"><span class="claim-id">C3</span>
+      <span class="claim-title">Catalogued combinations are reliably reusable, and reuse compounds</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Run the same pinned pipeline <strong>k times</strong> and report <strong>pass^k</strong> (all k succeed) — a catalogued agent is a promise of repeatability, so pass^k, not pass@1, is the KPI. Then a <strong>cold-vs-warm</strong> curve: solve a goal stream with an empty catalogue vs. a populated one (Voyager’s library-transfer ablation); measure catalogue <strong>retrieval precision/recall</strong> separately — a mis-retrieved “proven” pipeline is worse than building fresh.</dd>
+      <dt>Metric</dt><dd class="metric">pass^k · cold-vs-warm success &amp; cost curve · retrieval precision/recall · staleness after a founder version bump <span class="pill std">standard</span></dd>
+      <dt>You have</dt><dd class="have">Catalogued combinations persist as version-pinned pipelines with their invocation handle; run records give repeat outcomes; the ledger gives the cost curve.</dd>
+    </dl>
+  </div>
+
+  <div class="claim c">
+    <div class="claim-head"><span class="claim-id">C4</span>
+      <span class="claim-title">Quality, cost and model-choice are measurable and honest</span></div>
+    <dl>
+      <dt>Experiment</dt><dd>Report every result as a point in <strong>(accuracy, $, latency)</strong> space (the HAL cost-accuracy frontier), not a scalar — the most expensive model is rarely Pareto-optimal. Swap the per-stage model (the picker) to test whether the bottleneck is model quality or composition quality. Verify by <strong>execution</strong> wherever a task admits it; reserve LLM-as-judge for open-ended stages, with a <strong>different-family</strong> judge and A/B position-swap to blunt self-preference and position bias.</dd>
+      <dt>Metric</dt><dd class="metric">cost-per-solved-task · Pareto frontier · quality Δ per stage-model swap · judge–human agreement on a calibration slice <span class="pill std">standard</span></dd>
+      <dt>You have</dt><dd class="have">The CU ledger (1 CU = 1 byte; token = 4 B) is a native cost meter; the model picker makes per-stage model an experimental knob; version pinning makes any run reproducible.</dd>
+    </dl>
+  </div>
+
+  <h3>Civilization metric battery</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Dimension</th><th>Metric</th><th>Source / benchmark</th></tr></thead>
+    <tbody>
+      <tr><td>New capability from parts</td><td class="metric">held-out-composition success; productivity curve (success vs. depth)</td><td class="src">SCAN / COGS / gSCAN</td></tr>
+      <tr><td>Long-horizon competence</td><td class="metric">progress rate; multi-tool task success</td><td class="src">GAIA L2/3; AgentBoard</td></tr>
+      <tr><td>Goal actually achieved</td><td class="metric">execution / end-state verification (not tool-call syntax)</td><td class="src">τ-bench; SWE-bench Verified</td></tr>
+      <tr><td>Reliability</td><td class="metric">pass^k (all-k-succeed), not pass@1</td><td class="src">τ-bench, Yao 2024</td></tr>
+      <tr><td>Architecture &gt; compute</td><td class="metric">compute-matched single-vs-pipeline Δ; leave-one-out per stage</td><td class="src">Anthropic 2025; MAST 2503.13657</td></tr>
+      <tr><td>Failure attribution</td><td class="metric">MAST 14-mode taxonomy; first-failing-stage localisation</td><td class="src">Cemri 2025</td></tr>
+      <tr><td>Reuse compounds</td><td class="metric">cold-vs-warm curve; retrieval precision/recall</td><td class="src">Voyager, Wang 2023</td></tr>
+      <tr><td>Cost / quality</td><td class="metric">cost-per-solved-task; (accuracy, $, latency) Pareto</td><td class="src">HAL, 2510.11977</td></tr>
+      <tr><td>Open-ended grading</td><td class="metric">cross-family LLM-judge, position-swapped; judge–human agreement</td><td class="src">MT-Bench 2306.05685</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <h2>The rigor spine</h2>
+  <p>Cross-cutting practice that turns a battery of numbers into a validity
+  argument — and where the platform already meets it.</p>
+  <ul class="spine">
+    <li><span class="n">01</span><span><b>Verification vs. validation.</b> State both: the code implements the intended model (verification) <em>and</em> the model’s output is adequate for its purpose (Sargent’s operational validity). Report them separately.</span></li>
+    <li><span class="n">02</span><span><b>Four-way empirical validation.</b> Micro-face (agent rules look right), macro-face (aggregate patterns look right), empirical input, empirical output (Rand &amp; Rust). Face validity is necessary, never sufficient.</span></li>
+    <li><span class="n">03</span><span><b>Ablation is the causal engine.</b> Remove memory / reflection / a mechanism; if the phenomenon degrades, that component produced it — not the base model’s priors (Park et al.).</span></li>
+    <li><span class="n">04</span><span><b>Docking &amp; distributional equivalence.</b> Because hosted LLMs aren’t bit-deterministic, compare runs (and versions) by <em>distributional</em> or <em>relational</em> equivalence, not identity (Axtell). The append-only store keeps the harness deterministic even when the model isn’t.</span></li>
+    <li><span class="n">05</span><span><b>Statistics.</b> Fix replication count by coefficient-of-variation; report means + CIs + effect sizes; beat a null baseline. <b>Perturb prompt format and model version, not only seeds</b> — the single most important LLM-specific control.</span></li>
+    <li><span class="n">06</span><span><b>Reproducibility spine.</b> Pinned seeds + versioned agents + event-sourced replayable logs = the reproducibility genome and civilization already have by construction. This is a genuine asset most simulations lack.</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2>The instrumentation you already have</h2>
+  <p>Most of the eval regime above is normally the hard part to build. Here it is
+  largely already recorded — which is the strongest argument for running it now:</p>
+  <ul class="spine">
+    <li><span class="n">✓</span><span><b>CU ledger</b> (append-only, 1 CU = 1 byte, token = 4 B) → cost-per-task, the Pareto frontier, and compute-matched controls come for free.</span></li>
+    <li><span class="n">✓</span><span><b>Event-sourced state</b> → counterfactual replay <em>is</em> ablation; any emergent outcome is traceable to the events that caused it.</span></li>
+    <li><span class="n">✓</span><span><b>Favour &amp; standing ledgers</b> → Shapley attribution, free-rider and reciprocity signatures, coalition-stability checks, all from data already written.</span></li>
+    <li><span class="n">✓</span><span><b>Private-realm knowledge + world-chat logs</b> → the privacy boundary is enforced and the public/private channels are separable, so leakage is directly measurable.</span></li>
+    <li><span class="n">✓</span><span><b>Version-pinned agents + the model picker</b> → reproducibility and per-stage model as a first-class experimental knob.</span></li>
+    <li><span class="n">✓</span><span><b>Operator-set flood clock</b> → the deadline is already a sweepable control parameter.</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Weakest links — read before claiming</h2>
+  <div class="note amber">
+    <span class="h">Devil’s advocate</span>
+    <p style="color:var(--dim);max-width:44rem">
+    <b>“Irreducibility” is the wrong hill.</b> The intuitive “the whole exceeds
+    the sum of parts” argument is hard to make rigorous — lean on generative
+    sufficiency + ablation + a clean phase transition instead, and use
+    irreducibility only as color.<br><br>
+    <b>“31! = unbounded” is rhetoric until the span is measured.</b> The
+    combinatorial count is a search space, not achieved capability. Report the
+    fraction of a real goal distribution the founders actually cover; an open
+    goal space may not be spanned by 31 primitives.<br><br>
+    <b>Multi-agent-beats-single is contested.</b> MAST shows most multi-agent
+    failures are architectural, and ~80% of one reported “win” was token spend.
+    Without a compute-matched control, C2 is unproven — and possibly false.<br><br>
+    <b>Scale gates the social statistics.</b> A population of dozens supports
+    mechanism ablations and negotiation metrics now, but macro-validation against
+    real-world stylised facts (diffusion curves, norm convergence) needs many
+    more agents and runs before the numbers carry weight.<br><br>
+    <b>Several 2026 citations are leading-edge, not settled.</b> Anchor formal
+    claims on the established references (Melting Pot, Epstein, Lewis, Voyager,
+    τ-bench, HAL, SCAN/COGS); treat 2026 arXiv IDs as directional and verify each
+    before formal citation.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Start here</h2>
+  <p>Ordered by proof-per-unit-effort, given what’s already instrumented.</p>
+  <ol class="start">
+    <li><b>Genome — mechanism ablation + random/scripted baseline.</b> Uniform-genotype and no-favour-ledger runs vs. full; does the supply chain still form? Highest-certainty evidence that the emergence is real. <span class="eff">effort: low · uses replay + ledgers you already have</span></li>
+    <li><b>Civilization — held-out-composition test + productivity curve.</b> The direct proof of C1, the central claim. Build ~30 goals no single founder solves. <span class="eff">effort: medium · needs a curated goal set</span></li>
+    <li><b>Civilization — compute-matched single-vs-pipeline + pass^k.</b> Settles C2/C3 against the strongest critique; the ledger makes the cost control trivial. <span class="eff">effort: medium · uses the model picker + CU ledger</span></li>
+    <li><b>Genome — deadline sweep for a phase transition.</b> The ambitious, most publishable figure: emergence and forcing-function in one plot. <span class="eff">effort: medium-high · needs many runs; flood clock is already sweepable</span></li>
+    <li><b>Genome — leakage &amp; coordination-vs-leakage Pareto.</b> Proves the cross-org privacy thesis; instrument decider prompt vs. public world-chat. <span class="eff">effort: medium · both channels already logged</span></li>
+    <li><b>Both — cold-vs-warm reuse curve &amp; docking across versions.</b> Proves reuse compounds and results reproduce. <span class="eff">effort: low-medium · version pinning already in place</span></li>
+  </ol>
+</section>
+
+<hr class="rule">
+
+<section class="refs">
+  <h2>References</h2>
+  <h3>Emergent cooperation &amp; validation</h3>
+  <ul>
+    <li>Leibo et al., <a href="https://arxiv.org/abs/2107.06857">Scalable Evaluation of Multi-Agent RL with Melting Pot</a>, 2021.</li>
+    <li>Hughes et al., <a href="https://arxiv.org/pdf/1803.08884">Inequity Aversion…</a>, 2018; Perolat et al., <a href="https://arxiv.org/pdf/1707.06600">Common-Pool Resource Appropriation</a>, 2017.</li>
+    <li>Epstein, <a href="https://faculty.sites.iastate.edu/tesfatsi/archive/tesfatsi/RemarksFoundationsABM.JEpstein2006.pdf">Remarks on the Foundations of Generative Social Science</a>, 2006.</li>
+    <li>Park et al., <a href="https://arxiv.org/abs/2304.03442">Generative Agents</a>, UIST 2023; <a href="https://arxiv.org/abs/2502.08691">AgentSociety</a>, 2025.</li>
+    <li>Sargent, <a href="https://www.informs-sim.org/wsc10papers/016.pdf">Verification and Validation of Simulation Models</a>; Rand &amp; Rust, <a href="https://marketing.wharton.upenn.edu/wp-content/uploads/2016/10/Rand-W-Agent-based-modeling-in-marketing-Paper2.pdf">ABM in Marketing: Guidelines for Rigor</a>, 2011.</li>
+    <li>Axtell et al., <a href="https://public.websites.umich.edu/~axe/research/Aligning_Sim.pdf">Aligning Simulation Models (docking)</a>, 1996; <a href="https://arxiv.org/abs/2605.18890">robustness-audit / 76pp sensitivity</a>, 2026 <span class="pill edge">verify</span>.</li>
+  </ul>
+  <h3>Negotiation under asymmetry</h3>
+  <ul>
+    <li>Lewis et al., <a href="https://arxiv.org/abs/1706.05125">Deal or No Deal?</a>, EMNLP 2017; Bianchi et al., <a href="https://arxiv.org/abs/2402.05863">NegotiationArena</a>, 2024.</li>
+    <li><a href="https://arxiv.org/abs/2605.13909">TERMS-Bench</a>; <a href="https://arxiv.org/abs/2608.07538">Private Information &amp; Dynamic Bargaining in Supply Chains</a>; <a href="https://arxiv.org/abs/2605.09823">CalBench</a> — all 2026 <span class="pill edge">verify</span>.</li>
+  </ul>
+  <h3>Agent systems &amp; composition</h3>
+  <ul>
+    <li>Benchmarks: <a href="https://arxiv.org/abs/2308.03688">AgentBench</a>, <a href="https://arxiv.org/abs/2401.13178">AgentBoard</a>, <a href="https://ai.meta.com/research/publications/gaia-a-benchmark-for-general-ai-assistants/">GAIA</a>, <a href="https://arxiv.org/abs/2406.12045">τ-bench</a>, <a href="https://arxiv.org/abs/2310.06770">SWE-bench</a>.</li>
+    <li>Compositional generalization: SCAN (Lake &amp; Baroni 2018), COGS (Kim &amp; Linzen 2020), gSCAN (Ruis et al. 2020).</li>
+    <li>Orchestration &amp; reuse: <a href="https://arxiv.org/abs/2503.13657">MAST — Why Multi-Agent Systems Fail</a>, 2025; <a href="https://arxiv.org/abs/2305.16291">Voyager</a>, 2023; <a href="https://arxiv.org/abs/2510.11977">HAL cost-accuracy leaderboard</a>; <a href="https://arxiv.org/abs/2306.05685">MT-Bench / LLM-as-judge</a>, 2023.</li>
+  </ul>
+</section>
+
+<footer>
+  Compiled 2026-09-09 from a four-strand literature review (emergent cooperation,
+  negotiation under asymmetry, agentic-system &amp; compositional benchmarks, ABM
+  validation) mapped to the platform’s existing instrumentation. Citations dated
+  2026 are leading-edge — verify the exact identifier before formal use.
+</footer>
+
+</div>
+
+</body>
+</html>
