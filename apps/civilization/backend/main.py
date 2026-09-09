@@ -2320,7 +2320,25 @@ async def list_mcp_agent_tools(
             res = await client.get(f"{TOOL_REGISTRY_URL.rstrip('/')}/tools",
                                    params={"org_id": org_id, "project_id": project_id})
             if res.status_code == 200:
-                for tool in res.json().get("tools", []):
+                rows = res.json().get("tools", [])
+                if not rows:
+                    # Self-heal (found live 2026-09-09): the seed toolbelt runs
+                    # at project creation, so an organisation created before a
+                    # tool existed — or before seeding existed — has an empty
+                    # registry forever. Seeding is idempotent (re-registering an
+                    # identical version is a no-op), so an empty answer here
+                    # seeds and asks once more instead of showing nothing.
+                    try:
+                        from backend.platform_tools import ensure_platform_tools
+                    except ImportError:
+                        from platform_tools import ensure_platform_tools
+                    await ensure_platform_tools(org_id, project_id)
+                    res2 = await client.get(
+                        f"{TOOL_REGISTRY_URL.rstrip('/')}/tools",
+                        params={"org_id": org_id, "project_id": project_id})
+                    if res2.status_code == 200:
+                        rows = res2.json().get("tools", [])
+                for tool in rows:
                     tools.append({
                         "name": tool["tool_id"],
                         "description": tool.get("description", ""),
