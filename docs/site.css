@@ -114,3 +114,16 @@ footer a { color: var(--dim); }
   html { scroll-behavior: auto; }
   .door { transition: none; }
 }
+
+/* ---- hero call-to-action ---- */
+.cta-row { display: flex; gap: 0.9rem; flex-wrap: wrap; margin: 2rem 0 0; }
+.cta { display: inline-flex; align-items: center; gap: 0.5rem;
+       font-family: "IBM Plex Sans", system-ui, sans-serif; font-weight: 600;
+       font-size: 0.98rem; padding: 0.7rem 1.3rem; border-radius: 999px;
+       text-decoration: none; transition: transform 0.2s, background 0.2s; }
+.cta:hover { text-decoration: none; transform: translateY(-1px); }
+.cta-primary { background: var(--emerald); color: #06231a; }
+.cta-primary:hover { background: #4ade9f; }
+.cta-ghost { border: 1px solid var(--hairline); color: var(--bone); }
+.cta-ghost:hover { border-color: var(--violet); }
+@media (prefers-reduced-motion: reduce) { .cta:hover { transform: none; } }

@@ -607,8 +607,12 @@ def drift_route(agent: AgentView, ctx: dict, terrain: list,
     length = sum(_m.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
     if length < 1e-6:
         return None
-    # amble pace: ~3 minutes to walk 0.12 units -- thinking speed
-    duration = max(20.0, length / 0.12 * 180.0)
+    # amble pace: a VISIBLE wander, ~100s to cross a full world unit. It used
+    # to stretch to fill the whole (minutes-long) thinking gap -- ~1500s per
+    # unit -- which read as a frozen canvas (user report 2026-09-09: "the
+    # motion line is there but no movement"). The body now ambles at a pace
+    # the eye can follow and parks when it arrives, until the thought returns.
+    duration = max(20.0, length * 100.0)
     return {"waypoints": [list(q) for q in pts], "departed_at": now,
             "arrives_at": now + duration}
 
