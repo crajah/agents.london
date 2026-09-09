@@ -107,10 +107,12 @@ export default function AgentDiscoveryView({ state }) {
     setRunTarget(toolName);
     setRunResult(null);
     setRunError(null);
+    // An in-app run goes through the session path, not the key-gated public
+    // MCP surface: a logged-in click should never ask for a pasted API key.
     const { data, error } = await attempt(api.post(
-      `/api/mcp/v1/tools/call`,
-      { tool_name: toolName, arguments: { prompt: goalQuery || 'Introduce yourself.' } },
-      { headers: {}, timeoutMs: 300000 }));
+      `/api/agents/invoke`,
+      { tool_name: toolName, prompt: goalQuery || 'Introduce yourself.' },
+      { timeoutMs: 300000 }));
     if (error) setRunError(error);
     else setRunResult({ tool: toolName, ...data });
     setRunTarget(null);
@@ -123,8 +125,8 @@ export default function AgentDiscoveryView({ state }) {
     setRunResult(null);
     setRunError(null);
     const { data, error } = await attempt(api.post(
-      `/api/mcp/v1/tools/call`,
-      { tool_name: composition.mcp_tool, arguments: { prompt: goalQuery } },
+      `/api/agents/invoke`,
+      { tool_name: composition.mcp_tool, prompt: goalQuery },
       { timeoutMs: 600000 }));
     if (error) setRunError(error);
     else setRunResult({ tool: composition.mcp_tool, ...data });

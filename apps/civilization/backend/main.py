@@ -2364,6 +2364,32 @@ async def list_mcp_agent_tools(
     return body
 
 
+class AgentInvokeRequest(BaseModel):
+    org_id: str = Field(default=DEFAULT_ORG_ID)
+    project_id: str
+    tool_name: str
+    prompt: str = "Introduce yourself."
+
+
+@app.post("/api/agents/invoke")
+async def invoke_agent_in_session(req: AgentInvokeRequest):
+    """Run one agent or pipeline by its published name from an authenticated
+    UI session — the same internal path the Playground uses (_invoke_agent),
+    so an in-app click needs no project API key. The project key gates the
+    PUBLIC /api/mcp/v1 surface for external callers; a logged-in Discovery
+    "Run" is not that, and should not demand a pasted key.
+    """
+    if not (req.tool_name.startswith("agent:")
+            or req.tool_name.startswith("pipeline:")):
+        raise HTTPException(status_code=422,
+                            detail="Only agent: or pipeline: names run here.")
+    out = await _invoke_agent(req.org_id, req.project_id, req.tool_name, req.prompt)
+    return {"tool": req.tool_name,
+            "content": [{"type": "text", "text": out.get("text", "")}],
+            "isError": bool(out.get("isError")),
+            "usage": out.get("usage") or {}}
+
+
 @app.post("/api/mcp/v1/tools/call")
 async def call_mcp_agent_tool(
     req: MCPCallRequest,

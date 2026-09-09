@@ -9,7 +9,9 @@ const SIDE_EFFECT_MEANING = {
 };
 
 import {
-  Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Tooltip, Alert } from '@mui/material';
+  Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Tooltip, Alert,
+  Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import MemoryIcon from '@mui/icons-material/Memory';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -74,14 +76,23 @@ export default function ToolRegistryView({ state, onAddTool, reloadToken = 0 }) 
         </Button>
       </Box>
 
-      {/* Available Models Panel */}
-      <Paper sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#60a5fa' }}>
-          <MemoryIcon sx={{ fontSize: 20 }} /> Available LLM Router Endpoints (/v1/models)
-        </Typography>
-
-        <TableContainer>
-          <Table size="small">
+      {/* Available Models: collapsed by default and scroll-capped — it is
+          reference, and the tool registry below is the page's real subject
+          (the full router catalogue was pushing the tools off-screen). */}
+      <Accordion disableGutters
+                 sx={{ bgcolor: 'rgba(15,23,42,0.5)',
+                       border: '1px solid rgba(255,255,255,0.08)',
+                       '&:before': { display: 'none' } }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: '#60a5fa' }}>
+            <MemoryIcon sx={{ fontSize: 20 }} /> Available LLM Router Endpoints
+            <Chip label={availableModels.length} size="small"
+                  sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700 }} />
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+        <TableContainer sx={{ maxHeight: 340 }}>
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
@@ -113,7 +124,8 @@ export default function ToolRegistryView({ state, onAddTool, reloadToken = 0 }) 
             </TableBody>
           </Table>
         </TableContainer>
-      </Paper>
+        </AccordionDetails>
+      </Accordion>
 
       {/* MCP Tools Table */}
       {loadError && (
