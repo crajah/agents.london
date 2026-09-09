@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="128" height="128">
+  <!-- genome: one being, two colours — the agent glyph as the mark -->
+  <path d="M16 3 A13 13 0 0 0 16 29 Z" fill="#34d399"/>
+  <path d="M16 3 A13 13 0 0 1 16 29 Z" fill="#a78bfa"/>
+</svg>

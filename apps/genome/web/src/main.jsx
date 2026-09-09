@@ -11,7 +11,9 @@ const API = import.meta.env.VITE_GENOME_API ?? "";
 const A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF",
               "#82B1FF", "#80D8FF", "#84FFFF", "#A7FFEB", "#B9F6CA",
               "#CCFF90", "#F4FF81", "#FFFF8D", "#FFE57F", "#FFD180",
-              "#FF9E80", "#D7CCC8", "#CFD8DC", "#F5F5F5", "#B2FFFF"];
+              "#FF9E80", "#D7CCC8", "#CFD8DC", "#F5F5F5", "#FF6D00"];
+// kind 19 wears Deep Orange: its old Light Cyan was indistinguishable from
+// kind 8's mint and the pale cyans at pile size (world_80e10f4cb1a9, [19,8])
 const kindColour = (k) => A100[Number(k)] ?? "#777";
 
 // every agent name wears its lineage: the world colour pair, then the
@@ -1606,7 +1608,20 @@ function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-900 text-neutral-200">
       <header className="px-4 py-2 flex gap-3 items-center border-b border-neutral-700">
-        <a href="/" className="no-underline text-inherit"><strong>genome</strong></a>
+        <a href="/" className="no-underline text-inherit inline-flex
+                               items-center gap-2">
+          {/* the mark IS the agent glyph: one being, two colours */}
+          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 3 A13 13 0 0 0 16 29 Z" fill="#34d399" />
+            <path d="M16 3 A13 13 0 0 1 16 29 Z" fill="#a78bfa" />
+          </svg>
+          <strong>genome</strong></a>
+        {/* the viewed world's identity: the colour pair of its two kinds */}
+        {(snapInfo?.kinds ?? []).slice(0, 2).map((k, i) => (
+          <span key={i} title={`native kind ${k}`}
+                className="w-3 h-3 rounded-full inline-block border
+                           border-black/30"
+                style={{ background: kindColour(k) }} />))}
         <span className="text-xs opacity-50 hidden sm:inline">
           by <a className="underline" target="_blank" rel="noreferrer"
                 href="https://www.linkedin.com/in/crajah">Chandan Rajah</a>

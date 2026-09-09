@@ -16,7 +16,9 @@ from . import path as pathmod
 A100 = ["#FF8A80", "#FF80AB", "#EA80FC", "#B388FF", "#8C9EFF", "#82B1FF",
         "#80D8FF", "#84FFFF", "#A7FFEB", "#B9F6CA", "#CCFF90", "#F4FF81",
         "#FFFF8D", "#FFE57F", "#FFD180", "#FF9E80", "#D7CCC8", "#CFD8DC",
-        "#F5F5F5", "#B2FFFF"]  # 20th: Light Cyan (user decision)
+        "#F5F5F5", "#FF6D00"]  # 20th: Deep Orange -- Light Cyan was
+# indistinguishable from kind 8's mint and the two pale cyans at dot size
+# (found live 2026-09-09 in world_80e10f4cb1a9, kinds [19, 8])
 
 MIN_SPACING = 0.08
 FIRST_NAMES = [
