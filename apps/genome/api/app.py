@@ -14,6 +14,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import pydantic as _pyd
 from fastapi import FastAPI
 from post_graph import AsyncPostGraph
 
@@ -444,13 +445,10 @@ _AUTHORITY_INTERNAL_KEY = os.getenv("AUTHORITY_INTERNAL_KEY", "")
 _CIV_URL = os.getenv("CIV_URL", "http://agent-london-backend-service:8000")
 
 
-@app.get("/worlds/{realm}/capabilities", tags=["World"])
-async def world_capabilities(realm: str):
-    """Phase 3 (read-only provenance): the capabilities this world's owning
-    org built in CIVILIZATION. Resolves world -> owner -> tenant -> civ orgs
-    via the authority directory, then reads civ's own catalogue. Only ever the
-    world's OWN tenant -- never another's (the directory is internal-keyed and
-    we look up strictly by this world's owner)."""
+async def _resolve_world_capabilities(realm: str) -> dict:
+    """world -> owner -> tenant -> civ orgs -> civ catalogue. Strictly this
+    world's OWN tenant (directory is internal-keyed; we look up by its owner).
+    Returns {realm, tenant_id, capabilities}."""
     import asyncio as _aio
     import json as _json
     import urllib.request as _ur
@@ -487,6 +485,64 @@ async def world_capabilities(realm: str):
             continue                           # one org failing is not fatal
     out["capabilities"] = caps
     return out
+
+
+@app.get("/worlds/{realm}/capabilities", tags=["World"])
+async def world_capabilities(realm: str):
+    """Phase 3 (read-only provenance): the capabilities this world's owning
+    org built in CIVILIZATION."""
+    return await _resolve_world_capabilities(realm)
+
+
+class _CapabilityOffer(_pyd.BaseModel):
+    capability_name: str
+    to_realm: str
+    favour_cost: float = 1.0
+    to_agent: str | None = None
+
+
+@app.post("/worlds/{realm}/capability-offers", tags=["World"])
+async def offer_capability(realm: str, offer: _CapabilityOffer):
+    """Phase 4 SAFE SLICE: one world offers another a capability its org built
+    in civilization, at a favour cost. Records the offer and the invocation
+    INTENT only -- it does NOT run the civ pipeline (execution is the gated
+    finale) and it does NOT touch the live per-agent favour ledger (that feeds
+    the cooperation evaluation; the cost is recorded on the offer instead). So
+    the offer->cost handshake exists, provably, with zero runtime or
+    measurement risk."""
+    resolved = await _resolve_world_capabilities(realm)
+    names = {c.get("name") for c in resolved["capabilities"]}
+    if offer.capability_name not in names:
+        return JSONResponse(
+            {"error": "that capability is not one this world's org built in "
+             "civilization"}, status_code=400)
+    import time as _t
+    import uuid as _uuid
+    rec = {"key": f"offer:{_uuid.uuid4().hex[:12]}",
+           "kind": "capability_offer",
+           "capability_name": offer.capability_name,
+           "from_realm": realm, "from_tenant": resolved["tenant_id"],
+           "to_realm": offer.to_realm, "to_agent": offer.to_agent,
+           "favour_cost": offer.favour_cost,
+           "status": "offered",              # SAFE SLICE: not executed
+           "executed": False,
+           "note": "invocation stubbed; live cross-app execution is gated "
+                   "(Phase 4 full)",
+           "created_at": _t.time()}
+    await app.state.pg.create_vertex_table("capability_offers", realm=realm)
+    await app.state.pg.add_vertex("capability_offers", realm=realm,
+                                  space=rec["key"], payload=rec)
+    return {"ok": True, **rec}
+
+
+@app.get("/worlds/{realm}/capability-offers", tags=["World"])
+async def list_capability_offers(realm: str):
+    """The capability offers this world has made (safe-slice records)."""
+    await app.state.pg.create_vertex_table("capability_offers", realm=realm)
+    rows = await app.state.pg.get_vertices("capability_offers", realm=realm)
+    offers = [getattr(v, "payload", v) for v in rows]
+    offers.sort(key=lambda r: r.get("created_at", 0), reverse=True)
+    return {"realm": realm, "offers": offers}
 
 
 # Two ways in, both through the platform authority (Google and Microsoft).
