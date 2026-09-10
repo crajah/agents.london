@@ -36,9 +36,14 @@ def _envf(key: str, default: float) -> float:
 # real-time no world ever entered its visibility window, so no ark was ever
 # built). Awareness is now a FRACTION of the flood interval, not a fixed 2
 # days, so the warning scales with the recurrence.
+# 2026-09-10 (user directive): 20-day floods gave agents no urgency and they
+# never built the ark. Horizon is now 1-2 days, and awareness defaults >1 so
+# the countdown is ALWAYS visible -- agents know from birth that the flood is
+# coming and have reason to build the ark from the start (a window > the max
+# interval means countdown_visible always returns the remaining time).
 FLOOD_MIN_DAYS = _envf("FLOOD_MIN_DAYS", 1.0)
-FLOOD_MAX_DAYS = _envf("FLOOD_MAX_DAYS", 3.0)
-FLOOD_AWARENESS_PCT = _envf("FLOOD_AWARENESS_PCT", 0.35)   # fraction of the interval
+FLOOD_MAX_DAYS = _envf("FLOOD_MAX_DAYS", 2.0)
+FLOOD_AWARENESS_PCT = _envf("FLOOD_AWARENESS_PCT", 2.0)   # >1 => always visible
 NASCENT_FILL = 0.7                        # PROVISIONAL pile reversion
 ARK_RADIUS = 0.05                         # being aboard means being HERE
 

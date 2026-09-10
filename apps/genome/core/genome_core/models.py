@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import random
 
-# Pools revised 2026-09-01 (user decision): Gemini out, the unbudgeted
-# self-hosted trio in -- MiniMax-M2.7, DeepSeek-V3.2 and Llama-3.3-70B all
-# answer the constrained decision call cleanly through the router (probed
-# live before admission; the formal Rule 10.6 screen re-run is still owed).
-# Three models in one pool restores what Rule 10.1 wants: per-agent
-# assignment with genuine variety.
+# Pools revised 2026-09-10 (incident): the self-hosted trio went bad --
+# MiniMax-M2.7 spiked to 20s+ per call (wildly variable) and gpt-oss-120b
+# started erroring; the decider calls the router with BLOCKING urllib, so a
+# single slow/failing model froze the whole worker's event loop for ~23s and
+# the sim stalled (agents "standing around"). Swapped to models probed fast and
+# reliable live: Llama-3.3-70B (~0.7s) and gemma-4-31B (~1.6s) self-hosted, plus
+# gemini-3.6-flash (~1.0s) as a different-backend insurance against the
+# self-hosted cluster degrading. Rebalance toward cheaper self-hosted once it
+# stabilises. (assign_models is recomputed per decision, so this takes effect
+# for every agent immediately on deploy.)
 POOLS: dict[str, list[str]] = {
-    "economy": ["MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"],
-    "deliberative": ["MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"],
+    "economy": ["Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it",
+                "gemini-3.6-flash"],
+    "deliberative": ["Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it",
+                     "gemini-3.6-flash"],
 }
 
 
@@ -27,10 +33,10 @@ def temperament(agent_uuid: str) -> float:
     still won't think alike (user: 'mix things up')."""
     return 0.7 + 0.6 * random.Random(f"temp:{agent_uuid}").random()
 
-# flat-rate models: NO token cap at all -- the request omits max_tokens and
-# the model reasons as long as it needs (user decision; llama swapped for
-# gpt-oss-120b, probed clean through the router)
-UNBUDGETED = {"MiniMax-M2.7", "DeepSeek-V3.2", "gpt-oss-120b"}
+# flat-rate models: NO token cap -- the request omits max_tokens. The
+# self-hosted models are flat-rate; the hosted gemini stays budgeted (capped)
+# because it is metered per token and "gemini is costly" (user).
+UNBUDGETED = {"Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it"}
 
 
 def assign_models(agent_uuid: str) -> dict[str, str]:
