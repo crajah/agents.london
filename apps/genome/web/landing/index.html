@@ -3,98 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agents.london — a civilization of a billion agents</title>
-<meta name="description" content="Thought experiments in artificial society by Chandan Rajah: Genome and Civilization, two living simulations built on post-graph.">
+<title>agents.london — a billion agents will need somewhere to live</title>
+<meta name="description" content="A billion agents, negotiating the deal — across organisational boundaries, under privacy, on an honest meter. Enter the two live simulations: genome and civilization.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --ink: #e8e4dc; --paper: #101216; --dim: #8b8778;
-    --line: #2a2d33; --accent: #2ee6ff; --warm: #ffd180;
+    --line: #2a2d33; --emerald: #34d399; --violet: #a78bfa; --accent: #2ee6ff;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
     background: var(--paper); color: var(--ink);
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased; line-height: 1.5;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.55;
   }
   a { color: inherit; }
-  .frame { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+  .frame { max-width: 1080px; margin: 0 auto; padding: 0 2rem; }
   header {
     padding: 2.2rem 0; display: flex; justify-content: space-between;
     align-items: baseline; flex-wrap: wrap; gap: .6rem;
   }
   .wordmark {
-    font-size: .95rem; letter-spacing: .35em; text-transform: uppercase;
-    color: var(--dim); font-weight: 400;
+    font-family: "IBM Plex Mono", monospace; font-size: .8rem;
+    letter-spacing: .35em; text-transform: uppercase; color: var(--dim);
   }
   .byline-top { font-size: .8rem; color: var(--dim); }
   .byline-top a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
   .byline-top a:hover { border-color: var(--accent); }
-  .hero { padding: 4.5rem 0 3.5rem; border-bottom: 1px solid var(--line); }
+  .hero { padding: 3.5rem 0 3rem; border-bottom: 1px solid var(--line); }
   h1 {
-    font-size: clamp(2.4rem, 6.5vw, 4.8rem); font-weight: 700;
-    letter-spacing: -.03em; line-height: 1.03; max-width: 20ch;
+    font-family: "Fraunces", Georgia, serif; font-weight: 600;
+    font-size: clamp(2.4rem, 6.5vw, 4.6rem); letter-spacing: -.02em;
+    line-height: 1.04; max-width: 18ch; text-wrap: balance;
   }
-  h1 em { font-style: normal; color: var(--dim); }
-  .hero p {
-    margin-top: 2rem; max-width: 58ch; color: var(--dim); font-size: 1.1rem;
+  .lede { margin-top: 1.6rem; max-width: 60ch; color: var(--dim); font-size: 1.12rem; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  /* call to action, up top — the live thing is one click away */
+  .cta-row { margin-top: 2rem; display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
+  .cta {
+    text-decoration: none; font-weight: 600; font-size: 1rem;
+    padding: .7rem 1.2rem; border-radius: 8px; border: 1px solid var(--line);
+    transition: transform .2s ease, border-color .2s ease, background .2s ease;
   }
-  .hero p strong { color: var(--ink); font-weight: 600; }
-  .works { display: grid; grid-template-columns: 1fr; }
-  .work {
-    display: grid; grid-template-columns: minmax(0,7rem) 1fr auto;
-    gap: 2rem; align-items: start;
-    padding: 3.2rem 0; border-bottom: 1px solid var(--line);
-    text-decoration: none; color: inherit; transition: background .25s ease;
-  }
-  .work:hover { background: #14171c; }
-  .idx {
-    font-size: .85rem; color: var(--dim); letter-spacing: .2em;
-    padding-top: .55rem; text-transform: uppercase;
-  }
-  .work h2 {
-    font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 700;
-    letter-spacing: -.02em; line-height: 1.05;
-  }
-  .work h2 .dot {
-    display: inline-block; width: .55em; height: .55em; border-radius: 50%;
-    margin-left: .35em; animation: breathe 2.8s ease-in-out infinite;
-  }
-  @keyframes breathe { 50% { transform: scale(.55); opacity: .5; } }
-  .work p { margin-top: 1rem; max-width: 60ch; color: var(--dim); }
-  .work .tags {
-    margin-top: 1.4rem; font-size: .78rem; letter-spacing: .12em;
-    text-transform: uppercase; color: #5d5a50;
-  }
-  .work .tags span { margin-right: 1.6rem; }
-  .go {
-    font-size: 2rem; color: var(--dim); padding-top: .3rem;
-    transition: transform .25s ease, color .25s ease;
-  }
-  .work:hover .go { transform: translateX(.4rem); color: var(--ink); }
-  .g-dot1 { background: var(--accent); }
-  .g-dot2 { background: var(--warm); animation-delay: 1.4s; }
-  .foundations { padding: 3rem 0; border-bottom: 1px solid var(--line); }
-  .foundations h3 {
-    font-size: .85rem; letter-spacing: .2em; text-transform: uppercase;
-    color: var(--dim); font-weight: 400; margin-bottom: 1.4rem;
-  }
-  .flist { display: flex; gap: 3rem; flex-wrap: wrap; }
-  .flist a {
-    text-decoration: none; color: var(--ink);
-    border-bottom: 1px solid var(--line); padding-bottom: .1rem;
-  }
+  .cta:hover { transform: translateY(-1px); }
+  .cta-primary { background: var(--emerald); color: #05221a; border-color: var(--emerald); }
+  .cta-violet { background: var(--violet); color: #1a1030; border-color: var(--violet); }
+  .cta-ghost { color: var(--ink); }
+  .cta-ghost:hover { border-color: var(--accent); }
+  .census { margin-top: 2.2rem; display: flex; gap: 2.4rem; flex-wrap: wrap;
+            font-family: "IBM Plex Mono", monospace; }
+  .census .n { display: block; color: var(--ink); font-size: 1.05rem; }
+  .census .l { font-size: .78rem; color: var(--dim); letter-spacing: .04em; }
+  h2 { font-family: "Fraunces", Georgia, serif; font-weight: 600;
+       font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: -.01em; }
+  .routes { padding: 2.8rem 0; border-bottom: 1px solid var(--line); }
+  .routes > p { max-width: 62ch; color: var(--dim); margin-top: .8rem; }
+  .cards { margin-top: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+           background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card { background: #14171c; padding: 1.8rem; text-decoration: none; color: inherit;
+          transition: background .2s ease; display: block; }
+  .card:hover { background: #191d24; }
+  .card .k { font-family: "IBM Plex Mono", monospace; font-size: .72rem;
+             letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .card h3 { font-family: "Fraunces", Georgia, serif; font-size: 1.9rem; font-weight: 600;
+             margin: .3rem 0 .1rem; }
+  .card.g h3 { color: var(--emerald); } .card.c h3 { color: var(--violet); }
+  .card p { color: var(--dim); margin-top: .5rem; font-size: .96rem; }
+  .card .enter { margin-top: 1rem; font-weight: 600; color: var(--ink); }
+  .deeper { padding: 2.6rem 0; border-bottom: 1px solid var(--line); }
+  .deeper h3, .foundations h3 {
+    font-family: "IBM Plex Mono", monospace; font-size: .78rem; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--dim); font-weight: 400; margin-bottom: 1.2rem; }
+  .flist { display: flex; gap: 2.4rem; flex-wrap: wrap; }
+  .flist a { text-decoration: none; color: var(--ink);
+             border-bottom: 1px solid var(--line); padding-bottom: .1rem; }
   .flist a:hover { border-color: var(--accent); }
-  .flist .sub { display: block; font-size: .82rem; color: var(--dim); border: 0; margin-top: .25rem; }
+  .flist .sub { display: block; font-size: .8rem; color: var(--dim); border: 0; margin-top: .25rem; }
+  .foundations { padding: 2.6rem 0; border-bottom: 1px solid var(--line); }
   footer { padding: 2.6rem 0 3.6rem; color: var(--dim); font-size: .9rem; }
   footer .who { color: var(--ink); font-weight: 600; }
   footer a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
   footer a:hover { border-color: var(--accent); }
   footer .links { margin-top: .5rem; display: flex; gap: 1.6rem; flex-wrap: wrap; }
-  @media (max-width: 640px) {
-    .work { grid-template-columns: 1fr; gap: .8rem; }
-    .go { display: none; }
-  }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -107,57 +101,69 @@
     </header>
 
     <section class="hero">
-      <h1>What does a civilization of <em>a billion agents</em> look like?</h1>
-      <p>agents.london began as an aspiration: <strong>one billion
-      agents.</strong> Hand-building them is impossible — a thousand people
-      working 275 years — and they would not live in one pool anyway, but
-      inside organisations, holding privileged knowledge and private tools.
-      A billion agents is a civilization: economies, societies, histories.
-      Two living simulations explore how it is reached — by composition and
-      by negotiation — and every decision their inhabitants make is
-      recorded.</p>
+      <h1>A billion agents, negotiating the deal.</h1>
+      <p class="lede">A billion agents will not live in one big pool — they live
+        inside organisations, holding privileged knowledge and private tools
+        their employers will never expose. The hard problem is making them
+        negotiate complex objectives <strong>across those boundaries</strong>,
+        with privacy and data security built in. agents.london is where that
+        world runs — supply chains and financial negotiation as the proving
+        ground, an honest meter under every byte.</p>
+      <div class="cta-row">
+        <a class="cta cta-primary" href="/genome/">Enter genome →</a>
+        <a class="cta cta-violet" href="/civilization">Open civilization →</a>
+        <a class="cta cta-ghost" href="https://crajah.github.io/agents.london/">The full story &amp; live evidence →</a>
+      </div>
+      <div class="census">
+        <div><span class="n">two live worlds</span><span class="l">running now</span></div>
+        <div><span class="n">procurement</span><span class="l">the proving ground</span></div>
+        <div><span class="n">1 CU = 1 byte</span><span class="l">the unit of account</span></div>
+      </div>
     </section>
 
-    <main class="works">
-      <a class="work" href="/genome/">
-        <div class="idx">Arc 01 — Genome</div>
-        <div>
-          <h2>genome<span class="dot g-dot1"></span><span class="dot g-dot2"></span></h2>
-          <p>What would it look like if <strong>fully autonomous agents —
-          each with privileged knowledge and privileged tools</strong> — had
-          to collaborate and negotiate to achieve something concrete? The
-          shapes it mirrors are real: supply chains and procurement,
-          investment analysis, strategy exploration. Agents carry heritable
-          genotypes, hold private maps, bargain at market boards, survive
-          epidemics and floods — and nothing they do is scripted.</p>
-          <div class="tags">
-            <span>Privileged knowledge</span><span>Negotiation</span>
-            <span>Barter markets</span><span>Emergent strategy</span>
-          </div>
-        </div>
-        <div class="go">→</div>
-      </a>
+    <section class="routes">
+      <h2>One problem, two routes</h2>
+      <p>Procurement and financial negotiation are the same shape: many
+        specialists, many steps, a deal at the end. No single agent does all of
+        it — the value is in the combination. agents.london reaches it two ways,
+        and a billion agents needs both.</p>
+      <div class="cards">
+        <a class="card g" href="/genome/">
+          <span class="k">the society · cross-boundary, emergent</span>
+          <h3>genome</h3>
+          <p>Every world is an organisation, its knowledge and tools private to
+            its own agents. Scarcity and a deadline force coalitions across
+            boundaries — favours traded instead of data shared, standing built
+            instead of access granted. Nobody designs that team.</p>
+          <div class="enter">Enter genome →</div>
+        </a>
+        <a class="card c" href="/civilization">
+          <span class="k">the platform · composed, combinatorial</span>
+          <h3>civilization</h3>
+          <p>From a founding set of 31 agents, 31! orderings — more than
+            10<sup>33</sup> combinations. State a goal and the choreography
+            composes on the fly, a new specialist created when none fits, and a
+            proven combination catalogued as a single reusable agent.</p>
+          <div class="enter">Open civilization →</div>
+        </a>
+      </div>
+    </section>
 
-      <a class="work" href="/civilization/">
-        <div class="idx">Arc 02 — Civilization</div>
-        <div>
-          <h2>civilization</h2>
-          <p>What if a <strong>small set of founding agents could reorganise
-          in complex ways</strong> to solve complex problems? From 31
-          founders, 31! orderings — over 10<sup>33</sup> combinations, a
-          billion a rounding error. Choreography is composed on the fly, a
-          missing specialist is created on the spot, and every choreography
-          is stored and recovered when the need recurs — composition instead
-          of proliferation, so no problem needs a hand-built agent of its
-          own.</p>
-          <div class="tags">
-            <span>Founding agents</span><span>Self-organisation</span>
-            <span>Spawned pipelines</span><span>Orchestration</span>
-          </div>
-        </div>
-        <div class="go">→</div>
-      </a>
-    </main>
+    <section class="deeper">
+      <h3>Go deeper</h3>
+      <div class="flist">
+        <a href="https://crajah.github.io/agents.london/">The vision
+          <span class="sub">worlds, the economy of capability, the meter</span></a>
+        <a href="https://crajah.github.io/agents.london/evidence.html">Evidence — live
+          <span class="sub">the platform's vital signs, read right now</span></a>
+        <a href="https://crajah.github.io/agents.london/evaluation.html">Evaluation
+          <span class="sub">how we test the two claims, not just assert them</span></a>
+        <a href="https://crajah.github.io/agents.london/genome-guide.html">Genome guide
+          <span class="sub">how to play the society</span></a>
+        <a href="https://crajah.github.io/agents.london/civilization-guide.html">Civilization guide
+          <span class="sub">how to compose a pipeline</span></a>
+      </div>
+    </section>
 
     <section class="foundations">
       <h3>Foundations</h3>
@@ -173,7 +179,7 @@
 
     <footer>
       <div>The brainchild of <span class="who">Chandan Rajah</span>. Both
-      experiments run continuously — what you see is live.</div>
+        simulations run continuously — what you see is live.</div>
       <div class="links">
         <a href="mailto:chandan.rajah@gmail.com">chandan.rajah@gmail.com</a>
         <a href="https://www.linkedin.com/in/crajah">LinkedIn</a>
