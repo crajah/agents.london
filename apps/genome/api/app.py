@@ -1636,8 +1636,11 @@ async def admin_resume(realm: str, request: __import__("fastapi").Request):
     meta = await _dr._world_payload(store, realm)
     if not meta:
         return JSONResponse({"error": "no such world"}, status_code=404)
-    meta.pop("paused", None)
-    await store.put_world(realm, meta)
+    # put_world MERGES the payload (post-graph upsert is jsonb ||), so popping
+    # the key never removed it and resume silently did nothing -- the world
+    # stayed paused. Overwrite the flag to False instead; the tick check reads
+    # `meta.get("paused")`, and False is falsy, so the world runs again.
+    await store.put_world(realm, {**meta, "paused": False})
     return {"ok": True, "resumed": realm}
 
 
