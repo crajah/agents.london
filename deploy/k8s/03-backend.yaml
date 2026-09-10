@@ -119,6 +119,14 @@ spec:
                   name: oidc-auth-secret
                   key: MS_CLIENT_SECRET
                   optional: true
+            - name: AUTHORITY_URL
+              value: http://authority-service:8810
+            - name: AUTHORITY_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authority-jwt
+                  key: internal_key
+                  optional: true   # absent disables tenant auto-bind (best-effort)
 ---
 apiVersion: v1
 kind: Service

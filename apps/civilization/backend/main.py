@@ -223,6 +223,39 @@ AGENT_REGISTRY_URL = os.getenv(
     "AGENT_REGISTRY_URL",
     "http://agent-registry-service.default.svc.cluster.local:8001")
 
+# Phase 2 of the tenant unification: on login, bind this org to its tenant in
+# the authority directory, so a user active in BOTH apps becomes one cross-app
+# tenant (its spend then spans genome worlds AND civ orgs). Best-effort.
+AUTHORITY_URL = os.getenv("AUTHORITY_URL", "http://authority-service:8810")
+AUTHORITY_INTERNAL_KEY = os.getenv("AUTHORITY_INTERNAL_KEY", "")
+
+
+async def _bind_org_to_tenant(tenant_id: str, org_id: str, sub: str) -> None:
+    """Attach a civ org to its tenant's directory record. Best-effort: a
+    directory hiccup must never fail login. Runs the blocking call in a thread
+    so it never stalls the event loop."""
+    if not AUTHORITY_INTERNAL_KEY or not tenant_id:
+        return
+    import asyncio as _aio
+    import json as _json
+    import logging as _log
+    import urllib.request as _ur
+    body = _json.dumps({"civ_orgs": [org_id], "owner_subs": [sub]}).encode()
+
+    def _post() -> None:
+        req = _ur.Request(
+            f"{AUTHORITY_URL}/directory/tenant/{tenant_id}/scopes",
+            data=body, method="POST",
+            headers={"Content-Type": "application/json",
+                     "x-internal-key": AUTHORITY_INTERNAL_KEY})
+        _ur.urlopen(req, timeout=5).read()
+
+    try:
+        await _aio.get_event_loop().run_in_executor(None, _post)
+    except Exception:
+        _log.getLogger("civ.authority").warning(
+            "civ tenant bind failed for %s (non-fatal)", tenant_id)
+
 
 def resolve_tenancy_from_email(email: str) -> dict:
     clean_email = email.strip().lower()
@@ -285,10 +318,16 @@ async def create_authority_session(req: AuthoritySessionRequest):
             detail="This authority token carries no email claim, and "
                    "tenancy is derived from the address.")
     tenancy = resolve_tenancy_from_email(email)
+    # the tenant thread: the authority stamps tenant_id on the token (Phase 0);
+    # fall back to deriving it from the sub exactly as the authority does.
+    sub = claims["sub"]
+    tenant_id = claims.get("tenant_id") or (
+        "t:" + sub.split(":", 1)[1] if ":" in sub else None)
+    await _bind_org_to_tenant(tenant_id, tenancy["org_id"], sub)
     return {"status": "verified", "verified": True, "method": "authority",
             "email": tenancy["email"], "org_id": tenancy["org_id"],
-            "user_id": tenancy["user_id"],
-            "authority_sub": claims["sub"]}
+            "user_id": tenancy["user_id"], "tenant_id": tenant_id,
+            "authority_sub": sub}
 
 
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:4000/v1")
