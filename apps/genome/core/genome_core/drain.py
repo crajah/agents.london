@@ -1163,6 +1163,75 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     return choice.option
 
 
+def build_world_graph(world_metas: dict) -> dict:
+    """world_realm -> the worlds it has a DIRECT portal to. The gather march
+    walks this graph, because not every world connects to the target directly
+    (user directive 2026-09-11) -- agents route hop by hop."""
+    return {wr: sorted({p.get("to_world")
+                        for p in (m.get("portals") or [])
+                        if p.get("to_world")})
+            for wr, m in world_metas.items()}
+
+
+def route_between(graph: dict, src: str, target: str) -> list | None:
+    """Shortest portal path as the worlds to ENTER after src: [hop1,...,target]
+    (empty if src==target), or None if target is unreachable. BFS."""
+    if src == target:
+        return []
+    from collections import deque
+    seen = {src}
+    q = deque([(src, [])])
+    while q:
+        w, path = q.popleft()
+        for nxt in graph.get(w, []):
+            if nxt in seen:
+                continue
+            newp = path + [nxt]
+            if nxt == target:
+                return newp
+            seen.add(nxt)
+            q.append((nxt, newp))
+    return None
+
+
+async def gather_next_hop(store: GenomeStore, world_realm: str,
+                          view: engine.AgentView, gather_route: list,
+                          now: float) -> bool:
+    """March `view` from where it stands in `world_realm` to the portal leading
+    to gather_route[0], and schedule the crossing carrying the SHORTENED route.
+    The evacuate handler calls this again on arrival, so the agent walks the
+    whole multi-hop path to the target world on its own. Returns False when the
+    route is empty (arrived) or the next door is missing."""
+    if not gather_route:
+        return False
+    import math as _m
+    from . import forms as _forms
+    from . import path as _path
+    meta = await _world_payload(store, world_realm)
+    nxt = gather_route[0]
+    doors = [p for p in meta.get("portals", []) if p.get("to_world") == nxt]
+    if not doors:
+        return False
+    door = min(doors, key=lambda d: _m.hypot(
+        d.get("x", 0.5) - view.x, d.get("y", 0.5) - view.y))
+    pts = _path.find_path(meta.get("terrain", []), view.x, view.y,
+                          door.get("x", 0.5), door.get("y", 0.5)) \
+        or [(view.x, view.y), (door.get("x", 0.5), door.get("y", 0.5))]
+    length = sum(_m.dist(pts[k], pts[k + 1]) for k in range(len(pts) - 1))
+    ts = max(1.0, meta.get("time_scale", 1.0))
+    arrives = now + max(1.0, length / _forms.SPEED / ts)
+    await store.set_movement(view.agent_uuid, {
+        "waypoints": [list(q) for q in pts], "departed_at": now,
+        "arrives_at": arrives, "cargo": view.cargo})
+    await store.schedule(
+        world_realm, f"gather-{view.agent_uuid}-{int(now)}", _iso(arrives),
+        "evacuate", view.agent_uuid,
+        {"to_world": door["to_world"], "portal_xy": [door.get("x"),
+                                                     door.get("y")],
+         "gather_route": gather_route[1:]})
+    return True
+
+
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     ev, decider, seed: int) -> str:
     """Process one due event vertex. Returns the choice or event kind."""
@@ -1204,12 +1273,26 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         # at order time; this fires at the door and executes the crossing
         # on the ordinary signed-transfer rails
         await store.complete_event(world_realm, pl["key"], _iso(now))
+        dest = pl["payload"].get("to_world")
         ok = await do_transfer(store, world_realm, agent, agent_payload,
-                               {"to_world": pl["payload"].get("to_world"),
+                               {"to_world": dest,
                                 "portal_xy": pl["payload"].get("portal_xy")},
                                world_payload.get("portals", []), now)
-        return f"evacuated:{pl['payload'].get('to_world')}" if ok \
-            else "evacuation_refused"
+        # gather (user directive 2026-09-11): a multi-hop march carries the
+        # remaining route; on arrival, walk on toward the next world. The
+        # commons is usually the middle hop. Empty route == arrived.
+        gr = pl["payload"].get("gather_route")
+        if ok and gr:
+            try:
+                v2, _p2 = await load_agent(store, dest, agent.agent_uuid,
+                                           dest, now)
+                if await gather_next_hop(store, dest, v2, gr, now):
+                    return f"gather:hop->{gr[0]}"
+            except Exception:
+                import logging as _lg
+                _lg.getLogger("genome.drain").warning(
+                    "gather continuation failed at %s", dest)
+        return f"evacuated:{dest}" if ok else "evacuation_refused"
 
     if pl["kind"] == "perish":
         await store.complete_event(world_realm, pl["key"], _iso(now))

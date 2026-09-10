@@ -373,6 +373,21 @@ function AdminPanel({ onClose }) {
                 { method: "POST", headers: hdrs });
     load();
   };
+  // gather: march a world's agents to a chosen target world (multi-hop,
+  // routed via other worlds / the commons on the server)
+  const [gatherTo, setGatherTo] = useState({});
+  const gather = async (realm) => {
+    const to = gatherTo[realm];
+    if (!to) return;
+    const r = await fetch(`${API}/admin/worlds/${realm}/gather`,
+                          { method: "POST", headers: hdrs,
+                            body: JSON.stringify({ to_world: to }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) setErr(d.error || "gather failed");
+    else if (d.route) setErr(`gathering ${realm} → ${d.route.join(" → ")} `
+                             + `(${d.marching} marching)`);
+    load();
+  };
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center"
          onClick={onClose}>
@@ -537,6 +552,24 @@ immediately through the portals"
                             onClick={() => window.confirm(
                               `Scurry ${w.realm}? Every agent leaves now.`) &&
                               act(w.realm, "scurry")}>scurry</button>
+                    <select value={gatherTo[w.realm] || ""}
+                            title="Gather this world's agents to another world
+(routed via other worlds / the commons)"
+                            className="bg-neutral-800 border border-neutral-600
+                                       rounded text-xs mr-1 max-w-[9rem]"
+                            onChange={e => setGatherTo(
+                              g => ({ ...g, [w.realm]: e.target.value }))}>
+                      <option value="">gather to…</option>
+                      {(worlds.worlds || []).filter(x => x.realm !== w.realm)
+                        .map(x => (
+                          <option key={x.realm} value={x.realm}>
+                            {x.realm}</option>))}
+                    </select>
+                    <button className="underline text-emerald-400/80 mr-2"
+                            disabled={!gatherTo[w.realm]}
+                            title="March this world's agents to the chosen
+world, routing hop by hop via other worlds / the commons"
+                            onClick={() => gather(w.realm)}>gather</button>
                     <button className="underline opacity-70"
                             title="Inspect and act on this world's agents"
                             onClick={() => setRoster(

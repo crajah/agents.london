@@ -1118,6 +1118,9 @@ async def admin_worlds(request: __import__("fastapi").Request):
                               if meta.get("flood_at") else None),
             "time_scale": meta.get("time_scale", 1.0),
             "flood_count": meta.get("flood_count", 0),
+            "doors": sorted({p.get("to_world")
+                             for p in (meta.get("portals") or [])
+                             if p.get("to_world")}),   # gather targets
             "flood_min_days": meta.get("flood_min_days", _fl.FLOOD_MIN_DAYS),
             "flood_max_days": meta.get("flood_max_days", _fl.FLOOD_MAX_DAYS),
             "flood_awareness_pct": round(100 * float(
@@ -1406,6 +1409,70 @@ async def admin_scurry(realm: str,
             "failed": failed[:10], "doors": len(doors),
             "note": "each agent walks to its nearest door and crosses "
                     "on arrival"}
+
+
+@app.post("/admin/worlds/{realm}/gather", tags=["Admin"])
+async def admin_gather(realm: str, request: __import__("fastapi").Request):
+    """Like scurry, but DIRECTED: march this world's agents to the portal that
+    leads to a chosen target world and cross them into it. Concentrating agents
+    in one world makes encounters -- and so trade and breeding -- happen more.
+    Body: {"to_world": "<realm>"}."""
+    import time as _t
+    from genome_core import drain as _dr
+    from genome_core.store import GenomeStore as _GS
+    from fastapi.responses import JSONResponse
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    to_world = str(body.get("to_world", "") or "")
+    if not to_world:
+        return JSONResponse({"error": "to_world is required"}, status_code=400)
+    if to_world == realm:
+        return JSONResponse({"error": "agents are already in that world"},
+                            status_code=400)
+    store = _GS(app.state.pg)
+    now = _t.time()
+    # Build the portal graph from every world and route source -> target.
+    # (The portals live on each world vertex in post-graph today; a first-class
+    # edge representation is the planned next step.) Not every world connects
+    # to the target directly, so agents route hop by hop -- the commons is the
+    # natural 2-hop hub.
+    realms = {"genome_commons_0", "genome_demo", "genome_demo2",
+              "genome_demo3", realm, to_world}
+    for v in await app.state.pg.get_vertices("agents", realm="genome_agents"):
+        wr = v.payload.get("world_realm")
+        if wr:
+            realms.add(wr)
+    metas = {}
+    for r in realms:
+        m = await _dr._world_payload(store, r)
+        if m:
+            metas[r] = m
+    if realm not in metas:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    route = _dr.route_between(_dr.build_world_graph(metas), realm, to_world)
+    if route is None:
+        return JSONResponse(
+            {"error": f"no portal route from {realm} to {to_world}"},
+            status_code=409)
+    marched, failed = 0, []
+    present = [v.payload["key"] for v in await store.agents_in(realm)
+               if not v.payload["key"].startswith("user:")]
+    for a in present:
+        try:
+            view, _apl = await _dr.load_agent(store, realm, a, realm, now)
+            if await _dr.gather_next_hop(store, realm, view, route, now):
+                marched += 1
+        except Exception as e:
+            failed.append(f"{a}: {type(e).__name__}")
+    return {"ok": True, "realm": realm, "to_world": to_world,
+            "route": [realm] + route, "marching": marched,
+            "failed": failed[:10],
+            "note": f"agents route {realm} -> {' -> '.join(route)} hop by hop"}
 
 
 @app.post("/admin/worlds/{realm}/spawn", tags=["Admin"])
