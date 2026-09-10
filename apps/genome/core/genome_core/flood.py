@@ -262,10 +262,16 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
                 vertex_id=int(v.id), space="default",
                 payload={**s, "manifested": False})
             continue
-        await client.upsert_vertex(construction.TABLE, realm=realm,
-            vertex_id=int(v.id), space="default",
-            payload={**s, "destroyed": True, "complete": False,
-                     "delivered": {}, "contributors": {}})
+        # user directive 2026-09-10: civilizational infrastructure PERSISTS
+        # across the flood. Completed prerequisites keep standing and partial
+        # builds keep their delivered/contributors, so a world accumulates
+        # toward the shipyard and the ark over many cycles instead of
+        # restarting nascent each time -- the ark (tier 6, behind all five
+        # branch capstones + a shipyard) is otherwise unreachable in a 1-2 day
+        # flood. This narrows Rule 4.4: the population still drowns/regenerates
+        # and the piles revert, but what was BUILT survives the water. The site
+        # simply stands -- nothing to write.
+        continue
     from . import market as _market
     await _market.flood_wipe(client, realm)   # Rule 4.23: the board drowns
     scale = meta.get("time_scale", 1.0)
