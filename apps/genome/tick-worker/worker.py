@@ -281,6 +281,38 @@ async def trim_audit(store: GenomeStore) -> int:
     return total
 
 
+DONE_RETENTION_S = float(os.getenv("DONE_RETENTION_S", "900"))     # 15 min
+DONE_PRUNE_INTERVAL_S = float(os.getenv("DONE_PRUNE_INTERVAL_S", "120"))
+DONE_PRUNE_BATCH = int(os.getenv("DONE_PRUNE_BATCH", "20000"))
+
+
+async def prune_done_rows(store: GenomeStore, now: float) -> int:
+    """events and decision_queue accumulate DONE (already-processed) rows;
+    nothing ever reads a done row (the drain only reads done_at IS NULL). The
+    per-realm prune_done covered only events and did not keep up -- events
+    reached 169k and decision_queue 49k, and the bloated reads stalled the sim
+    (incident 2026-09-10). This is a GLOBAL, bounded delete of processed rows
+    past a short retention window, across every realm, on shard 0 only. Batched
+    by ctid so no single statement locks a table for long."""
+    total = 0
+    cutoff = drain._iso(now - DONE_RETENTION_S)
+    for tbl, col in (("events", "p_done_at"),
+                     ("decision_queue", "(payload->>'done_at')")):
+        try:
+            status = await store._c.execute(
+                f"DELETE FROM public.{tbl} WHERE ctid IN ("
+                f"  SELECT ctid FROM public.{tbl} "
+                f"  WHERE {col} IS NOT NULL AND {col} < $1 LIMIT $2)",
+                cutoff, DONE_PRUNE_BATCH)
+            try:
+                total += int(str(status).rsplit(" ", 1)[-1])
+            except (ValueError, IndexError):
+                pass
+        except Exception:
+            logger.exception("done-row prune failed for %s", tbl)
+    return total
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -358,6 +390,7 @@ async def main() -> None:
     realms = list(REALMS)
     last_movement_prune = 0.0
     last_audit_trim = 0.0
+    last_done_prune = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -410,6 +443,13 @@ async def main() -> None:
                 trimmed = await trim_audit(store)
                 if trimmed:
                     logger.info("audit tables: trimmed %d rows", trimmed)
+            done_due = time.time() - last_done_prune > DONE_PRUNE_INTERVAL_S
+            if SHARD_INDEX == 0 and done_due:
+                last_done_prune = time.time()
+                dr = await prune_done_rows(store, time.time())
+                if dr:
+                    logger.info("done rows: pruned %d (events+decision_queue)",
+                                dr)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
