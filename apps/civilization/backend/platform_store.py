@@ -375,6 +375,11 @@ class PlatformStoreMixin:
                     out.append({"name": p.get("name"), "goal": p.get("goal"),
                                 "stage_count": p.get("stage_count"),
                                 "project_id": p.get("project_id"),
+                                "org_id": p.get("org_id"),
+                                # the callable handle -- how genome actually
+                                # invokes this capability across the boundary
+                                "mcp_tool": p.get("mcp_tool"),
+                                "pipeline_id": p.get("pipeline_id"),
                                 "created_at": p.get("created_at")})
             out.sort(key=lambda r: r.get("created_at") or "", reverse=True)
             return out

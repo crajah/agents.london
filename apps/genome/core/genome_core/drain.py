@@ -667,6 +667,79 @@ async def _reply_to_owner(store: GenomeStore, agent_uuid: str, rq: dict,
                    f"{name} reports: {reply[:280]}")
 
 
+async def apply_capability_invoke(store: GenomeStore, world_realm: str,
+                                  agent: engine.AgentView, agent_payload: dict,
+                                  p: dict, now: float) -> str:
+    """Phase 4 (live cross-app): an accepted capability offer runs the offering
+    org's CIVILIZATION pipeline against THIS agent's owner-objective, the
+    answer is delivered through the SAME owner guard (_reply_to_owner), and a
+    favour is recorded (this agent now owes the offering world's agent). This
+    is ADDITIVE -- it reuses the guard and the ledger double-entry pattern and
+    touches no existing handler; nothing reaches it except a capability_invoke
+    event, which only the accept endpoint emits. civ meters the run civ-side
+    (under the capability's org), so the tenant's unified bill already
+    captures it; BYOK is resolved by the model router."""
+    import asyncio as _aio
+    import json as _json
+    import logging as _log
+    import os as _os
+    import urllib.request as _u
+    from .decider import WORLD_CTX
+    WORLD_CTX.set(world_realm)                # meter the owner reply correctly
+    log = _log.getLogger("genome.drain")
+    objective = (agent_payload.get("objectives") or [None])[0] or p.get("query")
+    if not objective:
+        return "capability:no_objective"
+    civ = _os.getenv("CIV_URL", "http://agent-london-backend-service:8000")
+    body = _json.dumps({"org_id": p.get("cap_org_id") or "org_london_meta",
+                        "project_id": p.get("cap_project_id"),
+                        "tool_name": p["mcp_tool"],
+                        "prompt": objective}).encode()
+
+    def _run() -> dict:
+        req = _u.Request(f"{civ}/api/agents/invoke", data=body, method="POST",
+                         headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=150) as r:
+            return _json.load(r)
+
+    try:
+        res = await _aio.get_event_loop().run_in_executor(None, _run)
+    except Exception:
+        log.warning("capability invoke failed: %s", p.get("mcp_tool"))
+        return "capability:error"
+    if res.get("isError"):
+        return "capability:halted"
+    answer = next((c.get("text") or "" for c in (res.get("content") or [])
+                   if c.get("type") == "text"), "")
+    if not answer:
+        return "capability:empty"
+    # the favour: this agent now owes the offering world's representative agent
+    from_agent = None
+    for v in await store.agents_in(p.get("from_realm", "")):
+        pl = v.payload
+        if str(pl.get("key", "")).startswith("agent") and pl.get("genotype"):
+            from_agent = pl["key"]
+            break
+    if from_agent and from_agent != agent.agent_uuid:
+        crows = await store.find_agent_rows(from_agent)
+        if crows:                              # creditor side, persisted now
+            cp = dict(crows[0].payload)
+            cr = dict(cp.get("credits") or {})
+            cr[agent.agent_uuid] = cr.get(agent.agent_uuid, 0) + 1
+            await store.put_agent(from_agent, {**cp, "credits": cr})
+        debts = dict(agent_payload.get("debts") or {})   # debtor side, below
+        debts[from_agent] = debts.get(from_agent, 0) + 1
+        agent_payload["debts"] = debts
+    # deliver through the owner guard: query MUST equal objective[:200], so a
+    # capability that answered some OTHER objective can never close this one
+    result = {"kind": "web", "query": objective[:200], "summary": answer}
+    await _reply_to_owner(store, agent.agent_uuid, agent_payload, result,
+                          answer, now)
+    # one persist captures the favour debit AND the guard's objective retirement
+    await store.put_agent(agent.agent_uuid, agent_payload)
+    return f"capability:delivered({p.get('capability_name')})"
+
+
 async def apply_service(store: GenomeStore, world_realm: str,
                         agent: engine.AgentView, agent_payload: dict,
                         eff: engine.Effects, now: float) -> None:
@@ -1165,6 +1238,11 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                                           pl["payload"]["site_key"], now)
         return f"built:{res.get('name', pl['payload']['site_key'])}" \
             if res.get("ok") else f"build_pending:{res.get('error')}"
+
+    if pl["kind"] == "capability_invoke":
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        return await apply_capability_invoke(store, world_realm, agent,
+                                             agent_payload, pl["payload"], now)
 
     if pl["kind"] == "mating_answer":
         ans = pl["payload"]["answer"]

@@ -512,8 +512,9 @@ async def offer_capability(realm: str, offer: _CapabilityOffer):
     the offer->cost handshake exists, provably, with zero runtime or
     measurement risk."""
     resolved = await _resolve_world_capabilities(realm)
-    names = {c.get("name") for c in resolved["capabilities"]}
-    if offer.capability_name not in names:
+    cap = next((c for c in resolved["capabilities"]
+                if c.get("name") == offer.capability_name), None)
+    if cap is None:
         return JSONResponse(
             {"error": "that capability is not one this world's org built in "
              "civilization"}, status_code=400)
@@ -522,18 +523,72 @@ async def offer_capability(realm: str, offer: _CapabilityOffer):
     rec = {"key": f"offer:{_uuid.uuid4().hex[:12]}",
            "kind": "capability_offer",
            "capability_name": offer.capability_name,
+           "mcp_tool": cap.get("mcp_tool"),           # the callable handle
+           "cap_org_id": cap.get("org_id"),
+           "cap_project_id": cap.get("project_id"),
            "from_realm": realm, "from_tenant": resolved["tenant_id"],
            "to_realm": offer.to_realm, "to_agent": offer.to_agent,
            "favour_cost": offer.favour_cost,
-           "status": "offered",              # SAFE SLICE: not executed
-           "executed": False,
-           "note": "invocation stubbed; live cross-app execution is gated "
-                   "(Phase 4 full)",
+           "status": "offered", "executed": False,
            "created_at": _t.time()}
     await app.state.pg.create_vertex_table("capability_offers", realm=realm)
     await app.state.pg.add_vertex("capability_offers", realm=realm,
                                   space=rec["key"], payload=rec)
     return {"ok": True, **rec}
+
+
+class _AcceptOffer(_pyd.BaseModel):
+    accepting_agent: str
+    query: str | None = None
+
+
+@app.post("/worlds/{from_realm}/capability-offers/{offer_id}/accept",
+          tags=["World"])
+async def accept_capability_offer(from_realm: str, offer_id: str,
+                                  body: _AcceptOffer):
+    """Phase 4 (live): the receiving world accepts an offered capability for
+    one of its agents. The api only ENQUEUES a capability_invoke event on the
+    receiving world; the simulation worker runs the civ pipeline, records the
+    favour, and delivers the answer through the owner guard (that separation
+    between the user-facing path and the simulation path is deliberate)."""
+    rows = await app.state.pg.find_vertices("capability_offers",
+                                            realm=from_realm,
+                                            filters={"key": offer_id}, limit=1)
+    if not rows:
+        return JSONResponse({"error": "offer not found"}, status_code=404)
+    offer = rows[0].payload
+    if offer.get("status") != "offered":
+        return JSONResponse({"error": f"offer is {offer.get('status')}"},
+                            status_code=409)
+    if not offer.get("mcp_tool"):
+        return JSONResponse({"error": "offer carries no invocable capability"},
+                            status_code=400)
+    import uuid as _uuid
+    import time as _t
+    from datetime import datetime as _dt, timezone as _tz
+    to_realm = offer["to_realm"]
+    ev_key = f"capinvoke-{_uuid.uuid4().hex[:10]}"
+    ev_payload = {"mcp_tool": offer["mcp_tool"],
+                  "cap_org_id": offer.get("cap_org_id"),
+                  "cap_project_id": offer.get("cap_project_id"),
+                  "capability_name": offer.get("capability_name"),
+                  "from_realm": from_realm, "to_realm": to_realm,
+                  "offer_id": offer_id,
+                  "favour_cost": offer.get("favour_cost", 1.0),
+                  "query": body.query}
+    await app.state.pg.create_vertex_table("events", realm=to_realm)
+    await app.state.pg.add_vertex(
+        "events", realm=to_realm, space=ev_key,
+        payload={"key": ev_key, "due_at": _dt.now(_tz.utc).isoformat(),
+                 "kind": "capability_invoke", "subject": body.accepting_agent,
+                 "payload": ev_payload, "done_at": None})
+    await app.state.pg.upsert_vertex(
+        "capability_offers", realm=from_realm, vertex_id=int(rows[0].id),
+        space=offer_id, payload={**offer, "status": "accepted",
+                                 "accepted_by": body.accepting_agent,
+                                 "accepted_at": _t.time()})
+    return {"ok": True, "offer_id": offer_id, "status": "accepted",
+            "enqueued_on": to_realm, "event": ev_key}
 
 
 @app.get("/worlds/{realm}/capability-offers", tags=["World"])
