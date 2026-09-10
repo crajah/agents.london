@@ -10,6 +10,8 @@ normalised inputs; compound acts are harmonic; balances are geometric.
 """
 from __future__ import annotations
 
+import random
+
 import math
 from statistics import fmean, harmonic_mean, geometric_mean
 
@@ -197,6 +199,20 @@ def breeding_cost_met(cargo_a: dict, cargo_b: dict) -> dict | None:
 # One line per locus for human surfaces (the inspector's hover text).
 # Spec-faithful compressions of genotype-spec.md; adding a locus here is
 # part of adding it at all.
+def child_mineable_kinds(a_kinds, b_kinds, seed: str) -> list:
+    """An offspring mines ONE kind from each parent, distinct where possible
+    (user directive 2026-09-10): the child gains a resource pairing neither
+    parent had alone, so breeding MANUFACTURES a new miner and diversifies the
+    line -- this is what makes breeding lucrative. Deterministic on the seed."""
+    r = random.Random(f"mine:{seed}")
+    a = list(a_kinds or [])
+    b = list(b_kinds or [])
+    ka = r.choice(a) if a else (r.choice(b) if b else None)
+    b_pool = [k for k in b if k != ka] or [k for k in a if k != ka]
+    kb = r.choice(b_pool) if b_pool else None
+    return sorted({k for k in (ka, kb) if k is not None})
+
+
 def default_objectives(genotype: dict[str, float]) -> list[str]:
     """The standing floor when an owner has said nothing (user directive
     2026-09-02): objectives DERIVED from the genotype, deterministically, so
@@ -205,6 +221,15 @@ def default_objectives(genotype: dict[str, float]) -> list[str]:
     g = genotype or {}
     n = lambda k: norm(k, g.get(k, 5000.0))
     out = []
+    # user directive 2026-09-10: give reproduction a DRIVE. A fecund line
+    # actively seeks to breed -- and breeding now diversifies the family's
+    # mining (child_mineable_kinds), so it is an economic act, not just a
+    # biological one. Listed first so fecund agents keep it in the top-3 cut.
+    if n("Fecundity") >= 0.5:
+        out.append("Continue your line: seek an agent whose mineable kinds "
+                   "differ from yours and propose breeding -- your offspring "
+                   "will mine a kind neither parent can, an asset to your "
+                   "world.")
     if n("Wanderlust") >= 0.55 and n("Teleport Affinity") >= 0.15:
         out.append("See what lies beyond: cross portals and learn what "
                    "other worlds hold.")

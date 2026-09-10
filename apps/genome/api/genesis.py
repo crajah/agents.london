@@ -103,6 +103,7 @@ async def ensure_user_world(client: Any, user_id: str,
                "generation": 1,
                "name": worldgen.founder_name(seed),
                "genotype": g, "colour_pair": w["colours"],
+               "mineable_kinds": w["kinds"],   # the two kinds this line mines
                "identity": ident,
                "cert": I.issue_agent_cert(cert, a, ident) if cert else None,
                "transfer_counter": 0, "known_piles": [], "explored": [[3, 3]],

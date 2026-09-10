@@ -2189,6 +2189,11 @@ async def consummate(store: GenomeStore, world_realm: str,
             "colour_pair": G.child_colours(
                 parent_pl.get("colour_pair") or ["#888888"] * 2,
                 mate_pl.get("colour_pair") or ["#888888"] * 2, seed),
+            # one mineable kind from each parent, distinct -- the child mines a
+            # pairing neither parent had (user directive 2026-09-10)
+            "mineable_kinds": G.child_mineable_kinds(
+                parent_pl.get("mineable_kinds"),
+                mate_pl.get("mineable_kinds"), seed),
             "identity": ident, "cert": cert, "transfer_counter": 0,
             "models": assign_models(child_uuid),
             "objectives": [inherited_obj] if inherited_obj else [],

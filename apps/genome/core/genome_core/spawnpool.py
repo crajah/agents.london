@@ -83,6 +83,7 @@ async def spawn_free_agent(store, realm: str, meta: dict,
                "spawned_free": True,
                "name": worldgen.founder_name(seed),
                "genotype": g, "colour_pair": meta.get("colours"),
+               "mineable_kinds": meta.get("kinds"),   # the world's two kinds
                "identity": ident, "cert": cert, "transfer_counter": 0,
                "known_piles": [], "explored": [[3, 3]], "born_at": now}
     await store.put_agent(a, payload)
