@@ -768,6 +768,19 @@ async def list_catalogued_combinations(project_id: str,
     return {"combinations": combos}
 
 
+@app.get("/api/orgs/{org_id}/capabilities")
+async def org_capabilities(org_id: str, request: Request):
+    """Phase 3 (read-only): every capability this org has proven and
+    catalogued in civilization, across all its projects. Internal-key only --
+    only trusted platform services (genome resolving a world's OWN tenant) may
+    read it, so no tenant can enumerate another's capabilities."""
+    if (not AUTHORITY_INTERNAL_KEY or
+            request.headers.get("x-internal-key") != AUTHORITY_INTERNAL_KEY):
+        raise HTTPException(status_code=403, detail="internal only")
+    caps = await civilization_engine.list_org_capabilities(org_id)
+    return {"org_id": org_id, "capabilities": caps}
+
+
 @app.delete("/api/projects/{project_id}/catalogued-combinations/{agent_id}")
 async def delete_catalogued_combination(project_id: str, agent_id: str,
                                         org_id: str = Query(DEFAULT_ORG_ID)):

@@ -439,6 +439,56 @@ async def get_snapshot(realm: str):
     return await snapshot.world_snapshot(app.state.pg, realm)
 
 
+_AUTHORITY_URL = os.getenv("AUTHORITY_URL", "http://authority-service:8810")
+_AUTHORITY_INTERNAL_KEY = os.getenv("AUTHORITY_INTERNAL_KEY", "")
+_CIV_URL = os.getenv("CIV_URL", "http://agent-london-backend-service:8000")
+
+
+@app.get("/worlds/{realm}/capabilities", tags=["World"])
+async def world_capabilities(realm: str):
+    """Phase 3 (read-only provenance): the capabilities this world's owning
+    org built in CIVILIZATION. Resolves world -> owner -> tenant -> civ orgs
+    via the authority directory, then reads civ's own catalogue. Only ever the
+    world's OWN tenant -- never another's (the directory is internal-keyed and
+    we look up strictly by this world's owner)."""
+    import asyncio as _aio
+    import json as _json
+    import urllib.request as _ur
+    out: dict = {"realm": realm, "tenant_id": None, "capabilities": []}
+    if not _AUTHORITY_INTERNAL_KEY:
+        return out                             # unwired -> feature simply off
+    rows = await app.state.pg.find_vertices("world_meta", realm=realm, limit=1)
+    owner = rows[0].payload.get("owner_user_id") if rows else None
+    if not owner or not owner.startswith("u:"):
+        return out
+    tid = "t:" + owner.split(":", 1)[1]
+    out["tenant_id"] = tid
+
+    def _get(url: str, headers: dict) -> dict:
+        with _ur.urlopen(_ur.Request(url, headers=headers), timeout=8) as r:
+            return _json.load(r)
+
+    loop = _aio.get_event_loop()
+    try:
+        tenant = await loop.run_in_executor(None, lambda: _get(
+            f"{_AUTHORITY_URL}/directory/tenant/{tid}",
+            {"x-internal-key": _AUTHORITY_INTERNAL_KEY}))
+    except Exception:
+        logger.warning("capabilities: directory lookup failed for %s", tid)
+        return out
+    caps: list = []
+    for org in (tenant.get("civ_orgs") or []):
+        try:
+            res = await loop.run_in_executor(None, lambda o=org: _get(
+                f"{_CIV_URL}/api/orgs/{o}/capabilities",
+                {"x-internal-key": _AUTHORITY_INTERNAL_KEY}))
+            caps.extend(res.get("capabilities") or [])
+        except Exception:
+            continue                           # one org failing is not fatal
+    out["capabilities"] = caps
+    return out
+
+
 # Two ways in, both through the platform authority (Google and Microsoft).
 # The legacy in-app OIDC exchange and the unverified email/magic-link door
 # are gone (user directive 2026-09-05): one front door, verified only.

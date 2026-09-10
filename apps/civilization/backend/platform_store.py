@@ -345,6 +345,45 @@ class PlatformStoreMixin:
         finally:
             await client.close()
 
+    async def list_org_capabilities(self, org_id: str) -> List[Dict[str, Any]]:
+        """Every catalogued combination this org owns, across ALL its project
+        schemas -- the org's proven capabilities, read-only. Backs the
+        cross-app provenance surface (Phase 3): genome shows what an org built
+        in civilization. catalogued_combinations is schema-per-project, so this
+        unions over every schema that has the table, filtering by org_id."""
+        import json as _json
+        client = await self._get_pg_client(org_id)
+        try:
+            schemas = await client._fetch(
+                "SELECT table_schema FROM information_schema.tables "
+                "WHERE table_name = 'catalogued_combinations'")
+            out: List[Dict[str, Any]] = []
+            for s in schemas:
+                sch = s["table_schema"]
+                try:
+                    rows = await client._fetch(
+                        f'SELECT payload FROM "{sch}".catalogued_combinations '
+                        "WHERE payload->>'org_id' = $1", org_id)
+                except Exception:
+                    continue                       # schema without the column
+                for r in rows:
+                    p = r["payload"]
+                    if isinstance(p, str):
+                        p = _json.loads(p)
+                    if p.get("deleted"):
+                        continue
+                    out.append({"name": p.get("name"), "goal": p.get("goal"),
+                                "stage_count": p.get("stage_count"),
+                                "project_id": p.get("project_id"),
+                                "created_at": p.get("created_at")})
+            out.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+            return out
+        except Exception as e:
+            logger.warning(f"org capabilities fetch failed: {e}")
+            return []
+        finally:
+            await client.close()
+
     async def save_catalogued_combination(self, org_id: str, project_id: str,
                                            name: str, goal: str,
                                            pipeline_id: Optional[str],

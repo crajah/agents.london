@@ -1548,6 +1548,20 @@ function App() {
     }, 1000);
     return () => clearInterval(t);
   }, []);
+  // Phase 3: capabilities this world's org built in civilization (read-only
+  // provenance). The org that FORMS capability in civ is the org that TRADES
+  // it here -- this shows the thread.
+  const [caps, setCaps] = useState([]);
+  const [capsOpen, setCapsOpen] = useState(false);
+  useEffect(() => {
+    if (!realm) { setCaps([]); return; }
+    let dead = false;
+    fetch(`${API}/worlds/${realm}/capabilities`)
+      .then(r => r.json())
+      .then(d => { if (!dead) setCaps(d.capabilities || []); })
+      .catch(() => { if (!dead) setCaps([]); });
+    return () => { dead = true; };
+  }, [realm]);
   const [digest, setDigest] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   useEffect(() => {
@@ -1687,6 +1701,30 @@ function App() {
               🌊 {label}
             </span>);
         })()}
+        {caps.length > 0 && (
+          <div className="relative">
+            <button onClick={() => setCapsOpen(o => !o)}
+              title="capabilities this world's org built in civilization"
+              className="px-2 py-0.5 rounded text-xs bg-violet-900/50
+                         text-violet-200 hover:bg-violet-800/60">
+              🧬 {caps.length} from civilization
+            </button>
+            {capsOpen && (
+              <div className="absolute z-20 mt-1 w-72 max-h-80 overflow-auto
+                              rounded border border-neutral-700 bg-neutral-800
+                              p-2 text-xs shadow-xl">
+                <div className="opacity-60 mb-1 px-1">
+                  built in civilization · read-only</div>
+                {caps.map((c, i) => (
+                  <div key={i}
+                       className="px-1 py-1 border-t border-neutral-700/50">
+                    <div className="text-violet-200">{c.name}</div>
+                    <div className="opacity-60">{c.goal}</div>
+                    {c.stage_count != null && (
+                      <div className="opacity-40">{c.stage_count} stages</div>)}
+                  </div>))}
+              </div>)}
+          </div>)}
         <span className="text-xs opacity-50 hidden sm:inline">
           by <a className="underline" target="_blank" rel="noreferrer"
                 href="https://www.linkedin.com/in/crajah">Chandan Rajah</a>
