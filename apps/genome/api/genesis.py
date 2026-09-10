@@ -7,15 +7,53 @@ from the world's own centre, with its perish appointment booked at birth.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
+import logging
+import os
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from genome_core import drain, identity as I, notify, worldgen
 from genome_core.store import GenomeStore, ensure_world_realm
+
+logger = logging.getLogger(__name__)
+
+# Phase 2 of the tenant unification: a new world registers itself under its
+# owner's tenant in the authority directory, so the directory self-updates and
+# a user active in BOTH apps becomes one cross-app tenant. Best-effort: a
+# directory hiccup must never fail world creation.
+AUTHORITY_URL = os.getenv("AUTHORITY_URL", "http://authority-service:8810")
+AUTHORITY_INTERNAL_KEY = os.getenv("AUTHORITY_INTERNAL_KEY", "")
+
+
+async def _bind_world_to_tenant(world_realm: str, user_id: str) -> None:
+    """Attach a world realm to its owner's tenant. The tenant_id derives from
+    the sub exactly as the authority derives it (t:<hash>), so no lookup is
+    needed. Runs in a thread so the blocking HTTP never stalls the loop."""
+    if not AUTHORITY_INTERNAL_KEY or not user_id.startswith("u:"):
+        return
+    tid = "t:" + user_id.split(":", 1)[1]
+    body = json.dumps({"genome_realms": [world_realm],
+                       "owner_subs": [user_id]}).encode()
+
+    def _post() -> None:
+        req = urllib.request.Request(
+            f"{AUTHORITY_URL}/directory/tenant/{tid}/scopes",
+            data=body, method="POST",
+            headers={"Content-Type": "application/json",
+                     "x-internal-key": AUTHORITY_INTERNAL_KEY})
+        urllib.request.urlopen(req, timeout=5).read()
+
+    try:
+        await asyncio.get_event_loop().run_in_executor(None, _post)
+    except Exception:
+        logger.warning("tenant bind failed for %s (non-fatal)", world_realm)
 
 
 async def user_world_realm(client: Any, user_id: str) -> str | None:
@@ -86,6 +124,7 @@ async def ensure_user_world(client: Any, user_id: str,
     await notify.emit(client, user_id, "platform", "world_created",
                       f"Your world {realm} exists. Your first agent, "
                       f"{payload['name']}, is awake in it.")
+    await _bind_world_to_tenant(realm, user_id)   # Phase 2: directory self-updates
     return {"world_realm": realm, "created": True, "first_agent": a}
 
 

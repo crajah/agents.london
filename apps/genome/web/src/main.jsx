@@ -1536,6 +1536,18 @@ function App() {
   const [status, setStatus] = useState("no world selected");
   const [live, setLive] = useState(true);
   const [flood, setFlood] = useState(null);
+  // operator clock: an absolute client-side deadline (epoch seconds) for the
+  // next flood, ticked down once a second so the header shows a real, live
+  // countdown even before the in-world awareness window opens.
+  const floodDeadlineRef = useRef(null);
+  const [floodEta, setFloodEta] = useState(null);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const d = floodDeadlineRef.current;
+      setFloodEta(d != null ? Math.max(0, d - Date.now() / 1000) : null);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
   const [digest, setDigest] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   useEffect(() => {
@@ -1592,6 +1604,8 @@ function App() {
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
+          floodDeadlineRef.current = snap.flood_at_in_s != null
+            ? Date.now() / 1000 + snap.flood_at_in_s : null;
           setLive(true);
           setStatus(`watching ${realm}`);
         } catch (e) {
@@ -1622,6 +1636,8 @@ function App() {
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
+          floodDeadlineRef.current = snap.flood_at_in_s != null
+            ? Date.now() / 1000 + snap.flood_at_in_s : null;
           setLive(true);
           setStatus(`live — ${realm}`);
         } catch { /* keepalive or partial frame */ }
@@ -1654,6 +1670,23 @@ function App() {
                 className="w-3 h-3 rounded-full inline-block border
                            border-black/30"
                 style={{ background: kindColour(k) }} />))}
+        {floodEta != null && (() => {
+          const s = Math.floor(floodEta);
+          const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+                m = Math.floor((s % 3600) / 60), sec = s % 60;
+          const label = d > 0 ? `${d}d ${h}h`
+            : h > 0 ? `${h}h ${String(m).padStart(2, "0")}m`
+            : `${m}m ${String(sec).padStart(2, "0")}s`;
+          const soon = floodEta < 3600;
+          return (
+            <span title="operator clock — when the flood is due. Agents only
+                         see it once the awareness window opens."
+              className={"ml-1 px-2 py-0.5 rounded text-xs font-mono " +
+                (soon ? "bg-red-900/60 text-red-200 animate-pulse"
+                      : "bg-neutral-800 text-neutral-300")}>
+              🌊 {label}
+            </span>);
+        })()}
         <span className="text-xs opacity-50 hidden sm:inline">
           by <a className="underline" target="_blank" rel="noreferrer"
                 href="https://www.linkedin.com/in/crajah">Chandan Rajah</a>

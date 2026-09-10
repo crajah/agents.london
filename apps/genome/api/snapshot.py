@@ -96,6 +96,12 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "flood_countdown": _flood.countdown_visible(meta, _time.time()),
+            # operator clock: seconds until the water, for the HUMAN watching
+            # their world. The agents' decider still reads countdown_visible
+            # (secret until the awareness window), so the in-world mechanic is
+            # untouched -- this only lets the observer see when it is due.
+            "flood_at_in_s": (meta["flood_at"] - _time.time())
+                if meta.get("flood_at") else None,
             "flood_count": meta.get("flood_count", 0),
             "piles": [{k: p.get(k) for k in
                        ("pile_uuid", "kind", "x", "y", "qty_at",
