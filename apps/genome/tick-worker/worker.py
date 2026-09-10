@@ -251,6 +251,36 @@ async def prune_movement(store: GenomeStore, now: float) -> int:
         return 0
 
 
+AUDIT_RETENTION_S = float(os.getenv("AUDIT_RETENTION_S", str(7 * 86400)))
+AUDIT_TRIM_INTERVAL_S = float(os.getenv("AUDIT_TRIM_INTERVAL_S", "3600"))
+
+
+async def trim_audit(store: GenomeStore) -> int:
+    """The *_audit tables are trigger-maintained forensic logs with no
+    application reader; left unbounded they reached 462MB (truncated
+    2026-09-10). Drop rows past the retention window from every public.*_audit
+    table so the footprint never rebuilds. Table names come from the catalogue
+    (LIKE '%_audit'), not user input. Shard 0 only."""
+    total = 0
+    try:
+        tables = await store._c.fetch(
+            "SELECT tablename FROM pg_tables WHERE schemaname='public' "
+            "AND tablename LIKE '%\\_audit'")
+        for row in tables:
+            t = row["tablename"]
+            status = await store._c.execute(
+                f'DELETE FROM public."{t}" '
+                "WHERE changed_at < now() - make_interval(secs => $1)",
+                int(AUDIT_RETENTION_S))
+            try:
+                total += int(str(status).rsplit(" ", 1)[-1])
+            except (ValueError, IndexError):
+                pass
+    except Exception:
+        logger.exception("audit trim failed")
+    return total
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -327,6 +357,7 @@ async def main() -> None:
     cycle = 0
     realms = list(REALMS)
     last_movement_prune = 0.0
+    last_audit_trim = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -373,6 +404,12 @@ async def main() -> None:
                 pruned_rows = await prune_movement(store, time.time())
                 if pruned_rows:
                     logger.info("movement history: pruned %d rows", pruned_rows)
+            audit_due = time.time() - last_audit_trim > AUDIT_TRIM_INTERVAL_S
+            if SHARD_INDEX == 0 and audit_due:
+                last_audit_trim = time.time()
+                trimmed = await trim_audit(store)
+                if trimmed:
+                    logger.info("audit tables: trimmed %d rows", trimmed)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
