@@ -111,6 +111,10 @@ class Effects:
     convoke: bool = False                        # a Convocation holder calls
     # the room to its side; the biddable answer (skills-spec §4.7)
     cargo_delta: dict[str, float] = field(default_factory=dict)
+    route_home: bool = False                     # find the way home from ANY
+    # world (user directive 2026-09-11): the caller BFS-routes current->home
+    # over the portal graph and marches the agent hop by hop. Multi-hop, so it
+    # cannot be a plain `transfer` (home is rarely one door away).
     done: bool = False
 
 
@@ -354,14 +358,17 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     here = by_id.get(at_pile)
     hold_cap = CARGO_CEILING + ctx.get("cargo_bonus", 0.0) \
         + (5.0 if ctx.get("skill") == "Porterage" else 0.0)   # a Granary
-    # NOTE 2026-09-11: a HARD mineable-kinds gate here stranded 59% of agents --
-    # they travel cross-world constantly (commons has no piles at all), and a
-    # world only holds its own two kinds, so wherever they wandered they could
-    # not mine and the economy stagnated. Mining is unrestricted again; the
-    # mineable_kinds still drive breeding (offspring inheritance). A softer
-    # specialisation (aligned kinds mine at full yield, others reduced) can
-    # return later without stranding anyone.
-    if here and here.qty > 0.05 and agent.cargo_total() < hold_cap:
+    # NOTE 2026-09-11: mining is a HOME-WORLD action only (user directive). A
+    # world holds only its own two kinds; an agent gathers them at home, then
+    # carries surplus abroad to trade or stashes it in a commons larder. In a
+    # foreign world mine_here is never offered -- visitors trade, breed, build,
+    # or reclaim from their commons cache instead. Home stock running low is
+    # what sends an agent back (to home to mine, or to the commons to collect a
+    # cache). The kind-match gate is NOT reinstated: it stranded agents who had
+    # wandered off; the home-realm gate keeps mining tied to the two home kinds
+    # without ever blocking an agent who is standing on a pile at home.
+    at_home = agent.realm == agent.home_realm
+    if here and here.qty > 0.05 and agent.cargo_total() < hold_cap and at_home:
         options.append("mine_here")
     # Rule 5.2 of genome-spec: finding piles is work. Travel targets only piles
     # this agent KNOWS; the rest of the map must be explored -- unless a
@@ -382,6 +389,13 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                for kind, units in agent.cargo.items())
     if room and agent.realm == agent.home_realm:
         options.append("go_home_deposit")
+    if not at_home:
+        # find the way home from ANYWHERE (user directive 2026-09-11). Mining
+        # lives only at home and a commons cache waits to be reclaimed there,
+        # so an agent abroad must always have a way back -- routed multi-hop
+        # over the portal graph. Always offered when away; never blocked on a
+        # nearby door (the router walks whatever path exists, via the commons).
+        options.append("head_home")
     # a linked portal within reach offers passage (genome-spec Rule 6.1a:
     # passage itself is instantaneous; getting to the portal is the journey)
     near_portal = None
@@ -705,6 +719,14 @@ def apply_choice(choice: Choice, agent: AgentView, piles: list[PileView],
         tx, ty = separate(tx, ty, occupied, agent.agent_uuid)
         return _route_effects(agent, tx, ty, now, terrain,
                               "deposit_arrival", {}, time_scale, pace)
+
+    if choice.option == "head_home":
+        # find the way home from ANY world (user directive 2026-09-11). Engine
+        # holds no cross-world graph, so it only flags intent; the caller
+        # BFS-routes current->home over the portal graph and marches hop by hop
+        # (the same machinery the admin `gather` uses). Home is rarely one door
+        # away, so this cannot be a plain `transfer`.
+        return Effects(route_home=True)
 
     if choice.option in ("explore_frontier", "survey_far"):
         # The LLM chose WHAT (near unknown vs expedition); the genotype and

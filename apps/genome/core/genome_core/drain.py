@@ -1153,6 +1153,8 @@ async def apply_decided(store: GenomeStore, world_realm: str,
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, world_payload.get("portals", []), now)
+    if eff.route_home:
+        await apply_route_home(store, world_realm, agent, now)
     if eff.reveal or eff.mark_explored:
         kp = sorted(set(agent_payload.get("known_piles", [])) | set(eff.reveal))
         ex = sorted({tuple(c) for c in agent_payload.get("explored", [])}
@@ -1230,6 +1232,47 @@ async def gather_next_hop(store: GenomeStore, world_realm: str,
                                                      door.get("y")],
          "gather_route": gather_route[1:]})
     return True
+
+
+_WORLD_GRAPH_CACHE: dict = {"at": 0.0, "graph": {}}
+
+
+async def world_graph_cached(store: GenomeStore, now: float,
+                             ttl: float = 120.0) -> dict:
+    """The portal graph over every live world, rebuilt at most once per `ttl`s.
+    Enumerating worlds scans the agent registry, so this is amortised across a
+    shard's decisions rather than paid per decision -- portals change rarely."""
+    if _WORLD_GRAPH_CACHE["graph"] and 0.0 <= now - _WORLD_GRAPH_CACHE["at"] < ttl:
+        return _WORLD_GRAPH_CACHE["graph"]
+    realms = {"genome_commons_0", "genome_demo", "genome_demo2", "genome_demo3"}
+    for v in await store._c.get_vertices("agents", realm="genome_agents"):
+        wr = v.payload.get("world_realm")
+        if wr:
+            realms.add(wr)
+    metas = {}
+    for r in realms:
+        m = await _world_payload(store, r)
+        if m:
+            metas[r] = m
+    g = build_world_graph(metas)
+    _WORLD_GRAPH_CACHE["at"] = now
+    _WORLD_GRAPH_CACHE["graph"] = g
+    return g
+
+
+async def apply_route_home(store: GenomeStore, world_realm: str,
+                           view: engine.AgentView, now: float) -> bool:
+    """Route the agent from where it stands to its HOME world over the portal
+    graph and march it the first hop; the evacuate handler carries the rest,
+    exactly as gather does. Home is rarely one door away -- the commons is the
+    usual middle hop. Returns True when a march was armed."""
+    if view.realm == view.home_realm:
+        return False
+    graph = await world_graph_cached(store, now)
+    route = route_between(graph, view.realm, view.home_realm)
+    if not route:
+        return False
+    return await gather_next_hop(store, world_realm, view, route, now)
 
 
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
@@ -1497,6 +1540,8 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     if eff.transfer:
         await do_transfer(store, world_realm, agent, agent_payload,
                           eff.transfer, portals, now)
+    if eff.route_home:
+        await apply_route_home(store, world_realm, agent, now)
     if eff.reveal or eff.mark_explored:      # knowledge grows on the agent
         kp = sorted(set(agent_payload.get("known_piles", [])) | set(eff.reveal))
         ex = sorted({tuple(c) for c in agent_payload.get("explored", [])}
