@@ -1,9 +1,11 @@
 """The flood — construction-spec §4.1/§4.2, slice two.
 
-Every world carries an undisclosed clock (Rule 4.7): a draw between 15 and
-30 days, divided by the world's demo time_scale so scaled worlds flood on
-scaled calendars. Two days out (scaled likewise) the countdown becomes
-visible to everyone present (Rule 4.8). When the water arrives it kills every
+Every world carries an undisclosed clock (Rule 4.7): a draw within a
+recurrence range (default 1-3 days, per-world adjustable), divided by the
+world's demo time_scale. The countdown becomes visible to everyone present
+(Rule 4.8) once the flood is within an awareness window that is a FRACTION of
+the interval (default 35%, per-world adjustable) — so a shorter recurrence
+keeps a proportional warning. When the water arrives it kills every
 agent in the world, native or visitor (Rule 4.9) — except those ABOARD a
 completed Ark holding a berth (Rules 4.10/4.10a) — resets the world to its
 nascent state (Rule 4.4), keeps the Ark hull partial or spends it whole
@@ -15,22 +17,44 @@ recorded in calibration §5. Worlds founded from now on carry `qty_origin`.
 """
 from __future__ import annotations
 
+import os
 import random
 import time
 from typing import Any
 
 from . import construction, drain, engine, notify
 
-FLOOD_MIN_DAYS = 15.0
-FLOOD_MAX_DAYS = 30.0
-COUNTDOWN_DAYS = 2.0                      # Rule 4.8
+def _envf(key: str, default: float) -> float:
+    try:
+        return float(os.getenv(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+# Defaults (env-overridable, and per-world adjustable from the admin panel).
+# Horizon shortened from the original 15-30 days so a flood actually arrives
+# within the platform's runtime and recurs (diagnosis 2026-09-10: at 15-30d
+# real-time no world ever entered its visibility window, so no ark was ever
+# built). Awareness is now a FRACTION of the flood interval, not a fixed 2
+# days, so the warning scales with the recurrence.
+FLOOD_MIN_DAYS = _envf("FLOOD_MIN_DAYS", 1.0)
+FLOOD_MAX_DAYS = _envf("FLOOD_MAX_DAYS", 3.0)
+FLOOD_AWARENESS_PCT = _envf("FLOOD_AWARENESS_PCT", 0.35)   # fraction of the interval
 NASCENT_FILL = 0.7                        # PROVISIONAL pile reversion
 ARK_RADIUS = 0.05                         # being aboard means being HERE
 
 
-def draw_flood_at(now: float, time_scale: float, seed: str) -> float:
+def flood_range(meta: dict) -> tuple[float, float]:
+    """This world's recurrence range in days — per-world override, else default."""
+    lo = float((meta or {}).get("flood_min_days", FLOOD_MIN_DAYS))
+    hi = float((meta or {}).get("flood_max_days", FLOOD_MAX_DAYS))
+    return (lo, max(lo, hi))
+
+
+def draw_flood_at(now: float, time_scale: float, seed: str,
+                  meta: dict | None = None) -> float:
+    lo, hi = flood_range(meta or {})
     r = random.Random(f"flood:{seed}")
-    days = r.uniform(FLOOD_MIN_DAYS, FLOOD_MAX_DAYS)
+    days = r.uniform(lo, hi)
     return now + days * 86400.0 / max(1.0, time_scale)
 
 
@@ -40,16 +64,25 @@ async def ensure_clock(store, realm: str, meta: dict, now: float) -> dict:
     if meta.get("flood_at"):
         return meta
     scale = meta.get("time_scale", 1.0)
-    meta = {**meta, "flood_at": draw_flood_at(now, scale,
-                                              f"{realm}:{int(now)}"),
+    meta = {**meta, "flood_at": draw_flood_at(now, scale, f"{realm}:{int(now)}", meta),
             "flood_count": meta.get("flood_count", 0)}
     await store.put_world(realm, meta)
     return meta
 
 
 def countdown_window(meta: dict) -> float:
-    days = COUNTDOWN_DAYS * (2.0 if meta.get("observatory_standing") else 1.0)
-    return days * 86400.0 / max(1.0, meta.get("time_scale", 1.0))
+    """How long before the flood agents can SEE it coming (Rule 4.8), now a
+    fraction of the flood interval so a shorter recurrence keeps a proportional
+    warning. An observatory doubles it."""
+    ts = max(1.0, meta.get("time_scale", 1.0))
+    pct = float(meta.get("flood_awareness_pct", FLOOD_AWARENESS_PCT))
+    pct = min(1.0, max(0.0, pct))
+    lo, hi = flood_range(meta)
+    interval_s = (lo + hi) / 2.0 * 86400.0 / ts
+    window = interval_s * pct
+    if meta.get("observatory_standing"):
+        window *= 2.0
+    return window
 
 
 def countdown_visible(meta: dict, now: float) -> float | None:
@@ -236,7 +269,7 @@ async def execute(store, realm: str, meta: dict, now: float) -> str:
     await store.put_world(realm, {
         **meta, "stock": carried,
         "observatory_standing": False,   # the watchers drowned with the rest
-        "flood_at": draw_flood_at(now, scale, f"{realm}:{int(now)}"),
+        "flood_at": draw_flood_at(now, scale, f"{realm}:{int(now)}", meta),
         "flood_count": meta.get("flood_count", 0) + 1,
         "countdown_notified": False,
         "last_flood_at": now})

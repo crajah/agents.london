@@ -11,7 +11,12 @@ class TestClock(unittest.TestCase):
         a = F.draw_flood_at(0.0, 1.0, "w:1")
         b = F.draw_flood_at(0.0, 1.0, "w:1")
         self.assertEqual(a, b)
-        self.assertTrue(15 * 86400 <= a <= 30 * 86400)
+        self.assertTrue(F.FLOOD_MIN_DAYS * 86400 <= a <= F.FLOOD_MAX_DAYS * 86400)
+
+    def test_per_world_range_overrides_the_default(self):
+        meta = {"flood_min_days": 5.0, "flood_max_days": 5.0}
+        a = F.draw_flood_at(0.0, 1.0, "w:1", meta)
+        self.assertAlmostEqual(a, 5 * 86400.0)
 
     def test_time_scale_compresses_the_calendar(self):
         slow = F.draw_flood_at(0.0, 1.0, "w:1")
@@ -19,17 +24,28 @@ class TestClock(unittest.TestCase):
         self.assertAlmostEqual(slow / fast, 60.0, places=6)
 
     def test_clock_secret_until_the_window(self):
-        meta = {"flood_at": 10 * 86400.0, "time_scale": 1.0}
-        self.assertIsNone(F.countdown_visible(meta, 0.0))          # 10 days out
-        self.assertIsNotNone(F.countdown_visible(meta, 8.5 * 86400.0))  # 1.5 out
+        # interval 4 days (2..6), awareness 50% -> window = 2 days
+        meta = {"flood_at": 10 * 86400.0, "time_scale": 1.0,
+                "flood_min_days": 2.0, "flood_max_days": 6.0,
+                "flood_awareness_pct": 0.5}
+        self.assertIsNone(F.countdown_visible(meta, 7.5 * 86400.0))  # 2.5d out
+        self.assertIsNotNone(F.countdown_visible(meta, 8.5 * 86400.0))  # 1.5d out
+        self.assertAlmostEqual(F.countdown_visible(meta, 9 * 86400.0), 86400.0)
+
+    def test_awareness_is_a_fraction_of_the_interval(self):
+        base = {"flood_min_days": 4.0, "flood_max_days": 4.0, "time_scale": 1.0}
         self.assertAlmostEqual(
-            F.countdown_visible(meta, 9 * 86400.0), 86400.0)
+            F.countdown_window({**base, "flood_awareness_pct": 0.25}), 1 * 86400.0)
+        self.assertAlmostEqual(
+            F.countdown_window({**base, "flood_awareness_pct": 0.5}), 2 * 86400.0)
 
     def test_scaled_window_scales_too(self):
-        meta = {"flood_at": 10000.0, "time_scale": 60.0}
-        # window = 2 days / 60 = 2880 s
-        self.assertIsNone(F.countdown_visible(meta, 10000.0 - 3000.0))
-        self.assertIsNotNone(F.countdown_visible(meta, 10000.0 - 2000.0))
+        # same fraction, faster clock -> proportionally shorter window
+        a = F.countdown_window({"flood_min_days": 2, "flood_max_days": 2,
+                                "flood_awareness_pct": 0.5, "time_scale": 1.0})
+        b = F.countdown_window({"flood_min_days": 2, "flood_max_days": 2,
+                                "flood_awareness_pct": 0.5, "time_scale": 60.0})
+        self.assertAlmostEqual(a / b, 60.0, places=6)
 
 
 class TestBerths(unittest.TestCase):

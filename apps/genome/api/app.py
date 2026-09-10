@@ -915,6 +915,10 @@ async def admin_worlds(request: __import__("fastapi").Request):
                               if meta.get("flood_at") else None),
             "time_scale": meta.get("time_scale", 1.0),
             "flood_count": meta.get("flood_count", 0),
+            "flood_min_days": meta.get("flood_min_days", _fl.FLOOD_MIN_DAYS),
+            "flood_max_days": meta.get("flood_max_days", _fl.FLOOD_MAX_DAYS),
+            "flood_awareness_pct": round(100 * float(
+                meta.get("flood_awareness_pct", _fl.FLOOD_AWARENESS_PCT))),
             "roster": await _roster_with_names(agents[:60]),
             "open_listings": len(listings),
             "decisions_last_hour": await app.state.pg.count_vertices(
@@ -1027,6 +1031,45 @@ async def admin_time_scale(realm: str, payload: dict,
         "world_meta", realm=realm, vertex_id=int(row.id), space="default",
         payload={**row.payload, "time_scale": ts})
     return {"ok": True, "realm": realm, "time_scale": ts}
+
+
+@app.put("/admin/worlds/{realm}/flood-config", tags=["Admin"])
+async def admin_flood_config(realm: str, payload: dict,
+                             request: __import__("fastapi").Request):
+    """Adjust a world's flood cadence: the recurrence range (min/max days) and
+    the awareness horizon as a PERCENT of the interval. Changing the range
+    re-draws the next flood so the new cadence takes effect immediately."""
+    from fastapi.responses import JSONResponse
+    from genome_core import flood as _fl
+    denied = _admin_guard(request)
+    if denied:
+        return denied
+    row = await _world_meta_row(realm)
+    if row is None:
+        return JSONResponse({"error": "no such world"}, status_code=404)
+    meta = dict(row.payload)
+    try:
+        lo = float(payload.get("flood_min_days", meta.get("flood_min_days", _fl.FLOOD_MIN_DAYS)))
+        hi = float(payload.get("flood_max_days", meta.get("flood_max_days", _fl.FLOOD_MAX_DAYS)))
+        pct = float(payload.get("flood_awareness_pct",
+                                100 * float(meta.get("flood_awareness_pct", _fl.FLOOD_AWARENESS_PCT))))
+        assert 0.01 <= lo <= hi <= 3650 and 0 <= pct <= 100
+    except Exception:
+        return JSONResponse({"error": "need 0.01 <= min <= max <= 3650 days and "
+                                      "0 <= awareness_pct <= 100"}, status_code=400)
+    meta["flood_min_days"] = lo
+    meta["flood_max_days"] = hi
+    meta["flood_awareness_pct"] = pct / 100.0
+    # re-draw the next flood under the new range so the change is felt now
+    import time as _t
+    meta["flood_at"] = _fl.draw_flood_at(_t.time(), meta.get("time_scale", 1.0),
+                                         f"{realm}:{int(_t.time())}", meta)
+    meta["countdown_notified"] = False
+    await app.state.pg.upsert_vertex(
+        "world_meta", realm=realm, vertex_id=int(row.id), space="default",
+        payload=meta)
+    return {"ok": True, "realm": realm, "flood_min_days": lo,
+            "flood_max_days": hi, "flood_awareness_pct": round(pct)}
 
 
 @app.post("/admin/agents/{agent_uuid}/kill", tags=["Admin"])

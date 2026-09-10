@@ -567,6 +567,38 @@ immediately through the portals"
                          }} />
                   <span className="opacity-50 font-normal">× real time</span>
                 </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs
+                                mb-2 opacity-90">
+                  <span className="opacity-50">flood every</span>
+                  <input type="number" min="0.01" step="0.5" title="minimum days between floods"
+                         defaultValue={w.flood_min_days}
+                         className="w-16 bg-neutral-800 border border-neutral-600 px-1 py-0.5 rounded"
+                         onBlur={async e => { await fetch(
+                           `${API}/admin/worlds/${w.realm}/flood-config`,
+                           { method: "PUT", headers: hdrs,
+                             body: JSON.stringify({ flood_min_days: Number(e.target.value) }) });
+                           load(); }} />
+                  <span className="opacity-50">to</span>
+                  <input type="number" min="0.01" step="0.5" title="maximum days between floods"
+                         defaultValue={w.flood_max_days}
+                         className="w-16 bg-neutral-800 border border-neutral-600 px-1 py-0.5 rounded"
+                         onBlur={async e => { await fetch(
+                           `${API}/admin/worlds/${w.realm}/flood-config`,
+                           { method: "PUT", headers: hdrs,
+                             body: JSON.stringify({ flood_max_days: Number(e.target.value) }) });
+                           load(); }} />
+                  <span className="opacity-50">days · awareness</span>
+                  <input type="number" min="0" max="100" step="5"
+                         title="how far ahead agents can SEE the flood, as a % of the interval"
+                         defaultValue={w.flood_awareness_pct}
+                         className="w-16 bg-neutral-800 border border-neutral-600 px-1 py-0.5 rounded"
+                         onBlur={async e => { await fetch(
+                           `${API}/admin/worlds/${w.realm}/flood-config`,
+                           { method: "PUT", headers: hdrs,
+                             body: JSON.stringify({ flood_awareness_pct: Number(e.target.value) }) });
+                           load(); }} />
+                  <span className="opacity-50">%</span>
+                </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   {(w.roster || []).map(a => (
                     <div key={a.uuid}
