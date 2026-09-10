@@ -83,8 +83,19 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
 .refs li { padding-left: 1rem; text-indent: -1rem; line-height: 1.45;
            font-size: 0.86rem; color: var(--dim); }
 .refs h3 { color: var(--bone); }
+.result { border:1px solid color-mix(in srgb,var(--emerald) 35%,transparent);
+          background:var(--emerald-soft,rgba(52,211,153,0.08)); border-radius:10px;
+          padding:1.2rem 1.4rem; margin:1.3rem 0; }
+.result .h { font-family:"IBM Plex Mono",monospace; font-size:0.68rem; letter-spacing:0.14em;
+             text-transform:uppercase; color:var(--emerald); display:block; margin-bottom:0.7rem; }
+.result .row { display:flex; gap:1.6rem; flex-wrap:wrap; }
+.result .n { font-family:"IBM Plex Mono",monospace; font-size:1.7rem; color:var(--bone);
+             line-height:1; font-variant-numeric:tabular-nums; }
+.result .k { font-size:0.76rem; color:var(--dim); margin-top:0.35rem; }
+.result .method { color:var(--dim); font-size:0.9rem; margin-top:1rem; }
 .subhead { font-family: "Fraunces", Georgia, serif; font-weight: 500;
            font-size: 1.3rem; color: var(--bone); margin-top: 2rem; }
+  :root{ --emerald-soft:rgba(52,211,153,0.08); }
 </style>
 </head>
 <body>
@@ -197,6 +208,17 @@ td .src { color: var(--dim); opacity: 0.7; font-size: 0.8rem; }
         <dt>We have</dt><dd class="have">Run records + stage I/O per pipeline; on-the-fly materialisation tags stages with no match; the CU ledger prices each.</dd>
       </dl>
     </div>
+    <div class="result">
+      <span class="h">First result · 20 held-out goals · gemini-3.6 composer · 2026-09-10</span>
+      <div class="row">
+        <div><div class="n">90%</div><div class="k">decomposed into a pipeline (18/20)</div></div>
+        <div><div class="n">70%</div><div class="k">completed end-to-end (14/20)</div></div>
+        <div><div class="n">4.17<span style="font-size:0.9rem;color:var(--dim)">/5</span></div><div class="k">panel quality · 12 judged</div></div>
+        <div><div class="n">0.22</div><div class="k">inter-judge stdev (tight agreement)</div></div>
+      </div>
+      <p class="method">Each goal was engineered so no single founder solves it alone; success comes only from a composed pipeline, and 6 runs created a specialist on the fly. Quality was scored by a MiniMax / Gemma / gpt-oss panel — a different model family from the gemini composer, so nothing grades its own work. Honest bounds: quality is not uniform (lowest run 1.67/5), one goal still halted at a stage, and “completed + panel-judged” is not human-verified correctness.</p>
+    </div>
+
     <div class="claim c">
       <div class="claim-head"><span class="claim-id">C2</span>
         <span class="claim-title">The win is architecture, not just more compute</span></div>
