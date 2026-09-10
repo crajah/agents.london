@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - "docs/**"
       - "evaluation/**"
+      - ".github/**"
+      - "**/*.md"
   workflow_dispatch:
 
 env:
@@ -31,11 +33,34 @@ jobs:
           echo "[+] Generated Unified Docker Tag: ${TAG}"
 
   # =========================================================================
+  # JOB 1b: DETECT WHICH SERVICES CHANGED
+  # document-registry is the slowest image to build (docling), so it is
+  # skipped unless its own sources / shared deps / manifest changed. Other
+  # services still build every push; flip them to the same pattern by adding
+  # a filter and gating their steps on it.
+  # =========================================================================
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      docreg: ${{ steps.filter.outputs.docreg }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docreg:
+              - 'services/document-registry/**'
+              - 'shared/**'
+              - 'deploy/k8s/06-document-registry.yaml'
+
+  # =========================================================================
   # JOB 2: PARALLEL BUILD & PUSH MATRIX FOR 5 MICROSERVICES
   # =========================================================================
   build-and-push-parallel:
     name: Build & Push (${{ matrix.service.name }})
-    needs: prepare-tag
+    needs: [prepare-tag, changes]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -104,6 +129,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Docker Image (${{ matrix.service.name }})
+        # skip the slow docling build unless document-registry changed; every
+        # other service builds every push, and a manual run always builds
+        if: >-
+          matrix.service.name != 'document-registry-service'
+          || needs.changes.outputs.docreg == 'true'
+          || github.event_name == 'workflow_dispatch'
         env:
           DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
           GCR_REGISTRY: gcr.io/${{ env.GCP_PROJECT }}
@@ -144,7 +175,7 @@ jobs:
   # =========================================================================
   deploy-to-gke:
     name: Deploy (${{ matrix.k8s.name }})
-    needs: [prepare-tag, build-and-push-parallel]
+    needs: [prepare-tag, build-and-push-parallel, changes]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -214,6 +245,12 @@ jobs:
           gcloud compute addresses create agents-london-global-ip --global --quiet || echo "Static IP 'agents-london-global-ip' already reserved."
 
       - name: Update Manifest Tag & Apply to GKE (${{ matrix.k8s.name }})
+        # don't redeploy document-registry (its build was skipped, so its
+        # image tag wasn't pushed this run) unless it actually changed
+        if: >-
+          matrix.k8s.name != 'document-registry-service'
+          || needs.changes.outputs.docreg == 'true'
+          || github.event_name == 'workflow_dispatch'
         env:
           DOCKER_TAG: ${{ needs.prepare-tag.outputs.docker_tag }}
         run: |
