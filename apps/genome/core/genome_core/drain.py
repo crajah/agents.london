@@ -1274,14 +1274,17 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         # on the ordinary signed-transfer rails
         await store.complete_event(world_realm, pl["key"], _iso(now))
         dest = pl["payload"].get("to_world")
+        # gather (user directive 2026-09-11): a multi-hop march carries the
+        # remaining route; on arrival, walk on toward the next world. The
+        # commons is usually the middle hop. Empty route == arrived. While a
+        # hop remains, suppress the arrival wake-decide (wake=not gr) so the
+        # agent doesn't wander off before the next leg is armed.
+        gr = pl["payload"].get("gather_route")
         ok = await do_transfer(store, world_realm, agent, agent_payload,
                                {"to_world": dest,
                                 "portal_xy": pl["payload"].get("portal_xy")},
-                               world_payload.get("portals", []), now)
-        # gather (user directive 2026-09-11): a multi-hop march carries the
-        # remaining route; on arrival, walk on toward the next world. The
-        # commons is usually the middle hop. Empty route == arrived.
-        gr = pl["payload"].get("gather_route")
+                               world_payload.get("portals", []), now,
+                               wake=not gr)
         if ok and gr:
             try:
                 v2, _p2 = await load_agent(store, dest, agent.agent_uuid,
@@ -1590,7 +1593,8 @@ async def _portage_group_cross(store: GenomeStore, origin_realm: str,
 
 async def do_transfer(store: GenomeStore, origin_realm: str,
                       agent: engine.AgentView, agent_payload: dict,
-                      transfer: dict, portals: list[dict], now: float) -> bool:
+                      transfer: dict, portals: list[dict], now: float,
+                      wake: bool = True) -> bool:
     """Teleportation — genome-spec §6. The ORIGIN world signs an assertion; the
     destination verifies chain + signature + fresh counter before admitting
     (Rules 6.9-6.12). Passage is instantaneous (Rule 6.1a): presence flips and
@@ -1707,9 +1711,14 @@ async def do_transfer(store: GenomeStore, origin_realm: str,
     # found it (user report 2026-09-04: doors crowded with sleepers; one
     # agent had crossed 439 times, mostly asleep between)
     dest_ts = max(1.0, dest_meta.get("time_scale", 1.0))
-    await store.schedule(to_world, f"land-{agent.agent_uuid}-{int(now)}",
-                         _iso(now + 30.0 / dest_ts), "decide",
-                         agent.agent_uuid, {})
+    if wake:
+        # a mid-gather hop skips this wake-decide: it would race the next
+        # gather march and let the agent wander off before it reaches the
+        # target (user report 2026-09-11 -- gathered agents scattered to
+        # commons-adjacent worlds). gather_next_hop drives the next leg instead.
+        await store.schedule(to_world, f"land-{agent.agent_uuid}-{int(now)}",
+                             _iso(now + 30.0 / dest_ts), "decide",
+                             agent.agent_uuid, {})
     if dest_meta.get("is_commons"):
         # remember the way in (Rule 6.2g); the portal position it used is the
         # return destination
