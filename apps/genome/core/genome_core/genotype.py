@@ -175,16 +175,19 @@ def gender_of(genotype: dict) -> str:
 
 
 def breeding_cost_met(cargo_a: dict, cargo_b: dict) -> dict | None:
-    """Rule 9.4: collectively 2 units each of 4 DIFFERENT kinds. Returns the
-    per-kind spend split by contributor, or None."""
+    """Rule 9.4: collectively 2 units each of at least 3 DIFFERENT kinds
+    (user directive 2026-09-10: 3, not 4 -- with 2-kind mining, requiring 4
+    forced fully-disjoint pairs; 3 lets partners who share one kind still
+    breed, so pairings are achievable while still demanding complementarity).
+    Returns the per-kind spend split by contributor, or None."""
     pool: dict[str, float] = {}
     for c in (cargo_a, cargo_b):
         for k, u in c.items():
             pool[k] = pool.get(k, 0.0) + u
     kinds = [k for k, u in sorted(pool.items()) if u >= 2.0]
-    if len(kinds) < 4:
+    if len(kinds) < 3:
         return None
-    chosen = kinds[:4]
+    chosen = kinds[:3]
     spend = {"a": {}, "b": {}}
     for k in chosen:
         need = 2.0

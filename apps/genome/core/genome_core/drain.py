@@ -2138,7 +2138,8 @@ async def consummate(store: GenomeStore, world_realm: str,
     visible (Rules 6.4-6.6): two agents may court and only now discover
     incompatibility. Cost: collectively 2 units of each of 4 distinct kinds.
     Two progeny, one per parent's user, each materialised and certified by its
-    owning parent's HOME world (genome-spec §9.4 commentary)."""
+    owning parent's HOME world (genome-spec §9.4 commentary). Cost: collectively
+    2 units each of at least 3 distinct kinds (2026-09-10: 3, not 4)."""
     ga, gb = a_pl["genotype"], b_pl["genotype"]
     if G.gender_of(ga) == G.gender_of(gb):
         return "breeding:incompatible"
