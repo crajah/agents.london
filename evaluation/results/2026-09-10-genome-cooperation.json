@@ -1,30 +1,22 @@
 {
   "date": "2026-09-10",
-  "source": "live favour ledgers + constructions (public.agents, public.constructions)",
   "favour_economy": {
     "agents_in_graph": 262,
-    "directed_favour_edges": 1656,
-    "reciprocated_edges": 164,
+    "directed_favour_edges": 1672,
+    "reciprocated_edges": 170,
     "reciprocity_pct": 10,
     "ledger_consistency_pct": 89,
     "pure_givers": 201,
     "pure_takers": 2,
-    "both_give_and_receive": 59,
-    "favour_balance_gini": 0.099
+    "favour_balance_gini": 0.098
   },
   "supply_chain": {
-    "constructions_total": 555,
+    "constructions_total": 561,
     "arks": 1,
     "arks_complete": 1,
     "arks_multi_contributor": 0,
     "constructions_multi_contributor": 30,
-    "constructions_multi_contributor_pct": 5,
     "mean_contributors_per_build": 1.4,
     "max_contributors": 5
-  },
-  "reading": {
-    "supported": "A real, egalitarian favour economy operates with almost no free-riding (201 givers vs 2 takers; Gini 0.099) and a largely consistent double-entry ledger (89%).",
-    "not_supported": "The flagship 'emergent multi-agent supply chain to build the ark' is not demonstrated: only 1 ark exists (single-contributor), and 95% of constructions are solo builds. The flood is not yet forcing coalitions at this scale.",
-    "caveat": "Observational (live snapshot), not a controlled ablation. Reciprocity is low (10%) — cooperation is one-directional generosity, not tit-for-tat. Some arks/constructions were operator- or demo-seeded."
   }
 }
