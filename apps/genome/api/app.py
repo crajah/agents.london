@@ -139,6 +139,21 @@ async def evidence():
         "SELECT coalesce(sum((payload->>'consumption_units')::float)::bigint,0) "
         "FROM platform_system.consumption_data "
         "WHERE payload->>'org_id'='org_default' AND \"timestamp\" > now()-interval '24 hours'")
+    # SUPPLY CHAIN — the ark census (re-measurement target after the flood fix):
+    # does the ark form as a MULTI-agent build, or solo?
+    await one("arks",
+        "SELECT count(*) FROM public.constructions WHERE payload->>'name'='ark'")
+    await one("arks_multi_contributor",
+        "SELECT count(*) FROM public.constructions WHERE payload->>'name'='ark' "
+        "AND jsonb_typeof(payload->'contributors')='object' "
+        "AND (SELECT count(*) FROM jsonb_object_keys(payload->'contributors')) >= 2")
+    await one("constructions_multi_contributor",
+        "SELECT count(*) FROM public.constructions "
+        "WHERE jsonb_typeof(payload->'contributors')='object' "
+        "AND (SELECT count(*) FROM jsonb_object_keys(payload->'contributors')) >= 2")
+    await one("constructions_total",
+        "SELECT count(*) FROM public.constructions")
+
     # PLATFORM
     await one("ledger_rows",
         "SELECT count(*) FROM platform_system.consumption_data")
