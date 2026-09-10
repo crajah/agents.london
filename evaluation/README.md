@@ -23,6 +23,7 @@ seeds. Results are stated as what they measure, never more.
 | File | Claim | What it does |
 |------|-------|--------------|
 | `heldout_composition.py` | Civilization **C1** — composition creates capability no founder has alone | Runs 20 goals, each needing ≥2 distinct capabilities, through the live composition engine; records whether each decomposed into a pipeline, completed end-to-end, and created an agent on the fly; optionally scores each completed deliverable with a judge panel. |
+| `genome_cooperation.py` | Genome **G2** — cooperation & the ark supply chain | Observational analysis of the live favour ledgers and constructions: reciprocity, free-rider balance, ledger consistency, and whether the ark actually forms as a multi-agent supply chain. Runs ops-side (reads Postgres via `kubectl`). |
 
 Planned next (see the evaluation page): the genome mechanism-ablation (is the
 cooperation emergent?), the compute-matched single-vs-pipeline test (C2), and the
@@ -67,6 +68,17 @@ Each run writes `results/<date>-heldout-composition-judged.json` incrementally.
 - **`2026-09-10-heldout-composition-baseline.json`** — the earlier run on the
   MiniMax planner (completion only): 80% decomposed, 45% completed. Kept as the
   before/after that motivated moving the composer to gemini-3.6.
+- **`2026-09-10-genome-cooperation.json`** — live favour-economy + supply-chain
+  analysis. **Mixed, and honest about it:**
+  - *Supported:* a real, egalitarian favour economy — 262 agents, 1,656 favour
+    edges, **201 givers vs 2 free-riders**, favour-balance Gini 0.099, and an
+    **89%-consistent double-entry ledger**.
+  - *Not supported (yet):* the flagship **emergent ark supply chain**. Only 1 ark
+    exists (single-contributor), and 95% of all constructions are solo builds
+    (mean 1.4 contributors). At current scale the flood is not forcing coalitions.
+  - *Caveat:* reciprocity is low (10% of edges mutual) — the cooperation is
+    one-directional generosity, not tit-for-tat; and this is a live snapshot, not
+    a controlled ablation.
 
 ### Honest bounds on the headline result
 
