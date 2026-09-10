@@ -313,6 +313,35 @@ async def prune_done_rows(store: GenomeStore, now: float) -> int:
     return total
 
 
+PRESENCE_RECONCILE_INTERVAL_S = float(
+    os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "60"))
+
+
+async def reconcile_presence(store: GenomeStore) -> int:
+    """Enforce Rule 6.10 -- an agent is present in exactly ONE world. Stale
+    events in other realms fired transfers from the wrong origin, so old
+    presence was never cleared and agents ended up present in up to 6 worlds at
+    once (inflating populations to 100s, leaving ghost dots at teleport points).
+    set_presence doesn't enforce the invariant, so shard 0 continuously does:
+    keep each agent's most-recent present=true and clear every older one."""
+    try:
+        status = await store._c.execute(
+            "UPDATE public.presence p "
+            "SET payload = jsonb_set(p.payload,'{present}','false') "
+            "WHERE p.payload->>'present'='true' AND EXISTS ("
+            "  SELECT 1 FROM public.presence q "
+            "  WHERE q.payload->>'key' = p.payload->>'key' "
+            "    AND q.payload->>'present'='true' "
+            "    AND q.updated_at > p.updated_at)")
+        try:
+            return int(str(status).rsplit(" ", 1)[-1])
+        except (ValueError, IndexError):
+            return 0
+    except Exception:
+        logger.exception("presence reconcile failed")
+        return 0
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -391,6 +420,7 @@ async def main() -> None:
     last_movement_prune = 0.0
     last_audit_trim = 0.0
     last_done_prune = 0.0
+    last_presence_reconcile = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -450,6 +480,14 @@ async def main() -> None:
                 if dr:
                     logger.info("done rows: pruned %d (events+decision_queue)",
                                 dr)
+            pres_due = time.time() - last_presence_reconcile > \
+                PRESENCE_RECONCILE_INTERVAL_S
+            if SHARD_INDEX == 0 and pres_due:
+                last_presence_reconcile = time.time()
+                fixed = await reconcile_presence(store)
+                if fixed:
+                    logger.info("presence: cleared %d stale (agent in >1 world)",
+                                fixed)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)

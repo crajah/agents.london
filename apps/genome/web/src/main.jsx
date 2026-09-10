@@ -1669,7 +1669,7 @@ function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-900 text-neutral-200">
-      <header className="px-4 py-2 flex gap-3 items-center border-b border-neutral-700">
+      <header className="relative z-40 px-4 py-2 flex gap-3 items-center border-b border-neutral-700 bg-neutral-900">
         <a href="/" className="no-underline text-inherit inline-flex
                                items-center gap-2">
           {/* the mark IS the agent glyph: one being, two colours */}
@@ -1835,7 +1835,7 @@ whole game -- the commons market is how the far kinds arrive."
                   .map(a => a.name || a.agent_uuid).join(", ")}</div>}
           </div>)}
         {flood != null && (
-          <div className="absolute top-0 inset-x-0 z-30 bg-sky-950/95
+          <div className="absolute top-11 inset-x-0 z-20 bg-sky-950/95
                           text-sky-100 text-sm px-4 py-1.5 text-center
                           font-semibold tracking-wide">
             ⚠ THE WATER IS COMING — flood in {flood > 3600
