@@ -585,3 +585,49 @@ async def directory_attach_scopes(request: Request, tenant_id: str):
     else:
         await c.add_vertex("tenants", realm=DIRECTORY_REALM, payload=base)
     return {"ok": True, **_tenant_view(base)}
+
+
+@app.get("/directory/tenant/{tenant_id}/spend")
+async def directory_tenant_spend(request: Request, tenant_id: str,
+                                 hours: int = 24):
+    """Phase 1 -- the ONE BILL across both apps. A tenant's spend is read at
+    query time by summing the append-only consumption ledger against the
+    tenant's own scope arrays: genome rows carry project_id=world_realm, civ
+    rows carry org_id, so no write-path change and no backfill are needed --
+    the directory is the only new thing, and this join is fully additive and
+    reversible. Own tenant, or internal key."""
+    if not _internal_ok(request):
+        claims = verify(_bearer(request) or "")
+        own = (claims.get("tenant_id") or tenant_id_from_sub(claims["sub"])) \
+            if claims else None
+        if own != tenant_id:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+    c = await _directory_client()
+    row = await _get_tenant(c, tenant_id)
+    genome_realms = ((row.payload.get("genome_realms") if row else []) or [])
+    civ_orgs = ((row.payload.get("civ_orgs") if row else []) or [])
+    hours = max(1, min(int(hours), 24 * 90))
+    out = {"tenant_id": tenant_id, "window_hours": hours,
+           "genome_cu": 0, "civ_cu": 0, "total_cu": 0,
+           "genome_realms": len(genome_realms), "civ_orgs": len(civ_orgs)}
+    if not genome_realms and not civ_orgs:
+        out["empty"] = True
+        return out
+    try:
+        rows = await c._fetch(
+            "SELECT "
+            " coalesce(sum((payload->>'consumption_units')::bigint) "
+            "   FILTER (WHERE payload->>'project_id' = ANY($1)), 0) AS g, "
+            " coalesce(sum((payload->>'consumption_units')::bigint) "
+            "   FILTER (WHERE payload->>'org_id' = ANY($2)), 0) AS v "
+            "FROM platform_system.consumption_data "
+            "WHERE \"timestamp\" > now() - make_interval(hours => $3) "
+            "  AND (payload->>'project_id' = ANY($1) "
+            "       OR payload->>'org_id' = ANY($2))",
+            genome_realms, civ_orgs, hours)
+        g, v = int(rows[0]["g"]), int(rows[0]["v"])
+        out.update({"genome_cu": g, "civ_cu": v, "total_cu": g + v})
+    except Exception:
+        logger.exception("tenant spend query failed")
+        out["error"] = "spend query failed"
+    return out

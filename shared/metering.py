@@ -61,6 +61,12 @@ class UsageEvent:
     org_id: str
     kind: str
     project_id: str = "proj_default"
+    # The tenant that owns this spend (Phase 1 of the tenant unification). A
+    # passthrough only: callers who already know it stamp it; when absent, a
+    # tenant's bill is still recoverable at read time by resolving org_id /
+    # project_id against the authority directory (one tenant -> many civ orgs
+    # and many genome world realms). Never resolved on this hot path.
+    tenant_id: Optional[str] = None
     bytes: int = 0
     tokens_input: int = 0
     tokens_output: int = 0
