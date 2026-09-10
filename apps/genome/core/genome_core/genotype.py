@@ -241,8 +241,11 @@ def default_objectives(genotype: dict[str, float]) -> list[str]:
                    "with others where hands are short.")
     if n("Reciprocity") >= 0.55:
         out.append("Trade for the kinds your line lacks.")
-    out.append("Keep your line provisioned: gather what this world yields "
-               "and deposit it at home.")
+    out.append("Keep your line provisioned: your kinds are mined ONLY in your "
+               "home world -- gather them there and deposit at home. Carry any "
+               "surplus to the commons larder for safe-keeping, and when home "
+               "runs low, journey back to the commons and collect what you "
+               "stored.")
     return out[:3]
 
 
