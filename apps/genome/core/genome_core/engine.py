@@ -354,14 +354,14 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
     here = by_id.get(at_pile)
     hold_cap = CARGO_CEILING + ctx.get("cargo_bonus", 0.0) \
         + (5.0 if ctx.get("skill") == "Porterage" else 0.0)   # a Granary
-    # an agent mines only the kinds that ALIGN with it (user directive
-    # 2026-09-10) -- two kinds, set at birth and inherited by breeding. It may
-    # mine them in ANY world, not just home. Absent (un-backfilled legacy
-    # agent) -> unrestricted, so nothing stalls before the backfill lands.
-    _mineable = payload.get("mineable_kinds")
-    _kind_ok = (not _mineable) or (here.kind in _mineable) if here else False
-    if here and here.qty > 0.05 and _kind_ok \
-            and agent.cargo_total() < hold_cap:
+    # NOTE 2026-09-11: a HARD mineable-kinds gate here stranded 59% of agents --
+    # they travel cross-world constantly (commons has no piles at all), and a
+    # world only holds its own two kinds, so wherever they wandered they could
+    # not mine and the economy stagnated. Mining is unrestricted again; the
+    # mineable_kinds still drive breeding (offspring inheritance). A softer
+    # specialisation (aligned kinds mine at full yield, others reduced) can
+    # return later without stranding anyone.
+    if here and here.qty > 0.05 and agent.cargo_total() < hold_cap:
         options.append("mine_here")
     # Rule 5.2 of genome-spec: finding piles is work. Travel targets only piles
     # this agent KNOWS; the rest of the map must be explored -- unless a
