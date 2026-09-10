@@ -102,14 +102,28 @@ def _verify_state(raw: str) -> dict | None:
     return None
 
 
+def tenant_id_from_sub(sub: str) -> str:
+    """One person, one tenant by default: the tenant id reuses the same
+    identity hash the sub already carries, re-prefixed `t:`. The directory
+    record (below) can later gather MORE owners and MANY app realms under one
+    tenant, but this default derivation needs no lookup — so the tenant claim
+    survives a directory outage, and a brand-new user is already a tenant."""
+    ident = sub.split(":", 1)[1] if ":" in sub else sub
+    return "t:" + ident
+
+
 def mint(sub: str, provider: str, grants: list | None = None,
-         email: str | None = None) -> str:
+         email: str | None = None, tenant_id: str | None = None) -> str:
     """The email rides as a CLAIM in a 15-minute same-site token -- transit,
     not storage; the authority itself keeps nothing. Apps that key tenancy
     off the address (civilization) read it; apps that key off the hash
-    (genome) ignore it."""
+    (genome) ignore it. The `tenant_id` claim is the thread that ties one
+    entity's genome worlds and civilization projects together (directory
+    below); it defaults to the sub's own hash so every token carries it."""
     now = int(time.time())
-    doc = {"iss": BASE, "sub": sub, "iat": now, "exp": now + TOKEN_TTL,
+    doc = {"iss": BASE, "sub": sub,
+           "tenant_id": tenant_id or tenant_id_from_sub(sub),
+           "iat": now, "exp": now + TOKEN_TTL,
            "provider": provider, "grants": grants or []}
     if email:
         doc["email"] = normalise_email(email)
@@ -200,7 +214,9 @@ async def callback(provider: str, code: str = "", state: str = "",
     if not email:
         return JSONResponse({"error": "provider withheld the email claim"},
                             status_code=400)
-    token = mint(user_id_from_email(email), provider, email=email)
+    sub = user_id_from_email(email)
+    await _ensure_tenant_record(sub, email)   # best-effort; never blocks login
+    token = mint(sub, provider, email=email)
     dest = doc.get("r") or "/"
     sep = "&" if "?" in dest else "?"
     resp = RedirectResponse(dest + sep + "authority_token=" + token)
@@ -226,7 +242,8 @@ async def refresh(request: Request):
     if not claims:
         return JSONResponse({"error": "invalid token"}, status_code=401)
     return {"token": mint(claims["sub"], claims.get("provider", "?"),
-                          claims.get("grants"), claims.get("email"))}
+                          claims.get("grants"), claims.get("email"),
+                          tenant_id=claims.get("tenant_id"))}
 
 
 import re as _re
@@ -273,6 +290,7 @@ async def exchange(request: Request):
     now = int(time.time())
     scoped = jwt.encode(
         {"iss": BASE, "sub": claims["sub"], "iat": now,
+         "tenant_id": claims.get("tenant_id") or tenant_id_from_sub(claims["sub"]),
          "exp": now + EXCHANGE_TTL, "provider": claims.get("provider", "?"),
          "grants": [{"realm": realm, "role": "owner"}]},
         _key, algorithm="RS256", headers={"kid": KID})
@@ -408,3 +426,162 @@ async def vault_reveal(request: Request, sub: str, provider: str):
         return JSONResponse({"error": "no such key"}, status_code=404)
     return {"api_key": _open(rows[0].payload),
             "fingerprint": rows[0].payload["fp"]}
+
+
+# ------------------------------------------------------------- directory
+# Phase 0 of the tenant unification: ONE entity (a tenant) maps to MANY
+# genome world realms and MANY civilization org/project ids. The directory is
+# an additive LABEL layer -- it never renames a realm or an org_id, so it is
+# reversible by ignoring it. It lives here because the authority is the one
+# place that already mints identity; the two apps only ever READ it (never a
+# shared library between their deploys). Privacy invariant: a user token can
+# read only its OWN tenant; resolving arbitrary realms/orgs to a tenant, or
+# enumerating another tenant, requires the in-cluster internal key.
+DIRECTORY_REALM = "authority_directory"
+_TENANT_FIELDS = ("owner_subs", "genome_realms", "civ_orgs", "civ_projects")
+_dir_ready = False
+
+
+async def _directory_client():
+    """Reuses the vault's post-graph pool; ensures the tenants table once."""
+    global _dir_ready
+    c = await _vault_client()
+    if not _dir_ready:
+        await c.create_vertex_table("tenants", realm=DIRECTORY_REALM)
+        _dir_ready = True
+    return c
+
+
+def _internal_ok(request: Request) -> bool:
+    return bool(INTERNAL_KEY) and \
+        request.headers.get("x-internal-key") == INTERNAL_KEY
+
+
+async def _get_tenant(c, tenant_id: str):
+    rows = await c.find_vertices("tenants", realm=DIRECTORY_REALM,
+                                 filters={"key": tenant_id}, limit=1)
+    return rows[0] if rows else None
+
+
+async def _ensure_tenant_record(sub: str, email: str | None) -> None:
+    """Lazily provision a tenant the first time its owner logs in. Best-effort:
+    a directory outage must never block the login path, so every failure is
+    swallowed and the deterministic tenant_id still rides the token."""
+    try:
+        c = await _directory_client()
+        tid = tenant_id_from_sub(sub)
+        row = await _get_tenant(c, tid)
+        now = int(time.time())
+        if row is None:
+            dom = normalise_email(email).split("@")[-1] \
+                if email and "@" in email else ""
+            await c.add_vertex("tenants", realm=DIRECTORY_REALM, payload={
+                "key": tid, "tenant_id": tid, "display_name": dom,
+                "owner_subs": [sub], "genome_realms": [], "civ_orgs": [],
+                "civ_projects": [], "created_at": now, "updated_at": now})
+        elif sub not in (row.payload.get("owner_subs") or []):
+            await c.upsert_vertex(
+                "tenants", realm=DIRECTORY_REALM, vertex_id=int(row.id),
+                space="default", payload={
+                    **row.payload, "updated_at": now,
+                    "owner_subs": sorted(set(
+                        (row.payload.get("owner_subs") or []) + [sub]))})
+    except Exception:
+        logger.exception("tenant record ensure failed (non-fatal)")
+
+
+def _tenant_view(payload: dict) -> dict:
+    return {"tenant_id": payload.get("tenant_id"),
+            "display_name": payload.get("display_name", ""),
+            "owner_subs": payload.get("owner_subs") or [],
+            "genome_realms": payload.get("genome_realms") or [],
+            "civ_orgs": payload.get("civ_orgs") or [],
+            "civ_projects": payload.get("civ_projects") or [],
+            "created_at": payload.get("created_at"),
+            "updated_at": payload.get("updated_at")}
+
+
+@app.get("/directory/tenant/{tenant_id}")
+async def directory_get_tenant(request: Request, tenant_id: str):
+    """Forward lookup: a tenant -> all its genome realms and civ projects.
+    The internal key sees any tenant; a user token sees only its own."""
+    if not _internal_ok(request):
+        claims = verify(_bearer(request) or "")
+        own = (claims.get("tenant_id") or tenant_id_from_sub(claims["sub"])) \
+            if claims else None
+        if own != tenant_id:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+    c = await _directory_client()
+    row = await _get_tenant(c, tenant_id)
+    if row is None:
+        # a tenant with no record yet exists implicitly (deterministic id)
+        return {"tenant_id": tenant_id, "display_name": "", "owner_subs": [],
+                "genome_realms": [], "civ_orgs": [], "civ_projects": [],
+                "provisional": True}
+    return _tenant_view(row.payload)
+
+
+@app.get("/directory/reverse")
+async def directory_reverse(request: Request, realm: str = "", org: str = "",
+                            project: str = "", sub: str = ""):
+    """Reverse lookup: which tenant owns this genome realm / civ org / civ
+    project / sub? `sub` is deterministic (self or internal); the others scan
+    the directory and are internal-key only, so no tenant can probe another's
+    realms."""
+    if sub and not (realm or org or project):
+        if not _internal_ok(request):
+            claims = verify(_bearer(request) or "")
+            if not claims or claims.get("sub") != sub:
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+        return {"tenant_id": tenant_id_from_sub(sub)}
+    if not _internal_ok(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    field = "genome_realms" if realm else "civ_orgs" if org else \
+        "civ_projects" if project else None
+    needle = realm or org or project
+    if not field:
+        return JSONResponse({"error": "pass one of realm/org/project/sub"},
+                            status_code=400)
+    c = await _directory_client()
+    rows = await c.find_vertices("tenants", realm=DIRECTORY_REALM, limit=1000)
+    for v in rows:
+        if needle in (v.payload.get(field) or []):
+            return {"tenant_id": v.payload.get("tenant_id")}
+    return JSONResponse({"tenant_id": None, "error": "not found"},
+                        status_code=404)
+
+
+@app.post("/directory/tenant/{tenant_id}/scopes")
+async def directory_attach_scopes(request: Request, tenant_id: str):
+    """Attach genome realms / civ orgs / civ projects / owner subs to a
+    tenant (arrays are merged, never replaced). Internal-key only: this is how
+    the two apps register what a tenant owns as worlds are born and projects
+    are created. This is the seeding path, and the ongoing binding path."""
+    if not _internal_ok(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    try:
+        body = json.loads((await request.body()) or b"{}")
+    except Exception:
+        return JSONResponse({"error": "body must be JSON"}, status_code=400)
+    c = await _directory_client()
+    row = await _get_tenant(c, tenant_id)
+    now = int(time.time())
+    base = dict(row.payload) if row else {
+        "key": tenant_id, "tenant_id": tenant_id, "display_name": "",
+        "owner_subs": [], "genome_realms": [], "civ_orgs": [],
+        "civ_projects": [], "created_at": now}
+    for field in _TENANT_FIELDS:
+        add = body.get(field) or []
+        if isinstance(add, str):
+            add = [add]
+        base[field] = sorted(set((base.get(field) or []) + list(add)))
+    if body.get("display_name"):
+        base["display_name"] = str(body["display_name"])
+    base["updated_at"] = now
+    if row:
+        await c.upsert_vertex("tenants", realm=DIRECTORY_REALM,
+                              vertex_id=int(row.id), space="default",
+                              payload=base)
+    else:
+        await c.add_vertex("tenants", realm=DIRECTORY_REALM, payload=base)
+    return {"ok": True, **_tenant_view(base)}
