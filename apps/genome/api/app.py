@@ -102,13 +102,39 @@ async def health():
     return {"status": "ok", "service": "genome-api"}
 
 
+import asyncio as _asyncio
+import time as _time
+
+_EVIDENCE_TTL_S = float(os.getenv("EVIDENCE_TTL_S", "30"))
+_evidence_cache: dict = {"at": 0.0, "data": None}
+_evidence_lock = _asyncio.Lock()
+
+
 @app.get("/evidence", tags=["System"])
 async def evidence():
+    """Cached front for the vital-signs page. The census + ledger scans below
+    are heavy and each holds a connection; a burst of page loads (or the daily
+    routine) would otherwise run them all at once. Serve a shared snapshot for
+    a short TTL and compute at most once per window, so /evidence never
+    competes with the simulation for the pool (incident 2026-09-10)."""
+    c = _evidence_cache
+    if c["data"] is not None and _time.time() - c["at"] < _EVIDENCE_TTL_S:
+        return c["data"]
+    async with _evidence_lock:
+        # someone may have refreshed it while we waited on the lock
+        if c["data"] is not None and _time.time() - c["at"] < _EVIDENCE_TTL_S:
+            return c["data"]
+        data = await _compute_evidence(app.state.pg)
+        c["data"] = data
+        c["at"] = _time.time()
+        return data
+
+
+async def _compute_evidence(pg):
     """Live vital signs for the public evidence page. Descriptive telemetry —
     honest current state, not proof of any claim. Each metric fails to null
     rather than 500ing, so a stale query never blanks the whole page."""
-    pg = app.state.pg
-    out: dict = {"at": __import__("time").time()}
+    out: dict = {"at": _time.time()}
 
     async def one(key, sql):
         try:

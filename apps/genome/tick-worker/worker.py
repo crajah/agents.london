@@ -214,6 +214,43 @@ async def prune_done(store: GenomeStore, realm: str, now: float) -> int:
         return 0
 
 
+MOVEMENT_RETENTION_S = float(os.getenv("MOVEMENT_RETENTION_S", str(48 * 3600)))
+MOVEMENT_PRUNE_INTERVAL_S = float(os.getenv("MOVEMENT_PRUNE_INTERVAL_S", "600"))
+MOVEMENT_PRUNE_BATCH = int(os.getenv("MOVEMENT_PRUNE_BATCH", "20000"))
+
+
+async def prune_movement(store: GenomeStore, now: float) -> int:
+    """agents_data is the append-only position log (store.set_movement appends
+    a row per move); only the NEWEST row per agent is live state, read by
+    latest_movement / find-latest. Left unbounded it reached 1.1M rows / 1.6GB
+    for ~300 agents, and its per-agent key scans starved the pool until the sim
+    froze (incident 2026-09-10). Trim rows past the retention window that are
+    NOT an agent's newest — so current position (even for an agent idle beyond
+    the window) and a recent tail are always kept — in one bounded batch that
+    never locks the table for long. Shard 0 only; movement lives under the
+    single 'genome_agents' realm, so this is global, not per-world."""
+    try:
+        status = await store._c.execute(
+            "DELETE FROM public.agents_data WHERE ctid IN ("
+            "  SELECT a.ctid FROM public.agents_data a"
+            "  JOIN (SELECT realm, id, max(\"timestamp\") AS mx"
+            "          FROM public.agents_data WHERE realm=$1"
+            "          GROUP BY realm, id) m"
+            "    ON a.realm = m.realm AND a.id = m.id"
+            "  WHERE a.realm = $1"
+            "    AND a.\"timestamp\" < now() - make_interval(secs => $2)"
+            "    AND a.\"timestamp\" < m.mx"
+            "  LIMIT $3)",
+            "genome_agents", int(MOVEMENT_RETENTION_S), MOVEMENT_PRUNE_BATCH)
+        try:                                   # asyncpg returns e.g. "DELETE 42"
+            return int(str(status).rsplit(" ", 1)[-1])
+        except (ValueError, IndexError):
+            return 0
+    except Exception:
+        logger.exception("movement prune failed")
+        return 0
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -289,6 +326,7 @@ async def main() -> None:
                 SHARD_INDEX, SHARD_COUNT, REALMS, USE_LLM)
     cycle = 0
     realms = list(REALMS)
+    last_movement_prune = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -329,6 +367,12 @@ async def main() -> None:
                         logger.info("outbox: %d sent", n)
                 except Exception:
                     logger.exception("outbox drain failed")
+            due = time.time() - last_movement_prune > MOVEMENT_PRUNE_INTERVAL_S
+            if SHARD_INDEX == 0 and due:
+                last_movement_prune = time.time()
+                pruned_rows = await prune_movement(store, time.time())
+                if pruned_rows:
+                    logger.info("movement history: pruned %d rows", pruned_rows)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
