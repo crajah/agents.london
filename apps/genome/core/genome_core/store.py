@@ -192,7 +192,10 @@ class GenomeStore:
         rows = await self._c.find_vertices(EVENTS, realm=r,
                                            filters={"key": event_id}, limit=1)
         if not rows:
-            raise KeyError(f"event {event_id} not found in {r}")
+            # Idempotent (2026-09-13): a competing-consumer world races -- an
+            # event can be completed then pruned between another path's read and
+            # its complete. Missing = already done/pruned; a no-op, not an error.
+            return
         await self._c.upsert_vertex(EVENTS, realm=r, vertex_id=int(rows[0].id),
                                     payload={**rows[0].payload, "done_at": now})
 
