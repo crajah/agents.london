@@ -140,6 +140,7 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
     from genome_core import drain as _d, forms as _f
     wmeta = await _d._world_payload(store, realm)
     positions = {}
+    cargo_by: dict[str, dict] = {}
     present = [v.payload["key"] for v in await store.agents_in(realm)]
     metas = await _payloads_for(store, present)
     for a in present:
@@ -151,50 +152,62 @@ async def sweep(store: GenomeStore, realm: str, now: float) -> int:
         r = _f.Route(tuple(tuple(q) for q in pl["waypoints"]),
                      pl["departed_at"], pl.get("arrives_at"))
         positions[a] = _f.route_position(r, now)
+        cargo_by[a] = pl.get("cargo") or {}     # cache: no re-fetch on contact
         metas.setdefault(a, {})
-    agents = sorted(positions)
+    # Spatial-grid proximity (Phase 3): bucket agents into cells the size of the
+    # contact radius, so any pair in contact lands in the same or an adjacent
+    # cell. Checking the 9-cell neighbourhood is O(n) for a spread-out world
+    # instead of the old all-pairs O(n^2) that made a 98-agent world's sweep the
+    # tick's dominant cost.
+    cell = max(CONTACT_RADIUS, 1e-6)
+    grid: dict[tuple[int, int], list] = {}
+    for a, (ax, ay) in positions.items():
+        grid.setdefault((int(ax / cell), int(ay / cell)), []).append(a)
+    from genome_core import pathogen as _pg
     hits = 0
-    for i, a in enumerate(agents):
-        for b in agents[i + 1:]:
-            ax, ay = positions[a]; bx, by = positions[b]
-            if (ax - bx) ** 2 + (ay - by) ** 2 > CONTACT_RADIUS ** 2:
-                continue
-            pair = f"{realm}|{a}|{b}"
-            if now - _recent_pairs.get(pair, 0) < 1800:
-                continue
-            _recent_pairs[pair] = now
-            # contagion at contact (Rules 2.4/2.5): each may infect the other
-            from genome_core import pathogen as _pg
-            for src, dst in ((a, b), (b, a)):
-                strain = _pg.try_transmit(f"{pair}:{int(now)}",
-                                          metas[src], metas[dst], now)
-                if strain:
-                    infected = _pg.infect(metas[dst], strain, now,
-                                          time_scale=wmeta.get("time_scale",
-                                                               1.0))
-                    await store.put_agent(dst, infected)
-                    metas[dst] = infected
-                    if infected.get("owner_user_id"):
-                        from genome_core import notify as _nf
-                        await _nf.emit(store._c, infected["owner_user_id"],
-                                       "agents", "infection",
-                                       f"{infected.get('name', dst)} caught "
-                                       f"{strain['strain_uuid']} in a meeting.")
-            for me, other in ((a, b), (b, a)):
-                om = metas[other]
-                mv = await store.latest_movement(other)
-                o_cargo = (mv.payload.get("cargo") if mv is not None
-                           else {}) or {}
-                await store.schedule(
-                    realm, f"meet-{me}-{int(now)}", _d._iso(now), "encounter",
-                    me, {"other": {"agent_uuid": other,
-                                   "colour_pair": om.get("colour_pair"),
-                                   "cargo": o_cargo,   # revealed only to a
-                                   # Scrying holder (skills-spec 4.2)
-                                   "infected": bool(om.get("infections"))},
-                         "opinion": (metas[me].get("opinions", {})
-                                     .get(other))})
-            hits += 1
+    for a, (ax, ay) in positions.items():
+        cx, cy = int(ax / cell), int(ay / cell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for other in grid.get((cx + dx, cy + dy), ()):
+                    if other <= a:              # each unordered pair once
+                        continue
+                    ox, oy = positions[other]
+                    if (ax - ox) ** 2 + (ay - oy) ** 2 > CONTACT_RADIUS ** 2:
+                        continue
+                    pair = f"{realm}|{a}|{other}"
+                    if now - _recent_pairs.get(pair, 0) < 1800:
+                        continue
+                    _recent_pairs[pair] = now
+                    # contagion at contact (Rules 2.4/2.5)
+                    for src, dst in ((a, other), (other, a)):
+                        strain = _pg.try_transmit(f"{pair}:{int(now)}",
+                                                  metas[src], metas[dst], now)
+                        if strain:
+                            infected = _pg.infect(
+                                metas[dst], strain, now,
+                                time_scale=wmeta.get("time_scale", 1.0))
+                            await store.put_agent(dst, infected)
+                            metas[dst] = infected
+                            if infected.get("owner_user_id"):
+                                from genome_core import notify as _nf
+                                await _nf.emit(
+                                    store._c, infected["owner_user_id"],
+                                    "agents", "infection",
+                                    f"{infected.get('name', dst)} caught "
+                                    f"{strain['strain_uuid']} in a meeting.")
+                    for me, oth in ((a, other), (other, a)):
+                        om = metas[oth]
+                        await store.schedule(
+                            realm, f"meet-{me}-{int(now)}", _d._iso(now),
+                            "encounter", me,
+                            {"other": {"agent_uuid": oth,
+                                       "colour_pair": om.get("colour_pair"),
+                                       "cargo": cargo_by.get(oth, {}),
+                                       "infected": bool(om.get("infections"))},
+                             "opinion": (metas[me].get("opinions", {})
+                                         .get(oth))})
+                    hits += 1
     return hits
 
 
