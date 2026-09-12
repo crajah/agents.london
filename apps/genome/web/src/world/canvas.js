@@ -53,6 +53,8 @@ export async function createWorldCanvas(el, opts = {}) {
   const ELECTRIC_BLUE = 0x2ee6ff;
   const PORTAL_PERIOD = 1.8;                 // seconds per collapse
   const portalCores = [];
+  const carriedSites = [];    // {g, carrier uuid, base:[x,y]} -- artifacts being
+  // dragged to a portal ride with their porter (animated each frame)
   let followUuid = null;
   const agents = new Map();   // uuid -> {a, body, tri, ring, route, pulse, pos}
   const piles = new Map();    // uuid -> {p, g, lastFill}
@@ -151,6 +153,7 @@ export async function createWorldCanvas(el, opts = {}) {
     // interim stages read as scaffolded towers filling bottom-up; the Ark
     // reads as a ribbed hull growing rib by rib. progress is 0..1.
     clearLayer(layers.constructions);
+    carriedSites.length = 0;
     for (const c of s.constructions ?? []) {
       const g = new Graphics();
       const [cx, cy] = P([c.x, c.y]);
@@ -230,6 +233,8 @@ export async function createWorldCanvas(el, opts = {}) {
             .stroke({ width: 1, color: 0xd8d0c0, alpha: 0.3 });
       }
       layers.constructions.addChild(g);
+      if (c.carried && c.carriers && c.carriers[0])
+        carriedSites.push({ g, carrier: c.carriers[0], base: [cx, cy] });
     }
     clearLayer(layers.portals);
     portalCores.length = 0;
@@ -361,6 +366,15 @@ export async function createWorldCanvas(el, opts = {}) {
         const s = 1 + 0.25 * Math.sin(now * 3);
         e.pulse.scale.set(s, s);
       }
+    }
+    // carried artifacts ride with their porter: translate the construction to
+    // follow the carrying agent (lifted, as if hauled), so a built work is seen
+    // being dragged across the world to a portal (user directive 2026-09-13)
+    for (const cs of carriedSites) {
+      const e = agents.get(cs.carrier);
+      if (!e || !e.pos) continue;
+      const [px, py] = P(e.pos);
+      cs.g.position.set(px - cs.base[0], py - cs.base[1] - 10);
     }
     if (followUuid && agents.has(followUuid)) {
       const [cx, cy] = P(agents.get(followUuid).pos);

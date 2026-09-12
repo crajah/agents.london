@@ -886,7 +886,10 @@ async def recost_sites(client: Any, realm: str, world_kinds: list[int],
 # (3.13); a carrier's death sets it down where the party stands (3.12a).
 # ---------------------------------------------------------------------------
 
-PORTABLE_EXCLUDED = {"cache"}       # a larder is dug in, not built up
+PORTABLE_EXCLUDED = {"cache", "ark", "shipyard"}   # a larder is dug in; and the
+# Ark cannot be moved between worlds (user directive 2026-09-13) -- it is the
+# world's own flood-vessel, tied to the world it was raised in; the shipyard
+# that builds it is likewise world-bound. Everything else may be carried.
 PLEDGE_FRESH_S = 3600.0             # a take-up pledge goes stale in an hour
 
 
