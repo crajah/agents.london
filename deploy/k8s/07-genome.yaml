@@ -34,6 +34,8 @@ spec:
                   optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
+            - name: GENOME_QUEUE
+              value: "redis"   # Phase 2 event queue; falls back to pg if Redis is down
             - name: GENOME_REDIRECT_BASE
               value: https://agents.london/genome-api
             - name: GENOME_WEB_BASE
@@ -163,6 +165,8 @@ spec:
                   optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
+            - name: GENOME_QUEUE
+              value: "redis"   # Phase 2 event queue; falls back to pg if Redis is down
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
@@ -239,6 +243,8 @@ spec:
                   optional: true
             - name: POSTGRES_HOST
               value: pgbouncer-service  # transaction-pooled; see marty infra/pgbouncer
+            - name: GENOME_QUEUE
+              value: "redis"   # Phase 2 event queue; falls back to pg if Redis is down
             - name: SHARD_COUNT
               value: "10"
             - name: GENOME_TOOLS_URL
