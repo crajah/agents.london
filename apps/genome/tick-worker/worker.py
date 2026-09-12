@@ -317,6 +317,33 @@ PRESENCE_RECONCILE_INTERVAL_S = float(
     os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "60"))
 CACHE_CONSOLIDATE_INTERVAL_S = float(
     os.getenv("CACHE_CONSOLIDATE_INTERVAL_S", "300"))
+REAP_INTERVAL_S = float(os.getenv("REAP_INTERVAL_S", "120"))
+REAP_OVERDUE_S = float(os.getenv("REAP_OVERDUE_S", "1200"))   # 20 min past due
+# Only the re-generable "about to think/meet" events are ever reaped -- an agent
+# that misses one just idles a beat and the sweep hands it a fresh one. NEVER
+# reap state-committing events (construction_done finalises a build, evacuate
+# carries a flood/gather hop, mating_answer/negotiate close a pair-deal): those
+# must FIRE, so capacity (more shards) drains them, not the flush.
+REAPABLE_KINDS = {"decide", "arrival", "deposit_arrival", "encounter",
+                  "encounter_answer", "mating_proposal", "mating_answer"}
+
+
+async def reap_stale_events(store: GenomeStore, realm: str, now: float,
+                            cap: int = 1000) -> int:
+    """Resilience valve (user directive 2026-09-13): re-generable agent events
+    left far past due are orphans -- their agent almost certainly drowned and
+    regenerated a flood ago -- and keep a world 'stalled' forever. Complete the
+    oldest such events so the queue drains; structural events are never touched.
+    due_events is oldest-first, so once we reach a fresh one the rest are fresh."""
+    cutoff = now - REAP_OVERDUE_S
+    reaped = 0
+    for ev in await store.due_events(realm, drain._iso(now), limit=cap):
+        if float(ev.payload.get("due_at") or now) > cutoff:
+            break
+        if ev.payload.get("kind") in REAPABLE_KINDS:
+            await store.complete_event(realm, ev.payload["key"], drain._iso(now))
+            reaped += 1
+    return reaped
 
 
 async def reconcile_presence(store: GenomeStore) -> int:
@@ -424,6 +451,7 @@ async def main() -> None:
     last_done_prune = 0.0
     last_presence_reconcile = 0.0
     last_cache_consolidate = 0.0
+    last_reap = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -525,6 +553,22 @@ async def main() -> None:
                                         rc["completed"])
                     except Exception:
                         logger.exception("recost failed: %s", r)
+            reap_due = time.time() - last_reap > REAP_INTERVAL_S
+            if SHARD_INDEX == 0 and reap_due:
+                # periodic event-queue flush (user directive 2026-09-13): clear
+                # orphaned re-generable events so no world stays stalled on
+                # ancient stragglers. Kind- and age-gated; structural events
+                # are left to fire. Capacity (shards) is the primary drain.
+                last_reap = time.time()
+                total = 0
+                for r in realms:
+                    try:
+                        total += await reap_stale_events(store, r, time.time())
+                    except Exception:
+                        logger.exception("reap failed: %s", r)
+                if total:
+                    logger.info("reaped %d stale orphan events across %d realms",
+                                total, len(realms))
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
