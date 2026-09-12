@@ -21,6 +21,11 @@ import json
 import os
 
 SCHED_KEY = os.getenv("GENOME_REDIS_SCHED", "genome:sched")
+# decision_queue -> Redis (Phase 2b): same delay-queue/claim, a second key.
+# Decisions have no delay (ready when enqueued), so they are claimed with an
+# open upper bound; the member carries only {subject, key} and the consumer
+# loads the durable PG row by key.
+DECISIONS_KEY = os.getenv("GENOME_REDIS_DECISIONS", "genome:decisions")
 
 # Atomic claim: gather the oldest DUE members, restricted to the SUBJECTS of the
 # very oldest few, remove them, and return them. Single Lua = single atomic step
@@ -107,14 +112,14 @@ class RedisQueue:
         except Exception:
             pass                       # PG is the source of truth; queue is a cache
 
-    async def claim(self, now_epoch: float, max_subjects: int = 64) -> list[dict]:
-        """Atomically claim (and remove) the oldest due events, whole-subject.
-        Returns decoded event dicts ({realm,key,subject,kind,due_at,payload})."""
+    async def _claim_key(self, key: str, upto: str,
+                         max_subjects: int) -> list[dict]:
+        """Atomic whole-subject claim (and remove) of members scored <= `upto`
+        on `key`. Shared by the event queue and the decision queue."""
         if not self._claim:
             return []
         try:
-            raw = await self._claim(keys=[SCHED_KEY],
-                                    args=[f"{now_epoch:.3f}", int(max_subjects)])
+            raw = await self._claim(keys=[key], args=[upto, int(max_subjects)])
         except Exception:
             return []
         out = []
@@ -125,6 +130,29 @@ class RedisQueue:
                 continue
         return out
 
+    async def claim(self, now_epoch: float, max_subjects: int = 64) -> list[dict]:
+        """Claim the oldest DUE events (score <= now), whole-subject. Returns
+        decoded dicts ({realm, subject, ev})."""
+        return await self._claim_key(SCHED_KEY, f"{now_epoch:.3f}",
+                                     max_subjects)
+
+    async def schedule_decision(self, agent_uuid: str, queued_epoch: float,
+                                dq_key: str) -> None:
+        """Mirror an enqueued decision (Phase 2b). Member is just {subject,key};
+        the consumer loads the durable PG decision_queue row by key."""
+        if not self._r:
+            return
+        member = json.dumps({"subject": agent_uuid or "", "key": dq_key})
+        try:
+            await self._r.zadd(DECISIONS_KEY, {member: float(queued_epoch)})
+        except Exception:
+            pass
+
+    async def claim_decisions(self, max_subjects: int = 64) -> list[dict]:
+        """Claim pending decisions, whole-agent. No delay -- all are ready, so
+        the upper bound is open (+inf). Returns dicts ({subject, key})."""
+        return await self._claim_key(DECISIONS_KEY, "+inf", max_subjects)
+
     async def depth(self) -> int:
         if not self._r:
             return 0
@@ -133,16 +161,21 @@ class RedisQueue:
         except Exception:
             return 0
 
-    async def reseed(self, members: list[tuple[str, float]]) -> int:
-        """Rebuild the queue from PG's undone events (startup / Redis loss).
-        members: list of (member_json, due_epoch). Idempotent -- ZADD upserts."""
+    async def reseed(self, members: list[tuple[str, float]],
+                     key: str = SCHED_KEY) -> int:
+        """Rebuild a queue from PG's undone rows (startup / Redis loss).
+        members: list of (member_json, score). Idempotent -- ZADD upserts."""
         if not self._r or not members:
             return 0
         try:
-            await self._r.zadd(SCHED_KEY, {m: s for m, s in members})
+            await self._r.zadd(key, {m: s for m, s in members})
             return len(members)
         except Exception:
             return 0
+
+    @staticmethod
+    def decision_member(agent_uuid: str, dq_key: str) -> str:
+        return json.dumps({"subject": agent_uuid or "", "key": dq_key})
 
     async def close(self) -> None:
         if self._r:

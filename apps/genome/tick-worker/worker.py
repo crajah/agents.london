@@ -657,10 +657,11 @@ async def main() -> None:
                                         rc["completed"])
                     except Exception:
                         logger.exception("recost failed: %s", r)
-            from genome_core import redisq as _rq2
-            reap_due = (time.time() - last_reap > REAP_INTERVAL_S
-                       and _rq2.queue() is None)   # PG path only; the redis
-            # consumer drains orphans continuously, so no reap is needed there
+            # Reap runs in BOTH modes (fix 2026-09-13): the redis consumer alone
+            # left ~17 structural stragglers aging (claimed but not completed);
+            # the reap clears the safe re-generable kinds. Only REAPABLE_KINDS
+            # are touched, so a reaped-then-reclaimed event re-decides harmlessly.
+            reap_due = time.time() - last_reap > REAP_INTERVAL_S
             if SHARD_INDEX == 0 and reap_due:
                 # periodic event-queue flush (user directive 2026-09-13): clear
                 # orphaned re-generable events so no world stays stalled on

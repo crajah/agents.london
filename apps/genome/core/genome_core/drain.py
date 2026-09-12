@@ -1072,8 +1072,9 @@ async def enqueue_decision(store: GenomeStore, world_realm: str,
                      "situation": req.situation},
             where=[("done_at", "is_null", None)]):
         return
+    dq_key = f"dq-{_u.uuid4().hex[:12]}"
     await store._c.add_vertex(DECISION_QUEUE, realm="genome_agents",
-        payload={"key": f"dq-{_u.uuid4().hex[:12]}",
+        payload={"key": dq_key,
                  "world_realm": world_realm,
                  "agent_uuid": req.agent_uuid,
                  "situation": req.situation,
@@ -1081,6 +1082,15 @@ async def enqueue_decision(store: GenomeStore, world_realm: str,
                  "context": req.context,
                  "event_payload": event_payload,
                  "queued_at": _iso(now), "done_at": None})
+    # write-through to the Redis decision queue (Phase 2b). PG row above is the
+    # durable truth (and the dedup guard); the mirror is what consumers claim.
+    from . import redisq
+    q = redisq.queue()
+    if q is not None:
+        try:
+            await q.schedule_decision(req.agent_uuid, now, dq_key)
+        except Exception:
+            pass
 
 
 async def apply_decided(store: GenomeStore, world_realm: str,

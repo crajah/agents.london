@@ -179,6 +179,73 @@ async def work_one(store: GenomeStore, client, item) -> str:
     return outcome
 
 
+async def reseed_decisions(client, rq) -> int:
+    """Rebuild the Redis decision queue from PG's undone decision_queue rows
+    (startup / Redis loss). Idempotent ZADD. Runs on shard 0."""
+    rows = await client.find_vertices("decision_queue", realm=AGENTS_REALM,
+                                      where=[("done_at", "is_null", None)],
+                                      limit=100000)
+    members = []
+    for v in rows:
+        pl = v.payload
+        try:
+            score = float(pl.get("queued_at") or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        members.append((rq.decision_member(pl.get("agent_uuid", ""),
+                                            pl["key"]), score))
+    from genome_core import redisq as _rq
+    return await rq.reseed(members, key=_rq.DECISIONS_KEY)
+
+
+async def process_redis_decisions(store, client, rq) -> int:
+    """Competing-consumer decisions: claim pending ones (whole-agent, atomic),
+    load the durable PG row by key, and run work_one -- so any worker takes any
+    agent's decision, no SHARD_COUNT. One agent's decisions stay serial."""
+    claimed = await rq.claim_decisions(max_subjects=64)
+    if not claimed:
+        return 0
+    groups: dict = {}
+    for d in claimed:
+        groups.setdefault(d.get("subject") or "", []).append(d)
+    sem = asyncio.Semaphore(16)
+    done = 0
+
+    async def _work_agent(items):
+        nonlocal done
+        async with sem:
+            for d in items:
+                key = d.get("key")
+                if not key:
+                    continue
+                rows = await client.find_vertices(
+                    "decision_queue", realm=AGENTS_REALM,
+                    filters={"key": key},
+                    where=[("done_at", "is_null", None)], limit=1)
+                if not rows:
+                    continue                 # already done / pruned
+                try:
+                    outcome = await work_one(store, client, rows[0])
+                    logger.info("%s %s -> %s (redis)",
+                                rows[0].payload.get("world_realm"),
+                                rows[0].payload.get("agent_uuid"), outcome)
+                    done += 1
+                except Exception:
+                    logger.exception("redis decision failed for %s",
+                                     d.get("subject"))
+                    try:
+                        await client.upsert_vertex(
+                            "decision_queue", realm=AGENTS_REALM,
+                            vertex_id=int(rows[0].id),
+                            payload={**rows[0].payload,
+                                     "done_at": drain._iso(time.time()),
+                                     "outcome": "error"})
+                    except Exception:
+                        pass
+    await asyncio.gather(*(_work_agent(v) for v in groups.values()))
+    return done
+
+
 async def main() -> None:
     from genome_core import metrics as _metrics
     _metrics.serve(9100)   # pod annotation scrape (marty infra/telemetry)
@@ -192,7 +259,15 @@ async def main() -> None:
     if os.getenv("GENOME_QUEUE", "pg") == "redis":
         from genome_core import redisq
         if await redisq.init():
-            logger.info("redis queue: connected (write-through)")
+            logger.info("redis queue: connected (decision consumer)")
+            if SHARD_INDEX == 0:
+                try:
+                    n = await reseed_decisions(client, redisq.queue())
+                    logger.info("redis decisions: reseeded %d pending", n)
+                except Exception:
+                    logger.exception("decision reseed failed")
+        else:
+            logger.warning("redis unreachable -- decision-worker on pg poll")
     # Consumption accounting: genome inference lands in the platform ledger
     # like every other processing action. A DEDICATED schema-per-realm
     # client keeps the ledger in the platform_system schema regardless of
@@ -226,15 +301,10 @@ async def main() -> None:
     try:
         prune_at = 0.0
         while not stop.is_set():
-            try:
-                rows = await client.find_vertices(
-                    "decision_queue", realm=AGENTS_REALM,
-                    where=[("done_at", "is_null", None)], limit=500)
-                items = [v for v in rows
-                         if mine(v.payload.get("agent_uuid", ""))]
-                if SHARD_INDEX == 0 and time.time() > prune_at:
-                    # hourly ledger hygiene; one shard sweeps for all
-                    prune_at = time.time() + 3600
+            # shard-0 prunes done decision_queue rows hourly (both queue modes)
+            if SHARD_INDEX == 0 and time.time() > prune_at:
+                prune_at = time.time() + 3600
+                try:
                     cutoff = drain._iso(time.time() - 86400)
                     n = await client.delete_vertices(
                         "decision_queue", realm=AGENTS_REALM,
@@ -242,6 +312,27 @@ async def main() -> None:
                                ("done_at", "<", cutoff)])
                     if n:
                         logger.info("pruned %d done queue rows", n)
+                except Exception:
+                    logger.exception("queue prune failed")
+            # Phase 2b: when the Redis decision queue is active, consume it
+            # continuously (any worker, any agent, no SHARD_COUNT). Else the
+            # legacy PG poll (agent-hash shard) below -- also the redis fallback.
+            from genome_core import redisq as _rq
+            _q = _rq.queue()
+            if _q is not None:
+                n = await process_redis_decisions(store, client, _q)
+                if n == 0:
+                    try:
+                        await asyncio.wait_for(stop.wait(), timeout=0.25)
+                    except (TimeoutError, asyncio.TimeoutError):
+                        pass
+                continue
+            try:
+                rows = await client.find_vertices(
+                    "decision_queue", realm=AGENTS_REALM,
+                    where=[("done_at", "is_null", None)], limit=500)
+                items = [v for v in rows
+                         if mine(v.payload.get("agent_uuid", ""))]
             except Exception:
                 # a re-dialing tunnel resets connections; survive it
                 logger.exception("queue poll failed; retrying")
