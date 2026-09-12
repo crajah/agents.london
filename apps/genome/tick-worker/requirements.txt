@@ -2,3 +2,4 @@ post-graph>=1.6.0
 post-graph-rag>=1.8.0
 cryptography>=42
 prometheus-client>=0.20
+redis>=5.0.0

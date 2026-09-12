@@ -56,6 +56,8 @@ def mine(realm: str) -> bool:
     return zlib.crc32(realm.encode()) % SHARD_COUNT == SHARD_INDEX
 TICK_SECONDS = float(os.getenv("GENOME_TICK_SECONDS", "5"))
 USE_LLM = os.getenv("GENOME_USE_LLM", "1") == "1"
+QUEUE = os.getenv("GENOME_QUEUE", "pg")   # "pg" (SKIP LOCKED) | "redis" (delay
+# queue + atomic Lua claim, drained by a continuous consumer -- Phase 2)
 INLINE = os.getenv("GENOME_INLINE_DECIDER", "0") == "1"   # tests only:
 # system-spec Rule 8.4 -- production never decides on the world queue
 
@@ -442,6 +444,69 @@ async def drain_claimed(store: GenomeStore, decider,
     return done
 
 
+async def reseed_redis(store: GenomeStore, rq) -> int:
+    """Rebuild the delay queue from PG's undone events (startup / Redis loss).
+    PG is the durable truth; ZADD is idempotent so this is safe to re-run."""
+    rows = await store._c.fetch(
+        "SELECT realm, payload FROM events WHERE p_done_at IS NULL")
+    import json as _json
+    members = []
+    for r in rows:
+        pl = r["payload"]
+        if isinstance(pl, str):
+            pl = _json.loads(pl)
+        try:
+            due = float(pl.get("due_at") or 0.0)
+        except (TypeError, ValueError):
+            due = 0.0
+        members.append((rq.member(r["realm"], pl.get("subject") or "", pl), due))
+    return await rq.reseed(members)
+
+
+async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
+    """Continuous competing-consumer: claim the oldest due events (whole-subject,
+    atomic Lua) and drain them, with NO tick-cycle gate -- this is what fixes the
+    idle-between-bursts throughput of the PG path. drain_one completes the PG
+    event itself; the claim already removed the member from the queue."""
+    from genome_core import redisq
+    from types import SimpleNamespace as _NS
+    sem = asyncio.Semaphore(8)
+    idle = 0
+    while not stop.is_set():
+        rq = redisq.queue()
+        if rq is None:
+            await asyncio.sleep(1.0)
+            continue
+        claimed = await rq.claim(time.time(), max_subjects=64)
+        if not claimed:
+            idle = min(idle + 1, 5)
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=0.1 * idle)
+            except (TimeoutError, asyncio.TimeoutError):
+                pass
+            continue
+        idle = 0
+        groups: dict[str, list] = {}
+        for d in claimed:
+            groups.setdefault(d.get("subject") or "", []).append(d)
+
+        async def _drain_subject(items):
+            async with sem:
+                for d in sorted(items,
+                                key=lambda x: x.get("ev", {}).get("due_at", "")):
+                    ev = _NS(realm=d["realm"], payload=d["ev"])
+                    try:
+                        outcome = await drain.drain_one(
+                            store, d["realm"], d["realm"], ev, decider,
+                            seed=int(time.time()))
+                        logger.info("%s %s -> %s (redis)", d["realm"],
+                                    d.get("subject"), outcome)
+                    except Exception:
+                        logger.exception("redis drain failed for %s in %s",
+                                         d.get("subject"), d.get("realm"))
+        await asyncio.gather(*(_drain_subject(v) for v in groups.values()))
+
+
 async def main() -> None:
     from genome_core import metrics as _metrics
     _metrics.serve(9100)   # pod annotation scrape (marty infra/telemetry)
@@ -455,8 +520,22 @@ async def main() -> None:
     stop = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
-    logger.info("tick worker up: shard %d/%d, seed realms=%s llm=%s",
-                SHARD_INDEX, SHARD_COUNT, REALMS, USE_LLM)
+    logger.info("tick worker up: shard %d/%d, seed realms=%s llm=%s queue=%s",
+                SHARD_INDEX, SHARD_COUNT, REALMS, USE_LLM, QUEUE)
+    consumer_task = None
+    if QUEUE == "redis":
+        from genome_core import redisq
+        if await redisq.init():
+            logger.info("redis queue: connected")
+            if SHARD_INDEX == 0:
+                # one worker reseeds the durable PG backlog into the queue on
+                # startup (idempotent ZADD); the rest just consume + write-through
+                seeded = await reseed_redis(store, redisq.queue())
+                logger.info("redis queue: reseeded %d undone events", seeded)
+            consumer_task = asyncio.create_task(
+                redis_consumer_loop(store, decider, stop))
+        else:
+            logger.warning("redis queue: unreachable -- falling back to pg drain")
     cycle = 0
     realms = list(REALMS)
     last_movement_prune = 0.0
@@ -495,16 +574,18 @@ async def main() -> None:
                 except Exception:
                     logger.exception("tick failed for %s", realm)
             await asyncio.gather(*(_tick(r) for r in realms if mine(r)))
-            # shared claim-queue drain (scale rewrite Phase 1, 2026-09-13):
-            # EVERY worker pulls due events for ANY world from the shared queue,
-            # so a hot world is worked by the whole pool -- draining is no longer
-            # bound to the realm shard. Maintenance (above) stays sharded for now.
-            try:
-                drained = await drain_claimed(store, decider)
-                if drained:
-                    logger.info("shared queue: drained %d events", drained)
-            except Exception:
-                logger.exception("shared drain failed")
+            # shared claim-queue drain (Phase 1, PG SKIP LOCKED). Skipped when
+            # the Redis queue (Phase 2) is active -- there a continuous consumer
+            # task drains instead, ungated by this tick cycle. This path also
+            # covers the redis-unreachable fallback.
+            from genome_core import redisq as _rq
+            if _rq.queue() is None:
+                try:
+                    drained = await drain_claimed(store, decider)
+                    if drained:
+                        logger.info("shared queue: drained %d events", drained)
+                except Exception:
+                    logger.exception("shared drain failed")
             if SHARD_INDEX == 0 and cycle % 5 == 0:
                 # the postman rides with shard 0 (system-spec §10): a no-op
                 # until GENOME_SMTP_HOST arrives, then the outbox drains
@@ -576,7 +657,10 @@ async def main() -> None:
                                         rc["completed"])
                     except Exception:
                         logger.exception("recost failed: %s", r)
-            reap_due = time.time() - last_reap > REAP_INTERVAL_S
+            from genome_core import redisq as _rq2
+            reap_due = (time.time() - last_reap > REAP_INTERVAL_S
+                       and _rq2.queue() is None)   # PG path only; the redis
+            # consumer drains orphans continuously, so no reap is needed there
             if SHARD_INDEX == 0 and reap_due:
                 # periodic event-queue flush (user directive 2026-09-13): clear
                 # orphaned re-generable events so no world stays stalled on

@@ -186,6 +186,13 @@ async def main() -> None:
                             statement_cache_size=0)  # pgbouncer; SCHEMA_PER_REALM unset
     await client.connect()
     store = GenomeStore(client)
+    # Write-through to the Redis event queue (Phase 2): decisions this worker
+    # applies schedule follow-up events (mining_done, arrival, ...); with the
+    # queue on Redis those must mirror there too, so store.schedule reaches it.
+    if os.getenv("GENOME_QUEUE", "pg") == "redis":
+        from genome_core import redisq
+        if await redisq.init():
+            logger.info("redis queue: connected (write-through)")
     # Consumption accounting: genome inference lands in the platform ledger
     # like every other processing action. A DEDICATED schema-per-realm
     # client keeps the ledger in the platform_system schema regardless of

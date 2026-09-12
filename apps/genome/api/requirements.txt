@@ -5,3 +5,4 @@ uvicorn>=0.30
 cryptography>=42
 prometheus-client>=0.20
 PyJWT>=2.9
+redis>=5.0.0

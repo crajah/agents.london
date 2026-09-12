@@ -152,10 +152,21 @@ class GenomeStore:
 
     async def schedule(self, world_realm: str, event_id: str, due_at: str,
                        kind: str, subject: str, payload: dict) -> None:
-        await self._upsert_by_key(
-            EVENTS, _req(world_realm, "world realm"), _req(event_id, "event"),
-            {"due_at": due_at, "kind": kind, "subject": subject,
-             "payload": payload, "done_at": None})
+        r = _req(world_realm, "world realm")
+        ev_payload = {"due_at": due_at, "kind": kind, "subject": subject,
+                      "payload": payload, "done_at": None, "key": event_id}
+        await self._upsert_by_key(EVENTS, r, _req(event_id, "event"),
+                                  ev_payload)
+        # write-through to the Redis delay queue (Phase 2). PG above is the
+        # durable truth; this mirror is a cache the consumers drain, rebuilt
+        # from PG if lost. Best-effort -- never let a queue hiccup fail a write.
+        from . import redisq
+        q = redisq.queue()
+        if q is not None:
+            try:
+                await q.schedule(r, subject, float(due_at), ev_payload)
+            except Exception:
+                pass
 
     async def due_events(self, world_realm: str, now: str,
                          limit: int = 500) -> list:

@@ -55,6 +55,15 @@ async def lifespan(app: FastAPI):
     client = make_client()
     await client.connect()
     app.state.pg = client
+    if __import__("os").getenv("GENOME_QUEUE", "pg") == "redis":
+        # write-through only: the api schedules events (evacuate on gather,
+        # spawn), which must mirror into the Redis queue (Phase 2)
+        try:
+            from genome_core import redisq
+            if await redisq.init():
+                logger.info("redis queue: connected (write-through)")
+        except Exception:
+            logger.exception("redis queue init failed; continuing")
     try:
         await store.ensure_agents_realm(client)
         logger.info("agents realm ensured")

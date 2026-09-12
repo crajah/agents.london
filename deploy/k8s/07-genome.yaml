@@ -22,6 +22,8 @@ spec:
           ports: [{ containerPort: 8800 }]
           envFrom:
             - secretRef: { name: postgres-secrets }
+            - secretRef: { name: redis-secret }   # REDIS_HOST/PORT/PASSWORD
+            # for the Phase 2 event queue (GENOME_QUEUE=redis); harmless in pg mode
             - secretRef: { name: oidc-auth-secret }
           env:
             - name: DOCREG_INTERNAL_TOKEN
@@ -150,6 +152,8 @@ spec:
           image: gcr.io/crajah-dev/genome-tick-worker:latest
           envFrom:
             - secretRef: { name: postgres-secrets }
+            - secretRef: { name: redis-secret }   # REDIS_HOST/PORT/PASSWORD
+            # for the Phase 2 event queue (GENOME_QUEUE=redis); harmless in pg mode
           env:
             - name: DOCREG_INTERNAL_TOKEN
               valueFrom:
@@ -224,6 +228,8 @@ spec:
           image: gcr.io/crajah-dev/genome-decision-worker:latest
           envFrom:
             - secretRef: { name: postgres-secrets }
+            - secretRef: { name: redis-secret }   # REDIS_HOST/PORT/PASSWORD
+            # for the Phase 2 event queue (GENOME_QUEUE=redis); harmless in pg mode
           env:
             - name: DOCREG_INTERNAL_TOKEN
               valueFrom:
