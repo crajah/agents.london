@@ -93,6 +93,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "market": meta.get("market"),
             "market_open": await _open_listings(client, world_realm,
                                                 agents),
+            "market_deals": await _recent_deals(client, world_realm, agents),
             "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "flood_countdown": _flood.countdown_visible(meta, _time.time()),
@@ -116,19 +117,54 @@ async def _open_listings(client: Any, world_realm: str,
     NAME (user directive 2026-09-02), resolved from the room first and the
     agents realm for absentees."""
     names = {a.get("agent_uuid"): a.get("name") for a in agents}
+    cols = {a.get("agent_uuid"): a.get("colour_pair") for a in agents}
     out = []
     for l in await _mkt.board(client, world_realm):
         if l.get("status") != "open":
             continue
         lister = l.get("lister")
         name = names.get(lister)
-        if name is None and lister:
+        colours = cols.get(lister)
+        if (name is None or colours is None) and lister:
             rows = await client.find_vertices("agents", realm=AGENTS_REALM,
                                               filters={"key": lister},
                                               limit=1)
-            name = rows[0].payload.get("name") if rows else None
+            if rows:
+                name = name or rows[0].payload.get("name")
+                colours = colours or rows[0].payload.get("colour_pair")
         out.append({"key": l["key"], "give": l["give"], "want": l["want"],
-                    "by": name or (lister or "?")[:14], "lister": lister})
+                    "by": name or (lister or "?")[:14], "lister": lister,
+                    "colours": colours or []})
+    return out
+
+
+async def _recent_deals(client: Any, world_realm: str,
+                        agents: list[dict]) -> list[dict]:
+    """Completed trades for the ticker: who gave what to whom, newest first."""
+    from genome_core import market as _mkt
+    names = {a.get("agent_uuid"): a.get("name") for a in agents}
+    cols = {a.get("agent_uuid"): a.get("colour_pair") for a in agents}
+
+    async def _who(uuid):
+        if not uuid:
+            return ("?", [])
+        nm, co = names.get(uuid), cols.get(uuid)
+        if nm is None or co is None:
+            rows = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                              filters={"key": uuid}, limit=1)
+            if rows:
+                nm = nm or rows[0].payload.get("name")
+                co = co or rows[0].payload.get("colour_pair")
+        return (nm or uuid[:14], co or [])
+
+    out = []
+    for d in await _mkt.recent_deals(client, world_realm):
+        fnm, fco = await _who(d.get("lister"))
+        tnm, tco = await _who(d.get("filled_by"))
+        out.append({"give": d.get("give", {}), "want": d.get("want", {}),
+                    "from": fnm, "from_colours": fco,
+                    "to": tnm, "to_colours": tco,
+                    "at": d.get("filled_at", 0.0)})
     return out
 
 

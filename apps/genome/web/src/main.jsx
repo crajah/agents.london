@@ -1092,6 +1092,16 @@ function MarketPanel({ info }) {
       <span className="w-2.5 h-2.5 rounded-full inline-block"
             style={{ background: colourOf(k) }} />
     </span>);
+  // an agent's lineage colours, shown beside its name (user directive)
+  const Cols = ({ c }) => (
+    <>{(c ?? []).map((col, i) =>
+      <span key={i} className="w-2.5 h-2.5 rounded-full inline-block ml-0.5
+                               align-middle" style={{ background: col }} />)}</>);
+  const Who = ({ name, colours }) => (
+    <span className="inline-flex items-center gap-0.5">
+      <span className="opacity-80 truncate max-w-[8rem]">{name ?? "someone"}</span>
+      <Cols c={colours} /></span>);
+  const deals = info?.deals ?? [];
   return (
     <div className="absolute top-2 right-60 z-20 text-xs">
       <button onClick={() => setOpen(o => !o)}
@@ -1109,13 +1119,30 @@ function MarketPanel({ info }) {
             <div className="opacity-50">the board is bare</div>}
           {listings.map(l => (
             <div key={l.key} className="py-1 border-t border-neutral-800">
-              <div className="opacity-70 truncate">{l.by ?? "someone"}</div>
+              <div className="mb-0.5"><Who name={l.by} colours={l.colours} /></div>
               <span className="opacity-60">gives </span>
               {Object.entries(l.give ?? {}).map(([k, u]) =>
                 <Chip key={k} k={k} u={u} />)}
               <span className="opacity-60"> for </span>
               {Object.entries(l.want ?? {}).map(([k, u]) =>
                 <Chip key={k} k={k} u={u} />)}
+            </div>))}
+          <div className="opacity-60 mt-2 mb-1 pt-1 border-t
+                          border-neutral-700">deals done — recent trades</div>
+          {deals.length === 0 &&
+            <div className="opacity-50">no trades yet</div>}
+          {deals.map((d, i) => (
+            <div key={i} className="py-1 border-t border-neutral-800">
+              <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                <Who name={d.from} colours={d.from_colours} />
+                <span className="opacity-50">→</span>
+                <Who name={d.to} colours={d.to_colours} />
+              </div>
+              {Object.entries(d.give ?? {}).map(([k, u]) =>
+                <Chip key={k} k={k} u={u} />)}
+              <span className="opacity-60"> for </span>
+              {Object.entries(d.want ?? {}).map(([k, u]) =>
+                <Chip key={"w" + k} k={k} u={u} />)}
             </div>))}
         </div>)}
     </div>);
@@ -1655,6 +1682,7 @@ function App() {
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
+                        deals: snap.market_deals ?? [],
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
@@ -1687,6 +1715,7 @@ function App() {
           setSnapInfo({ stock: snap.stock, kinds: snap.kinds,
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
+                        deals: snap.market_deals ?? [],
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);

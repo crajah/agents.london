@@ -33,6 +33,21 @@ async def board(client: Any, realm: str) -> list[dict]:
     return out
 
 
+async def recent_deals(client: Any, realm: str, limit: int = 12) -> list[dict]:
+    """Completed trades for the ticker (user directive 2026-09-13): the board
+    shows live bid/ask, this shows deals DONE. Collected listings, newest
+    first -- what changed hands and between whom."""
+    try:
+        rows = await client.find_vertices(TABLE, realm=realm,
+                                          filters={"status": "collected"},
+                                          limit=200)
+    except Exception:
+        return []
+    deals = sorted((v.payload for v in rows),
+                   key=lambda l: l.get("filled_at", 0.0), reverse=True)
+    return deals[:limit]
+
+
 def open_listings(listings: list[dict]) -> list[dict]:
     return [l for l in listings if l.get("status") == "open"]
 
