@@ -332,7 +332,9 @@ async def prune_done_rows(store: GenomeStore, now: float) -> int:
 
 
 PRESENCE_RECONCILE_INTERVAL_S = float(
-    os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "60"))
+    os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "20"))   # 60->20 (2026-09-13):
+# shrink the window a departed agent can linger as a ghost at a teleport point
+# when a stale event re-adds its origin presence (1a mitigation)
 CACHE_CONSOLIDATE_INTERVAL_S = float(
     os.getenv("CACHE_CONSOLIDATE_INTERVAL_S", "300"))
 EVENT_LEASE_S = float(os.getenv("EVENT_LEASE_S", "30"))   # claim-queue lease:
