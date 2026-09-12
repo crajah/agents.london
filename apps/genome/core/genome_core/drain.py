@@ -1290,6 +1290,72 @@ async def apply_route_home(store: GenomeStore, world_realm: str,
     return await gather_next_hop(store, world_realm, view, route, now)
 
 
+def ring_positions(n: int) -> list:
+    """n evenly-spaced points on concentric rings around the world centre --
+    the commons rim generalised to every world (user directive 2026-09-13). A
+    ring fills before the next (inner) one opens, so a world's teleport points
+    read as a tidy ring, growing a second ring only when there are many."""
+    import math as _m
+    out = []
+    radii = [0.40, 0.29, 0.18]
+    i = ring = 0
+    while i < n:
+        r = radii[ring] if ring < len(radii) else max(0.08, 0.40 - 0.06 * ring)
+        cap = max(1, int(2 * _m.pi * r / 0.11))     # keep >0.10 apart
+        take = min(cap, n - i)
+        for k in range(take):
+            ang = 2 * _m.pi * k / take + ring * 0.4    # offset so rings don't
+            out.append([round(0.5 + r * _m.cos(ang), 4),  # radially align
+                        round(0.5 + r * _m.sin(ang), 4)])
+        i += take
+        ring += 1
+    return out
+
+
+async def relayout_all_portals(store: GenomeStore) -> int:
+    """Lay every world's teleport points out uniformly on rings, like the
+    commons (user directive 2026-09-13). Two passes so a door and the arrival
+    point on the far side agree: pass 1 fixes each world's door position
+    (deterministic by sorted to_world, so idempotent), pass 2 writes each
+    portal's own x/y and its dest_xy = the peer world's door back here. Commons
+    keeps its own rim layout. Shard 0; a tidy map is a no-op."""
+    realms = {"genome_commons_0"}
+    for v in await store._c.get_vertices("agents", realm="genome_agents"):
+        wr = v.payload.get("world_realm")
+        if wr:
+            realms.add(wr)
+    metas = {}
+    for r in realms:
+        m = await _world_payload(store, r)
+        if m and not m.get("is_commons"):
+            metas[r] = m
+    door: dict = {}
+    for r, m in metas.items():
+        ports = sorted((p for p in m.get("portals", []) if p.get("to_world")),
+                       key=lambda p: p["to_world"])
+        pos = ring_positions(len(ports))
+        door[r] = {p["to_world"]: pos[i] for i, p in enumerate(ports)}
+    changed = 0
+    for r, m in metas.items():
+        ports = sorted((p for p in m.get("portals", []) if p.get("to_world")),
+                       key=lambda p: p["to_world"])
+        moved = False
+        newports = []
+        for p in ports:
+            xy = door[r][p["to_world"]]
+            np = {**p, "x": xy[0], "y": xy[1]}
+            back = door.get(p["to_world"], {}).get(r)
+            if back:
+                np["dest_xy"] = back
+            if [round(p.get("x", -9), 4), round(p.get("y", -9), 4)] != xy:
+                moved = True
+            newports.append(np)
+        if moved:
+            await store.put_world(r, {**m, "portals": newports})
+            changed += 1
+    return changed
+
+
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     ev, decider, seed: int) -> str:
     """Process one due event vertex. Returns the choice or event kind."""

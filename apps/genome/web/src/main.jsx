@@ -1007,6 +1007,13 @@ function Legend() {
       <Row icon={<span className="inline-block w-3 h-3 rotate-45
                                   bg-emerald-700/70" />}>
         cache — a larder only its line's colours open</Row>
+      <Row icon="⛴">
+        ark — the flood vessel; hold a berth here to survive the water</Row>
+      <Row icon="🌊">
+        the water is coming — a countdown banner appears before a world floods;
+        agents not aboard an ark drown</Row>
+      <Row icon="→">
+        gather/scurry — an admin march moving a world's agents toward a portal</Row>
     </div>);
 }
 

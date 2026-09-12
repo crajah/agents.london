@@ -721,6 +721,15 @@ async def main() -> None:
                                         rc["completed"])
                     except Exception:
                         logger.exception("recost failed: %s", r)
+                # uniform teleport layout (user directive 2026-09-13): lay every
+                # world's doors out on concentric rings, like the commons.
+                # Deterministic -> idempotent (a tidy map is a no-op).
+                try:
+                    moved = await drain.relayout_all_portals(store)
+                    if moved:
+                        logger.info("teleport layout: tidied %d worlds", moved)
+                except Exception:
+                    logger.exception("portal relayout failed")
             reap_due = time.time() - last_reap > REAP_INTERVAL_S
             if SHARD_INDEX == 0 and reap_due:
                 last_reap = time.time()
