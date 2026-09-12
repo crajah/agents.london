@@ -9,6 +9,7 @@ kagent casts in Phase 2.
 from __future__ import annotations
 
 import json
+import os
 import uuid as uuidlib
 
 from . import combat, construction, engine, forms, identity, market, \
@@ -23,6 +24,11 @@ from . import flood as _flood_mod
 from .models import assign_models
 from .genotype import BUDGETED, expressed, lifespan_days
 from .store import GenomeStore
+
+# Max present agents a world sustains via breeding (user directive 2026-09-13):
+# beyond this an offspring's home is "full" and the child isn't born, so a world
+# can't grow so dense it starves its own agents of decision throughput.
+BREED_DENSITY_CAP = int(os.getenv("GENOME_BREED_CAP", "60"))
 
 
 def _iso(t: float) -> str:
@@ -2385,6 +2391,15 @@ async def consummate(store: GenomeStore, world_realm: str,
         seed = f"{pair_key}:{child_uuid}"
         cg = G.crossover(parent_pl["genotype"], mate_pl["genotype"], seed)
         home = parent_pl.get("home_realm", world_realm)
+        # density throttle (user directive 2026-09-13): a crowded world can't
+        # sustain more mouths -- and 100+ agents saturate the decision pool so
+        # everyone turns lethargic. If the offspring's home is at capacity this
+        # child isn't born (the pool was still spent; the line waits for room).
+        present_home = sum(
+            1 for v in await store.agents_in(home)
+            if not str(v.payload.get("key", "")).startswith("user:"))
+        if present_home >= BREED_DENSITY_CAP:
+            continue
         home_meta = await _world_payload(store, home)
         ident = identity.identity_hash(cg, home, child_uuid)
         cert = None
