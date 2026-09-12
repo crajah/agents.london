@@ -317,6 +317,8 @@ PRESENCE_RECONCILE_INTERVAL_S = float(
     os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "60"))
 CACHE_CONSOLIDATE_INTERVAL_S = float(
     os.getenv("CACHE_CONSOLIDATE_INTERVAL_S", "300"))
+EVENT_LEASE_S = float(os.getenv("EVENT_LEASE_S", "30"))   # claim-queue lease:
+# a worker that dies leaves its claimed events re-claimable after this lapses
 REAP_INTERVAL_S = float(os.getenv("REAP_INTERVAL_S", "120"))
 REAP_OVERDUE_S = float(os.getenv("REAP_OVERDUE_S", "1200"))   # 20 min past due
 # Only the re-generable "about to think/meet" events are ever reaped -- an agent
@@ -394,38 +396,49 @@ async def tick_once(store: GenomeStore, realm: str, decider,
     await sweep(store, realm, now)
     if do_heal:
         await heal(store, realm, now)
-    done = 0
-    # parallelise-everything: events for DIFFERENT agents drain concurrently
-    # (capped); one agent's events stay serial in due order -- state races
-    # are per-agent, never cross-agent
-    groups: dict[str, list] = {}
-    for ev in await store.due_events(realm, drain._iso(now)):
-        key = ev.payload.get("subject")
-        if ev.payload.get("kind") in ("encounter_answer", "mating_answer"):
-            # pair events must serialize with their COUNTERPART, not just
-            # their own agent -- two first-writers raced and split the pair
-            other = (ev.payload.get("payload", {}).get("other", {})
-                     .get("agent_uuid")) or \
-                (ev.payload.get("payload", {}).get("proposer", {})
-                 .get("agent_uuid")) or ""
-            key = "pair:" + "|".join(sorted((key or "", other)))
-        groups.setdefault(key, []).append(ev)
-    sem = asyncio.Semaphore(8)
+    # Draining moved OFF the per-realm path (scale rewrite Phase 1, 2026-09-13):
+    # events are now drained from a SHARED claim-queue by drain_claimed(), so a
+    # hot world's events are worked by the whole pool, not the one worker that
+    # owns its realm. tick_once is maintenance only (sweep/heal/flood/spawn).
+    return 0
 
-    async def _drain_agent(evs):
-        nonlocal done
-        async with sem:
-            for ev in evs:
-                try:
-                    outcome = await drain.drain_one(store, realm, realm, ev,
-                                                    decider, seed=int(now))
-                    logger.info("%s %s -> %s", realm,
-                                ev.payload.get("subject"), outcome)
-                    done += 1
-                except Exception:
-                    logger.exception("drain failed for %s",
-                                     ev.payload.get("subject"))
-    await asyncio.gather(*(_drain_agent(evs) for evs in groups.values()))
+
+async def drain_claimed(store: GenomeStore, decider,
+                        max_batches: int = 12, batch: int = 64) -> int:
+    """Competing-consumers drain: pull leased batches of due events across ALL
+    realms and process them, oldest-first. Whole-subject leasing keeps one
+    agent's events on one worker (serial, in due order); DIFFERENT subjects run
+    concurrently (capped). Any worker drains any world -- throughput scales with
+    the pool, not with how realms are sharded."""
+    done = 0
+    for _ in range(max_batches):
+        now = time.time()
+        lease_until = drain._iso(now + EVENT_LEASE_S)
+        claimed = await store.claim_due_events(drain._iso(now), lease_until,
+                                               batch=batch)
+        if not claimed:
+            break
+        groups: dict[str, list] = {}
+        for ev in claimed:
+            groups.setdefault(ev.payload.get("subject") or "", []).append(ev)
+        sem = asyncio.Semaphore(8)
+
+        async def _drain_subject(evs):
+            nonlocal done
+            async with sem:
+                # one subject's events, oldest-first, serial
+                for ev in sorted(evs, key=lambda e: e.payload.get("due_at", "")):
+                    try:
+                        outcome = await drain.drain_one(
+                            store, ev.realm, ev.realm, ev, decider,
+                            seed=int(time.time()))
+                        logger.info("%s %s -> %s", ev.realm,
+                                    ev.payload.get("subject"), outcome)
+                        done += 1
+                    except Exception:
+                        logger.exception("drain failed for %s in %s",
+                                         ev.payload.get("subject"), ev.realm)
+        await asyncio.gather(*(_drain_subject(evs) for evs in groups.values()))
     return done
 
 
@@ -482,6 +495,16 @@ async def main() -> None:
                 except Exception:
                     logger.exception("tick failed for %s", realm)
             await asyncio.gather(*(_tick(r) for r in realms if mine(r)))
+            # shared claim-queue drain (scale rewrite Phase 1, 2026-09-13):
+            # EVERY worker pulls due events for ANY world from the shared queue,
+            # so a hot world is worked by the whole pool -- draining is no longer
+            # bound to the realm shard. Maintenance (above) stays sharded for now.
+            try:
+                drained = await drain_claimed(store, decider)
+                if drained:
+                    logger.info("shared queue: drained %d events", drained)
+            except Exception:
+                logger.exception("shared drain failed")
             if SHARD_INDEX == 0 and cycle % 5 == 0:
                 # the postman rides with shard 0 (system-spec §10): a no-op
                 # until GENOME_SMTP_HOST arrives, then the outbox drains

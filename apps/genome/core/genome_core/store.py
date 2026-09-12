@@ -175,6 +175,53 @@ class GenomeStore:
         await self._c.upsert_vertex(EVENTS, realm=r, vertex_id=int(rows[0].id),
                                     payload={**rows[0].payload, "done_at": now})
 
+    async def claim_due_events(self, now_s: str, lease_until_s: str,
+                               batch: int = 64) -> list:
+        """Competing-consumers claim (scale rewrite Phase 1, 2026-09-13): lease
+        a batch of the oldest DUE, unleashed events ACROSS ALL REALMS in one
+        atomic statement via FOR UPDATE SKIP LOCKED, so any worker drains any
+        world -- work is no longer bound to a realm's shard. The lease
+        (payload.lease_until) is a short expiry: a worker that dies leaves its
+        events re-claimable once it lapses. Returns light event views carrying
+        .realm and .payload (the same shape drain_one reads). Uses post-graph's
+        raw fetch (its library API); a native claim primitive is the planned
+        follow-up so the lease/due filter can ride a partial index at scale."""
+        import json as _json
+        from types import SimpleNamespace as _NS
+        # Pick the oldest due, unleashed rows (SKIP LOCKED so workers take
+        # disjoint rows), reduce to their SUBJECTS, then lease EVERY undone
+        # event of those subjects -- so one agent's whole turn goes to one
+        # worker (per-agent serialization). The `lease_until < now` guard in the
+        # UPDATE + Postgres row-lock serialization makes whole-subject claiming
+        # race-free: a second worker that picked the same subject re-evaluates
+        # the guard against the freshly-leased value and simply skips it.
+        rows = await self._c.fetch(
+            "WITH picked AS ("
+            "  SELECT DISTINCT subj FROM ("
+            f"    SELECT payload->>'subject' AS subj FROM {EVENTS} ev"
+            "     WHERE p_done_at IS NULL AND p_due_at <= $1"
+            "       AND COALESCE(payload->>'lease_until', '') < $1"
+            "       AND NOT EXISTS (SELECT 1 FROM world_meta wm"
+            "                       WHERE wm.realm = ev.realm"
+            "                         AND wm.payload->>'paused' = 'true')"
+            "     ORDER BY p_due_at LIMIT $2 FOR UPDATE SKIP LOCKED) q)"
+            f" UPDATE {EVENTS} e"
+            "   SET payload = jsonb_set(e.payload, '{lease_until}',"
+            "                           to_jsonb($3::text))"
+            "  FROM picked"
+            "  WHERE e.payload->>'subject' = picked.subj"
+            "    AND e.p_done_at IS NULL"
+            "    AND COALESCE(e.payload->>'lease_until', '') < $1"
+            "  RETURNING e.realm AS realm, e.payload AS payload",
+            now_s, int(batch), lease_until_s)
+        out = []
+        for r in rows:
+            pl = r["payload"]
+            if isinstance(pl, str):
+                pl = _json.loads(pl)
+            out.append(_NS(realm=r["realm"], payload=pl))
+        return out
+
     # ---------- agents-realm operations (space = the agent) ----------
 
     async def put_agent(self, agent_uuid: str, payload: dict) -> None:
