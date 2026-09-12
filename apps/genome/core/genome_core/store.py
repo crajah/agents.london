@@ -164,9 +164,19 @@ class GenomeStore:
         q = redisq.queue()
         if q is not None:
             try:
-                await q.schedule(r, subject, float(due_at), ev_payload)
+                await q.schedule(r, subject, float(due_at), event_id)
             except Exception:
                 pass
+
+    async def get_pending_event(self, world_realm: str, event_id: str):
+        """The undone event row for a key, or None (done/gone). Used by the
+        Redis consumer, which claims key-identified members and loads the
+        durable payload here."""
+        rows = await self._c.find_vertices(
+            EVENTS, realm=_req(world_realm, "world realm"),
+            filters={"key": event_id},
+            where=[("done_at", "is_null", None)], limit=1)
+        return rows[0] if rows else None
 
     async def due_events(self, world_realm: str, now: str,
                          limit: int = 500) -> list:

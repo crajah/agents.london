@@ -123,7 +123,10 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
         latest = await store.latest_movement(a)
         if latest and latest.payload.get("arrives_at", 0) > now:
             continue                      # still travelling; arrival comes
-        await store.schedule(realm, f"heal-{uuidlib.uuid4().hex[:8]}",
+        # STABLE key per agent (dedup fix 2026-09-13): the random key let two
+        # heal cycles that both saw the agent idle each add a decide, and the
+        # key-based Redis member could not fold them; one key per agent upserts.
+        await store.schedule(realm, f"decide-{a}",
                              drain._iso(now), "decide", a, {})
         healed += 1
     return healed
@@ -391,7 +394,7 @@ async def recover_stale(store: GenomeStore, now: float) -> tuple[int, int]:
             due = float(pl.get("due_at") or 0.0)
         except (TypeError, ValueError):
             due = 0.0
-        ev_members.append((rq.member(r["realm"], pl.get("subject") or "", pl),
+        ev_members.append((rq.member(r["realm"], pl.get("subject") or "", pl["key"]),
                            due))
     n_ev = await rq.reseed(ev_members, key=redisq.SCHED_KEY)
     # decisions (payload-based filter: schema-agnostic on decision_queue)
@@ -523,7 +526,7 @@ async def reseed_redis(store: GenomeStore, rq) -> int:
             due = float(pl.get("due_at") or 0.0)
         except (TypeError, ValueError):
             due = 0.0
-        members.append((rq.member(r["realm"], pl.get("subject") or "", pl), due))
+        members.append((rq.member(r["realm"], pl.get("subject") or "", pl["key"]), due))
     return await rq.reseed(members)
 
 
@@ -556,18 +559,26 @@ async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
 
         async def _drain_subject(items):
             async with sem:
-                for d in sorted(items,
-                                key=lambda x: x.get("ev", {}).get("due_at", "")):
-                    ev = _NS(realm=d["realm"], payload=d["ev"])
+                # load each claimed event by key from the durable PG row; a key
+                # already done/gone is skipped (dedup: duplicate members for one
+                # event, or a member left over after completion, never re-run)
+                for d in items:
+                    key = d.get("key")
+                    realm = d.get("realm")
+                    if not key or not realm:
+                        continue
+                    ev = await store.get_pending_event(realm, key)
+                    if ev is None:
+                        continue
                     try:
                         outcome = await drain.drain_one(
-                            store, d["realm"], d["realm"], ev, decider,
+                            store, realm, realm, ev, decider,
                             seed=int(time.time()))
-                        logger.info("%s %s -> %s (redis)", d["realm"],
+                        logger.info("%s %s -> %s (redis)", realm,
                                     d.get("subject"), outcome)
                     except Exception:
                         logger.exception("redis drain failed for %s in %s",
-                                         d.get("subject"), d.get("realm"))
+                                         d.get("subject"), realm)
         await asyncio.gather(*(_drain_subject(v) for v in groups.values()))
 
 

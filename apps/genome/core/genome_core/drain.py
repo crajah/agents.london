@@ -2460,7 +2460,11 @@ async def schedule_perish(store: GenomeStore, agent_uuid: str,
     _lts = max(1.0, (await _world_payload(store, home))
                .get("time_scale", 1.0))
     due = now + lifespan_seconds(agent_payload["genotype"]) / _lts
-    await store.schedule(home, f"perish-{agent_uuid}-{int(due)}", _iso(due),
+    # STABLE key (dedup fix 2026-09-13): one perish appointment per agent. The
+    # due-stamped key of old let every reschedule (each rebirth) leave a fresh
+    # perish row behind -- agents piled up ~2 stale perishes each. Same key now
+    # upserts, so a new appointment replaces the old.
+    await store.schedule(home, f"perish-{agent_uuid}", _iso(due),
                          "perish", agent_uuid, {"cause": "longevity"})
     await store.put_agent(agent_uuid, {**agent_payload, "perishes_at": due})
     return due

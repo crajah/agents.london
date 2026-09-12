@@ -93,21 +93,22 @@ class RedisQueue:
         return self._r is not None
 
     @staticmethod
-    def member(realm: str, subject: str, ev_payload: dict) -> str:
-        """Queue member: realm + subject (top-level, for the Lua subject pass) +
-        the FULL event payload the consumer feeds straight to drain_one."""
-        return json.dumps({"realm": realm, "subject": subject or "",
-                           "ev": ev_payload})
+    def member(realm: str, subject: str, key: str) -> str:
+        """Queue member, KEY-IDENTIFIED (dedup fix 2026-09-13): realm + subject
+        (for the Lua whole-subject pass) + the event KEY. Re-scheduling the same
+        event (same key) produces the SAME member, so ZADD replaces rather than
+        piling up duplicates; the consumer loads the payload from the durable PG
+        row by key (and skips it if already done)."""
+        return json.dumps({"realm": realm, "subject": subject or "", "key": key})
 
     async def schedule(self, realm: str, subject: str, due_epoch: float,
-                       ev_payload: dict) -> None:
-        """Mirror a scheduled event into the delay queue (write-through). The
-        member carries all the consumer needs, so draining reads no PG row."""
+                       ev_key: str) -> None:
+        """Mirror a scheduled event into the delay queue (write-through)."""
         if not self._r:
             return
         try:
             await self._r.zadd(SCHED_KEY,
-                               {self.member(realm, subject, ev_payload):
+                               {self.member(realm, subject, ev_key):
                                 float(due_epoch)})
         except Exception:
             pass                       # PG is the source of truth; queue is a cache
