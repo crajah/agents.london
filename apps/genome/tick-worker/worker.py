@@ -350,6 +350,57 @@ async def reap_stale_events(store: GenomeStore, realm: str, now: float,
     return reaped
 
 
+async def recover_stale(store: GenomeStore, now: float) -> tuple[int, int]:
+    """Phase 2c: re-add stale, undone rows back into the Redis queues so they
+    DRAIN PROPERLY. The ZSET+ZREM claim has no lease -- a pod that restarts
+    mid-claim removes an event/decision from Redis but leaves it undone in PG,
+    stranding it. This re-seeds anything overdue by > REAP_OVERDUE_S from the
+    durable PG truth (idempotent ZADD). Safe: fresh in-flight rows are younger
+    than the threshold, so they are never re-added (no double-processing), and
+    truly-stuck rows -- ANY kind, structural included -- get re-drained by
+    drain_one instead of discarded. Redis mode only; shard 0."""
+    from genome_core import redisq
+    rq = redisq.queue()
+    if rq is None:
+        return (0, 0)
+    import json as _json
+    cutoff = drain._iso(now - REAP_OVERDUE_S)
+    # events
+    ev_rows = await store._c.fetch(
+        "SELECT realm, payload FROM events "
+        "WHERE p_done_at IS NULL AND p_due_at <= $1", cutoff)
+    ev_members = []
+    for r in ev_rows:
+        pl = r["payload"]
+        if isinstance(pl, str):
+            pl = _json.loads(pl)
+        try:
+            due = float(pl.get("due_at") or 0.0)
+        except (TypeError, ValueError):
+            due = 0.0
+        ev_members.append((rq.member(r["realm"], pl.get("subject") or "", pl),
+                           due))
+    n_ev = await rq.reseed(ev_members, key=redisq.SCHED_KEY)
+    # decisions (payload-based filter: schema-agnostic on decision_queue)
+    dq_rows = await store._c.fetch(
+        "SELECT payload FROM decision_queue "
+        "WHERE payload->>'done_at' IS NULL AND payload->>'queued_at' <= $1",
+        cutoff)
+    dq_members = []
+    for r in dq_rows:
+        pl = r["payload"]
+        if isinstance(pl, str):
+            pl = _json.loads(pl)
+        try:
+            qa = float(pl.get("queued_at") or 0.0)
+        except (TypeError, ValueError):
+            qa = 0.0
+        dq_members.append((rq.decision_member(pl.get("agent_uuid", ""),
+                                              pl["key"]), qa))
+    n_dq = await rq.reseed(dq_members, key=redisq.DECISIONS_KEY)
+    return (n_ev, n_dq)
+
+
 async def reconcile_presence(store: GenomeStore) -> int:
     """Enforce Rule 6.10 -- an agent is present in exactly ONE world. Stale
     events in other realms fired transfers from the wrong origin, so old
@@ -657,26 +708,35 @@ async def main() -> None:
                                         rc["completed"])
                     except Exception:
                         logger.exception("recost failed: %s", r)
-            # Reap runs in BOTH modes (fix 2026-09-13): the redis consumer alone
-            # left ~17 structural stragglers aging (claimed but not completed);
-            # the reap clears the safe re-generable kinds. Only REAPABLE_KINDS
-            # are touched, so a reaped-then-reclaimed event re-decides harmlessly.
             reap_due = time.time() - last_reap > REAP_INTERVAL_S
             if SHARD_INDEX == 0 and reap_due:
-                # periodic event-queue flush (user directive 2026-09-13): clear
-                # orphaned re-generable events so no world stays stalled on
-                # ancient stragglers. Kind- and age-gated; structural events
-                # are left to fire. Capacity (shards) is the primary drain.
                 last_reap = time.time()
-                total = 0
-                for r in realms:
+                from genome_core import redisq as _rqr
+                if _rqr.queue() is not None:
+                    # Phase 2c: redis mode -- RE-SEED stale undone rows so they
+                    # drain PROPERLY (recovers all kinds lost to restart, incl.
+                    # structural), rather than discarding them like the reaper.
                     try:
-                        total += await reap_stale_events(store, r, time.time())
+                        n_ev, n_dq = await recover_stale(store, time.time())
+                        if n_ev or n_dq:
+                            logger.info("recovered %d stale events, %d stale "
+                                        "decisions back into the queues",
+                                        n_ev, n_dq)
                     except Exception:
-                        logger.exception("reap failed: %s", r)
-                if total:
-                    logger.info("reaped %d stale orphan events across %d realms",
-                                total, len(realms))
+                        logger.exception("recover_stale failed")
+                else:
+                    # pg mode: age+kind-gated flush of re-generable orphans so
+                    # no world stays stalled on ancient stragglers.
+                    total = 0
+                    for r in realms:
+                        try:
+                            total += await reap_stale_events(store, r,
+                                                             time.time())
+                        except Exception:
+                            logger.exception("reap failed: %s", r)
+                    if total:
+                        logger.info("reaped %d stale orphan events across %d "
+                                    "realms", total, len(realms))
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)
