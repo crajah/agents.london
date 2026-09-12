@@ -168,6 +168,20 @@ async def _recent_deals(client: Any, world_realm: str,
     return out
 
 
+async def _parent_names(client: Any, parents) -> list[dict]:
+    """Resolve an offspring's parent uuids to name + lineage colours, so the
+    inspect panel can show the family of a G2+ agent (user directive)."""
+    out = []
+    for p in (parents or []):
+        rows = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                          filters={"key": p}, limit=1)
+        pl = rows[0].payload if rows else {}
+        out.append({"uuid": p, "name": pl.get("name") or p[:14],
+                    "colours": pl.get("colour_pair") or [],
+                    "generation": pl.get("generation", 1)})
+    return out
+
+
 async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     """Rule 13.1: a user may see ANY agent's genotype and its expression.
     Faculties and expressed values are computed server-side so the client never
@@ -189,6 +203,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "colour_pair": payload.get("colour_pair"),
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
+           "parent_names": await _parent_names(client, payload.get("parents")),
            "capability": payload.get("capability"),
            "generation": payload.get("generation", 1),
            "influences": payload.get("influences") or [],

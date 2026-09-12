@@ -1296,6 +1296,20 @@ side of the capability economy.">born plain</span>}
           <span className="flex-1" />
           <button onClick={onClose} className="opacity-60 text-lg">✕</button>
         </div>
+        {inspect.generation > 1 && (inspect.parent_names?.length ?? 0) > 0 && (
+          <div className="px-4 py-2 border-b border-neutral-800 text-xs
+                          flex items-center gap-2 flex-wrap opacity-80">
+            <span className="opacity-55">lineage — born of</span>
+            {inspect.parent_names.map((p, i) => (
+              <span key={p.uuid} className="inline-flex items-center gap-1">
+                {i > 0 && <span className="opacity-40">+</span>}
+                {(p.colours ?? []).map((c, j) =>
+                  <span key={j} className="w-2.5 h-2.5 rounded-full inline-block"
+                        style={{ background: c }} />)}
+                <span>{p.name}</span>
+                <span className="opacity-40 font-mono">G{p.generation}</span>
+              </span>))}
+          </div>)}
         {locusInfo && (
           <div className="absolute inset-0 z-50 flex items-center
                           justify-center"
