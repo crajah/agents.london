@@ -130,11 +130,11 @@ metadata:
 spec:
   # replica k owns realms where crc32(realm) % SHARD_COUNT == k: static
   # sharding, no coordination -- worlds are independent by construction.
-  # Scaling out = raise replicas AND SHARD_COUNT together. Raised 4 -> 8
-  # (2026-09-13): heavy worlds (80-98 agents) clustered on shards 2 & 3 and
-  # their events out-ran one worker; more shards spread the load so no worker
-  # owns several big worlds at once.
-  replicas: 8
+  # Scaling out = raise replicas AND SHARD_COUNT together. Raised 4 -> 8 -> 16
+  # (2026-09-13): heavy worlds (80-98 agents) out-ran one worker. crc32%8 still
+  # co-located the two heaviest on one shard (178 agents); %16 separates them so
+  # no shard carries more than one big world (~98 agents worst case).
+  replicas: 16
   serviceName: genome-tick-worker-hs
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-tick-worker } }
@@ -162,7 +162,7 @@ spec:
             - name: GENOME_REALMS
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
-              value: "8"
+              value: "16"
             - name: GENOME_TOOLS_URL
               value: http://tool-registry-service:8002
             - name: GENOME_SMTP_HOST
