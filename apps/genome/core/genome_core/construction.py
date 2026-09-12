@@ -52,8 +52,14 @@ TREE: dict[str, dict] = {
     # so no ark. Tier-3 capstones now cost 2 family kinds (achievable by a few
     # aligned miners + trade), the shipyard needs three branch capstones (not
     # all five), and the ark asks for 10 kinds x 10 rather than all 20.
+    # ANY 3 of the 5 branch capstones (user directive 2026-09-13): worlds build
+    # whichever branches their kinds favour, so pinning three SPECIFIC ones
+    # stranded the chain (forge was never attempted). Still convergence -- three
+    # DISTINCT branches must stand -- just not three fixed ones.
     "shipyard":    {"branch": "convergence", "tier": 5,
-                    "after": ("forge", "orchard", "observatory"),
+                    "after": ("any", 3,
+                              ("forge", "orchard", "observatory",
+                               "sanatorium", "foundation")),
                     "cost": ("one_per_family", 8)},
     "ark":         {"branch": "convergence", "tier": 6, "after": "shipyard",
                     "cost": ("any_kinds", 10, 10)},
@@ -170,7 +176,19 @@ async def completed_names(client: Any, realm: str) -> set[str]:
             and not v.payload.get("plan_key")}
 
 
+def _any_spec(name: str):
+    """If this node's prerequisite is an ANY-of-N form -- ("any", n, (options,))
+    -- return (n, options); else None. Used by the shipyard (any 3 capstones)."""
+    after = TREE[name]["after"]
+    if isinstance(after, tuple) and len(after) == 3 and after[0] == "any":
+        return int(after[1]), tuple(after[2])
+    return None
+
+
 def _prereqs(name: str) -> tuple:
+    spec = _any_spec(name)
+    if spec:
+        return spec[1]                     # the candidate set (any n suffice)
     after = TREE[name]["after"]
     return (after,) if isinstance(after, str) else (after or ())
 
@@ -189,6 +207,25 @@ def foundable_names(sites: list[dict]) -> list[str]:
     out = []
     for name in TREE:
         if name in live:
+            continue
+        spec = _any_spec(name)
+        if spec:
+            n, options = spec
+            present = [done[o] for o in options if o in done]
+            if len(present) < n:
+                continue
+            # the n that huddle best (nearest their own centroid) must all sit
+            # within ASSEMBLY_RADIUS -- convergence still drags parts together
+            cx = sum(s["x"] for s in present) / len(present)
+            cy = sum(s["y"] for s in present) / len(present)
+            present.sort(key=lambda s: (s["x"] - cx) ** 2 + (s["y"] - cy) ** 2)
+            pick = present[:n]
+            px = sum(s["x"] for s in pick) / n
+            py = sum(s["y"] for s in pick) / n
+            if any((s["x"] - px) ** 2 + (s["y"] - py) ** 2 > ASSEMBLY_RADIUS ** 2
+                   for s in pick):
+                continue
+            out.append(name)
             continue
         need = _prereqs(name)
         if any(a not in done for a in need):
@@ -258,19 +295,35 @@ async def found_site(client: Any, realm: str, user_id: str, name: str,
                   and not v.payload.get("destroyed")
                   and not v.payload.get("spent")}
     done = set(done_sites)
-    needs_after = _prereqs(name)
-    missing = [a for a in needs_after if a not in done]
-    if missing:
-        return {"error": f"requires completed: {', '.join(missing)}"}
-    if TREE[name]["branch"] == "convergence":
-        # assembly: every sub-component dragged to the new ground
-        far = [a for a in needs_after
-               if (done_sites[a]["x"] - x) ** 2
-               + (done_sites[a]["y"] - y) ** 2 > ASSEMBLY_RADIUS ** 2]
-        if far:
-            return {"error": f"the {name} is assembled from its parts: "
-                    f"{', '.join(far)} stand too far from this ground "
-                    f"-- carry them here first"}
+    spec = _any_spec(name)
+    if spec:
+        # ANY n of the candidate capstones, n of them dragged to this ground
+        n, options = spec
+        have = [o for o in options if o in done]
+        if len(have) < n:
+            return {"error": f"requires any {n} branch capstones of "
+                    f"{{{', '.join(options)}}} -- {len(have)} stand complete"}
+        near = [o for o in have
+                if (done_sites[o]["x"] - x) ** 2
+                + (done_sites[o]["y"] - y) ** 2 <= ASSEMBLY_RADIUS ** 2]
+        if len(near) < n:
+            return {"error": f"the {name} is assembled from {n} capstones "
+                    f"dragged to this ground -- only {len(near)} stand near "
+                    f"enough; carry more here first"}
+    else:
+        needs_after = _prereqs(name)
+        missing = [a for a in needs_after if a not in done]
+        if missing:
+            return {"error": f"requires completed: {', '.join(missing)}"}
+        if TREE[name]["branch"] == "convergence":
+            # assembly: every sub-component dragged to the new ground
+            far = [a for a in needs_after
+                   if (done_sites[a]["x"] - x) ** 2
+                   + (done_sites[a]["y"] - y) ** 2 > ASSEMBLY_RADIUS ** 2]
+            if far:
+                return {"error": f"the {name} is assembled from its parts: "
+                        f"{', '.join(far)} stand too far from this ground "
+                        f"-- carry them here first"}
     for v in await sites_in(client, realm):
         if v.payload["name"] == name and not v.payload.get("complete") \
                 and not v.payload.get("destroyed"):
