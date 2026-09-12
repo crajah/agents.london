@@ -494,9 +494,11 @@ async def main() -> None:
             cache_due = time.time() - last_cache_consolidate > \
                 CACHE_CONSOLIDATE_INTERVAL_S
             if SHARD_INDEX == 0 and cache_due:
-                # one larder per world (colour) in the commons, capped 10/kind
-                # (user directive 2026-09-12). Idempotent -- a tidy commons is a
-                # no-op; it exists to fold the historical duplicates together.
+                # commons + construction-tree maintenance (user directive
+                # 2026-09-12), idempotent so a tidy world is a no-op:
+                #   - one larder per world (colour), capped 10/kind;
+                #   - re-cost persisting sites to the relaxed tree so the ark
+                #     path stops being blocked by grandfathered family_all costs.
                 last_cache_consolidate = time.time()
                 for cr in [r for r in realms if r.startswith("genome_commons")]:
                     try:
@@ -510,6 +512,19 @@ async def main() -> None:
                                         res["capped"])
                     except Exception:
                         logger.exception("cache consolidate failed: %s", cr)
+                for r in realms:
+                    try:
+                        meta = await drain._world_payload(store, r)
+                        if not meta or meta.get("is_commons"):
+                            continue
+                        rc = await drain.construction.recost_sites(
+                            store._c, r, meta.get("kinds") or [], time.time())
+                        if rc.get("recosted") or rc.get("completed"):
+                            logger.info("recost %s: %d sites re-costed, "
+                                        "%d completed", r, rc["recosted"],
+                                        rc["completed"])
+                    except Exception:
+                        logger.exception("recost failed: %s", r)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)

@@ -780,6 +780,52 @@ async def consolidate_caches(client: Any, realm: str) -> dict:
     return {"merged": merged, "destroyed": destroyed, "capped": capped}
 
 
+async def recost_sites(client: Any, realm: str, world_kinds: list[int],
+                       now: float) -> dict:
+    """Re-cost persisting in-progress constructions to the CURRENT tree
+    (user directive 2026-09-12). `needs` is frozen at founding, and since
+    constructions persist across floods, sites founded under the old
+    family_all x20 costs linger with those costs AND block founding a cheaper
+    duplicate -- so the relaxation was inert until this ran. For each live,
+    unfinished, not-yet-rising site: recompute needs + required_users, drop
+    delivered kinds no longer wanted, and if the community already delivered
+    enough for the NEW threshold with hands enough, complete it now (the
+    materials were long since gathered; no reason to re-run the build clock).
+    Idempotent -- once re-costed, needs already match and it is a no-op."""
+    recosted = completed = 0
+    for v in await sites_in(client, realm):
+        s = v.payload
+        name = s.get("name")
+        if name not in TREE:
+            continue
+        if s.get("complete") or s.get("destroyed") or s.get("plan_key"):
+            continue
+        if s.get("building_until") and s["building_until"] > now:
+            continue                       # already rising -- leave it alone
+        new_needs = resolve_cost(name, world_kinds)
+        new_req = CONTRIBUTORS[name]
+        if new_needs == s.get("needs") and new_req == s.get("required_users"):
+            continue
+        delivered = {k: u for k, u in (s.get("delivered") or {}).items()
+                     if k in new_needs}
+        contributors = s.get("contributors", {})
+        filled = all(delivered.get(k, 0.0) >= u - 1e-9
+                     for k, u in new_needs.items())
+        enough = len(contributors) >= new_req
+        patch = {**s, "needs": new_needs, "required_users": new_req,
+                 "delivered": delivered}
+        if filled and enough and not s.get("building_until"):
+            patch["building_until"] = now - 1.0    # materials already in
+        await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(v.id),
+                                   space="default", payload=patch)
+        recosted += 1
+        if patch.get("building_until") and patch["building_until"] <= now:
+            res = await finalize(client, realm, s["key"], now)
+            if res.get("ok") and not res.get("already"):
+                completed += 1
+    return {"recosted": recosted, "completed": completed}
+
+
 # ---------------------------------------------------------------------------
 # Portage — construction-spec Rules 3.10–3.13. A completed construction moves
 # only on the shoulders of as many agents as it took distinct users to raise,
