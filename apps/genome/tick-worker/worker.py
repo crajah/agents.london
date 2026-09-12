@@ -315,6 +315,8 @@ async def prune_done_rows(store: GenomeStore, now: float) -> int:
 
 PRESENCE_RECONCILE_INTERVAL_S = float(
     os.getenv("PRESENCE_RECONCILE_INTERVAL_S", "60"))
+CACHE_CONSOLIDATE_INTERVAL_S = float(
+    os.getenv("CACHE_CONSOLIDATE_INTERVAL_S", "300"))
 
 
 async def reconcile_presence(store: GenomeStore) -> int:
@@ -421,6 +423,7 @@ async def main() -> None:
     last_audit_trim = 0.0
     last_done_prune = 0.0
     last_presence_reconcile = 0.0
+    last_cache_consolidate = 0.0
     try:
         while not stop.is_set():
             # user worlds are born at login (genesis) -- rediscover every
@@ -488,6 +491,25 @@ async def main() -> None:
                 if fixed:
                     logger.info("presence: cleared %d stale (agent in >1 world)",
                                 fixed)
+            cache_due = time.time() - last_cache_consolidate > \
+                CACHE_CONSOLIDATE_INTERVAL_S
+            if SHARD_INDEX == 0 and cache_due:
+                # one larder per world (colour) in the commons, capped 10/kind
+                # (user directive 2026-09-12). Idempotent -- a tidy commons is a
+                # no-op; it exists to fold the historical duplicates together.
+                last_cache_consolidate = time.time()
+                for cr in [r for r in realms if r.startswith("genome_commons")]:
+                    try:
+                        res = await drain.construction.consolidate_caches(
+                            store._c, cr)
+                        if res.get("merged") or res.get("destroyed") \
+                                or res.get("capped"):
+                            logger.info("commons %s: merged %d larders, "
+                                        "destroyed %d dupes, capped %d kinds",
+                                        cr, res["merged"], res["destroyed"],
+                                        res["capped"])
+                    except Exception:
+                        logger.exception("cache consolidate failed: %s", cr)
             cycle += 1
             try:
                 await asyncio.wait_for(stop.wait(), timeout=TICK_SECONDS)

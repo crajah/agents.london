@@ -34,29 +34,33 @@ TREE: dict[str, dict] = {
     "cairn":       {"branch": "earth",  "tier": 1, "after": None,        "cost": ("kinds", 1, 10)},
     "store":       {"branch": "earth",  "tier": 2, "after": "cairn",     "cost": ("kinds", 2, 15)},
     "rampart":     {"branch": "earth",  "tier": 3, "after": "store",     "cost": ("kinds", 2, 15)},
-    "foundation":  {"branch": "earth",  "tier": 4, "after": "rampart",   "cost": ("family_all", 20)},
+    "foundation":  {"branch": "earth",  "tier": 4, "after": "rampart",   "cost": ("kinds", 2, 15)},
     "kiln":        {"branch": "fire",   "tier": 1, "after": None,        "cost": ("kinds", 1, 10)},
     "toolhouse":   {"branch": "fire",   "tier": 2, "after": "kiln",      "cost": ("kinds", 2, 15)},
-    "forge":       {"branch": "fire",   "tier": 3, "after": "toolhouse", "cost": ("family_all", 20)},
+    "forge":       {"branch": "fire",   "tier": 3, "after": "toolhouse", "cost": ("kinds", 2, 12)},
     "grove":       {"branch": "growth", "tier": 1, "after": None,        "cost": ("kinds", 1, 10)},
     "granary":     {"branch": "growth", "tier": 2, "after": "grove",     "cost": ("kinds", 2, 15)},
-    "orchard":     {"branch": "growth", "tier": 3, "after": "granary",   "cost": ("family_all", 20)},
+    "orchard":     {"branch": "growth", "tier": 3, "after": "granary",   "cost": ("kinds", 2, 12)},
     "apothecary":  {"branch": "life",   "tier": 1, "after": None,        "cost": ("kinds", 1, 10)},
     "infirmary":   {"branch": "life",   "tier": 2, "after": "apothecary","cost": ("kinds", 2, 15)},
-    "sanatorium":  {"branch": "life",   "tier": 3, "after": "infirmary", "cost": ("family_all", 20)},
+    "sanatorium":  {"branch": "life",   "tier": 3, "after": "infirmary", "cost": ("kinds", 2, 12)},
     "library":     {"branch": "water",  "tier": 1, "after": None,        "cost": ("kinds", 1, 10)},
     "beacon":      {"branch": "water",  "tier": 2, "after": "library",   "cost": ("kinds", 2, 15)},
-    "observatory": {"branch": "water",  "tier": 3, "after": "beacon",    "cost": ("family_all", 20)},
+    "observatory": {"branch": "water",  "tier": 3, "after": "beacon",    "cost": ("kinds", 2, 12)},
+    # Convergence relaxed (user directive 2026-09-12): the ark was unreachable
+    # -- no tier-3 capstone ever completed under family_all x20, so no shipyard,
+    # so no ark. Tier-3 capstones now cost 2 family kinds (achievable by a few
+    # aligned miners + trade), the shipyard needs three branch capstones (not
+    # all five), and the ark asks for 10 kinds x 10 rather than all 20.
     "shipyard":    {"branch": "convergence", "tier": 5,
-                    "after": ("foundation", "forge", "orchard",
-                              "sanatorium", "observatory"),
-                    "cost": ("one_per_family", 10)},
+                    "after": ("forge", "orchard", "observatory"),
+                    "cost": ("one_per_family", 8)},
     "ark":         {"branch": "convergence", "tier": 6, "after": "shipyard",
-                    "cost": ("all_kinds", 10)},
+                    "cost": ("any_kinds", 10, 10)},
 }
 
 # Rule 3.3: distinct contributors required, by construction
-CONTRIBUTORS = {name: (8 if name == "ark" else 5 if name == "shipyard"
+CONTRIBUTORS = {name: (5 if name == "ark" else 4 if name == "shipyard"
                        else min(spec["tier"], 3) if spec["tier"] <= 4 else 3)
                 for name, spec in TREE.items()}
 CONTRIBUTORS["foundation"] = 3           # capstone, though tier 4 in earth
@@ -130,6 +134,13 @@ def resolve_cost(name: str, world_kinds: list[int]) -> dict[str, float]:
     cost = TREE[name]["cost"]
     if cost[0] == "all_kinds":
         return {str(k): float(cost[1]) for k in range(20)}
+    if cost[0] == "any_kinds":
+        # K distinct kinds from anywhere in the palette -- the world's own
+        # first, then the lowest indices -- N units each (used by the ark).
+        _, k_needed, units = cost
+        picks = (list(world_kinds)
+                 + [k for k in range(20) if k not in world_kinds])[:k_needed]
+        return {str(k): float(units) for k in picks}
     if cost[0] == "one_per_family":
         picks = []
         for fam, kinds in FAMILIES.items():
@@ -626,6 +637,8 @@ def effects_from(sites: list[dict]) -> dict:
 
 CACHE_COST_KINDS = 4
 CACHE_SPACING = 0.06
+CACHE_CAP_PER_KIND = 10.0        # user directive 2026-09-12: a larder holds at
+# most 10 units of any one kind; and one larder per world (colour) in the commons
 
 
 def cache_cost(cargo: dict[str, float]) -> dict[str, float] | None:
@@ -659,6 +672,13 @@ async def build_cache(client: Any, realm: str, agent_payload: dict,
     if cost is None:
         return {"error": "a cache costs four different kinds, one unit each"}
     caches = await caches_in(client, realm)
+    # one larder per world (colour) in the commons (user directive 2026-09-12):
+    # a line that already keeps a larder here uses that one, never a second.
+    mine = agent_payload.get("colour_pair")
+    dup = next((c for c in caches if c.payload.get("colours") == mine), None)
+    if dup is not None:
+        return {"error": "your world already keeps a larder in the commons",
+                "cache": dup.payload["key"]}
     if not cache_spot_clear(caches, x, y):
         return {"error": "too close to another cache"}
     x, y = clear_spot(x, y, await obstacle_points(client, realm),
@@ -707,12 +727,57 @@ async def cache_exchange(client: Any, realm: str, cache_key: str,
         holdings[kind] -= grab
         if holdings[kind] <= 1e-9:
             del holdings[kind]
+    accepted: dict[str, float] = {}
     for kind, units in (put or {}).items():
-        holdings[kind] = holdings.get(kind, 0.0) + units
+        # cap at CACHE_CAP_PER_KIND (user directive): the larder takes only what
+        # fits; the overflow the caller keeps in hand, never silently vanished.
+        room = max(0.0, CACHE_CAP_PER_KIND - holdings.get(kind, 0.0))
+        add = min(units, room)
+        if add > 1e-9:
+            holdings[kind] = holdings.get(kind, 0.0) + add
+            accepted[kind] = add
     await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(rows[0].id),
                                space="default",
                                payload={**site, "holdings": holdings})
-    return {"ok": True, "took": took, "holdings": holdings}
+    return {"ok": True, "took": took, "accepted": accepted, "holdings": holdings}
+
+
+async def consolidate_caches(client: Any, realm: str) -> dict:
+    """One larder per world (colour) in the commons, holdings capped at
+    CACHE_CAP_PER_KIND (user directive 2026-09-12). Duplicate same-colour
+    larders are merged into the oldest -- holdings summed then capped -- and the
+    extras destroyed. Idempotent: a tidy commons is a no-op. Runs on shard 0."""
+    caches = await caches_in(client, realm)
+    groups: dict = {}
+    for v in caches:
+        key = tuple(v.payload.get("colours") or [])
+        groups.setdefault(key, []).append(v)
+    merged = destroyed = capped = 0
+    for _colour, group in groups.items():
+        group.sort(key=lambda v: v.payload.get("founded_at", 0.0))
+        keeper = group[0]
+        holdings: dict[str, float] = dict(keeper.payload.get("holdings", {}))
+        for extra in group[1:]:
+            for k, u in (extra.payload.get("holdings") or {}).items():
+                holdings[k] = holdings.get(k, 0.0) + u
+            await client.upsert_vertex(
+                TABLE, realm=realm, vertex_id=int(extra.id), space="default",
+                payload={**extra.payload, "destroyed": True, "holdings": {}})
+            destroyed += 1
+        newh: dict[str, float] = {}
+        for k, u in holdings.items():
+            if u > CACHE_CAP_PER_KIND:
+                capped += 1
+            v2 = min(u, CACHE_CAP_PER_KIND)
+            if v2 > 1e-9:
+                newh[k] = v2
+        if len(group) > 1 or newh != dict(keeper.payload.get("holdings", {})):
+            await client.upsert_vertex(
+                TABLE, realm=realm, vertex_id=int(keeper.id), space="default",
+                payload={**keeper.payload, "holdings": newh})
+            if len(group) > 1:
+                merged += 1
+    return {"merged": merged, "destroyed": destroyed, "capped": capped}
 
 
 # ---------------------------------------------------------------------------

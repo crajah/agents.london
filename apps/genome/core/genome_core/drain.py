@@ -950,7 +950,12 @@ async def apply_cache_op(store: GenomeStore, world_realm: str,
                                                 agent_payload, cargo, 0.0)
         if not res.get("ok"):
             return
-        cargo = {}
+        # the larder caps at 10/kind; only what it ACCEPTED leaves the hold, so
+        # the overflow stays with the agent to carry home or trade (never lost)
+        for kind, units in res.get("accepted", {}).items():
+            cargo[kind] = cargo.get(kind, 0.0) - units
+            if cargo[kind] <= 1e-9:
+                del cargo[kind]
     else:
         room = engine.CARGO_CEILING - sum(cargo.values())
         res = await construction.cache_exchange(store._c, world_realm, key,

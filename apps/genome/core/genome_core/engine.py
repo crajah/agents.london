@@ -432,7 +432,12 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                 options.append("stash_cache")
             if near_cache.get("holdings"):
                 options.append("collect_cache")
-        if _c2.cache_cost(agent.cargo) is not None and \
+        # one larder per world (user directive 2026-09-12): only offer to build
+        # if this line keeps NO larder here yet -- otherwise it uses the one it
+        # has (the server rejects a second regardless; this spares the decision)
+        have_mine = any(s.get("colours") == ctx.get("colour_pair")
+                        for s in caches)
+        if not have_mine and _c2.cache_cost(agent.cargo) is not None and \
                 _c2.cache_spot_clear_payloads(caches, agent.x, agent.y):
             options.append("build_cache")
     # the marketplace (Rule 4.20): at the board with business — or business

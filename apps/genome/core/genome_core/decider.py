@@ -244,13 +244,26 @@ def llm_decider(req: engine.DecisionRequest, genotype: dict,
         from .genotype import norm as _n
         if _n("Survival Instinct",
               (genotype or {}).get("Survival Instinct", 5000.0)) >= 0.2:
-            objectives = ([
-                "THE WATER IS COMING. Prime directive: an Ark must stand "
-                "in this world with you aboard -- break ground, feed it, "
-                "board it, or bargain for a berth.",
-                "Then survive: if no Ark can rise in time, be elsewhere "
-                "when the water arrives."]
-                + list(objectives or []))[:5]
+            # The drive SHARPENS as the water nears (user directive 2026-09-12).
+            # An Ark cannot rise in the final minutes -- it stands behind a
+            # shipyard behind branch capstones -- so the long game is CONVERGENCE
+            # (raise the chain, stockpile the kinds an Ark demands, cycle after
+            # cycle), and only the endgame is board-or-flee.
+            fl = req.context["flood_in_s"]
+            if fl <= 1800.0:
+                ark_obj = [
+                    "THE WATER IS ALMOST HERE. Get aboard a standing Ark and "
+                    "hold a berth -- board it, or bargain or beg for a seat. If "
+                    "none can carry you, flee through a portal NOW: those who "
+                    "stay drown and lose everything they carry."]
+            else:
+                ark_obj = [
+                    "THE WATER IS COMING and only an Ark survives it. An Ark "
+                    "needs a shipyard, which needs your world's branch capstones "
+                    "(forge, orchard, observatory) -- so CONVERGE: raise and feed "
+                    "those works now, and stockpile the many kinds an Ark hull "
+                    "demands. Trade and breed for the kinds you lack."]
+            objectives = (ark_obj + list(objectives or []))[:5]
     # Rule 10.1a/10.1b: the owner's objectives outrank the standing floor and
     # MUST reach the prompt -- they were hardcoded empty once, and three
     # max-Wanderlust agents dutifully refused a portal because "deposit at
