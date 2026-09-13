@@ -1148,6 +1148,123 @@ function MarketPanel({ info }) {
     </div>);
 }
 
+function ProgenyPanel({ info }) {
+  const [open, setOpen] = useState(false);
+  const entries = info?.progeny ?? [];
+  const Cols = ({ c }) => (
+    <>{(c ?? []).map((col, i) =>
+      <span key={i} className="w-2.5 h-2.5 rounded-full inline-block ml-0.5
+                               align-middle" style={{ background: col }} />)}</>);
+  const Who = ({ w }) => (
+    <span className="inline-flex items-center gap-0.5">
+      <span className="opacity-80 truncate max-w-[7rem]">{w?.name ?? "someone"}</span>
+      <Cols c={w?.colours} /></span>);
+  const births = entries.filter(e => e.kind === "born").length;
+  return (
+    <div className="absolute top-2 right-[24rem] z-20 text-xs">
+      <button onClick={() => setOpen(o => !o)}
+              title="Breeding in this world: proposals, acceptances, progeny"
+              className="px-2 py-1 bg-neutral-900/85 border
+                         border-neutral-700 rounded">
+        ⚭ progeny{births > 0 && ` (${births})`}
+      </button>
+      {open && (
+        <div className="mt-1 w-72 max-h-64 overflow-y-auto bg-neutral-900/95
+                        border border-neutral-700 rounded p-2">
+          <div className="opacity-60 mb-1">proposals · acceptances · progeny —
+            newest first</div>
+          {entries.length === 0 &&
+            <div className="opacity-50">no courtship yet</div>}
+          {entries.map((e, i) => (
+            <div key={i} className="py-1 border-t border-neutral-800
+                                    flex items-center gap-1 flex-wrap">
+              {e.kind === "born" ? (
+                <>
+                  <span className="text-emerald-400">✦ born</span>
+                  <span className="opacity-90 truncate max-w-[7rem]">{e.child}</span>
+                  <span className="opacity-50">of</span>
+                  {(e.parents ?? []).map((p, j) =>
+                    <React.Fragment key={j}>
+                      {j > 0 && <span className="opacity-40">+</span>}
+                      <Who w={p} />
+                    </React.Fragment>)}
+                </>
+              ) : (
+                <>
+                  <span className={e.kind === "accepted" ? "text-sky-400"
+                    : e.kind === "declined" ? "opacity-50" : "text-amber-400"}>
+                    {e.kind === "proposed" ? "❥ proposed"
+                      : e.kind === "accepted" ? "♥ accepted" : "✕ declined"}
+                  </span>
+                  <Who w={e.proposer} />
+                  <span className="opacity-50">→</span>
+                  <Who w={e.recipient} />
+                </>)}
+            </div>))}
+        </div>)}
+    </div>);
+}
+
+function ArtifactsPanel({ info }) {
+  const [open, setOpen] = useState(false);
+  const byUuid = info?.agentsByUuid ?? {};
+  // real constructions only (named, tiered sites), highest tier first
+  const cons = (info?.constructions ?? [])
+    .filter(c => c && c.name && c.tier != null && !c.wreck)
+    .slice().sort((a, b) => (b.tier - a.tier)
+      || (a.name < b.name ? -1 : 1));
+  const now = Date.now() / 1000;
+  const statusOf = (c) => {
+    if (c.complete) return { txt: "✓ complete", cls: "text-emerald-400" };
+    if (c.building_until) {
+      const m = Math.max(0, Math.round((c.building_until - now) / 60));
+      return { txt: m > 0 ? `▲ rising ~${m}m` : "▲ finishing…",
+               cls: "text-amber-400" };
+    }
+    const p = Math.round((c.progress ?? 0) * 100);
+    return { txt: `◧ gathering ${p}%`, cls: "text-sky-400" };
+  };
+  const done = cons.filter(c => c.complete).length;
+  return (
+    <div className="absolute top-2 right-[33rem] z-20 text-xs">
+      <button onClick={() => setOpen(o => !o)}
+              title="Constructions in this world by tier + who is building them"
+              className="px-2 py-1 bg-neutral-900/85 border
+                         border-neutral-700 rounded">
+        ⚒ artifacts{cons.length > 0 && ` (${done}/${cons.length})`}
+      </button>
+      {open && (
+        <div className="mt-1 w-80 max-h-72 overflow-y-auto bg-neutral-900/95
+                        border border-neutral-700 rounded p-2">
+          <div className="opacity-60 mb-1">artifacts by tier — status &
+            builders</div>
+          {cons.length === 0 &&
+            <div className="opacity-50">nothing under construction</div>}
+          {cons.map((c, i) => {
+            const st = statusOf(c);
+            const builders = (c.contributor_agents ?? [])
+              .map(u => byUuid[u]?.name).filter(Boolean);
+            return (
+              <div key={c.key ?? i} className="py-1 border-t border-neutral-800">
+                <div className="flex items-center gap-1 flex-wrap">
+                  {c.colour && <span className="w-2.5 h-2.5 rounded-full
+                    inline-block" style={{ background: c.colour }} />}
+                  <span className="opacity-90">{c.name}</span>
+                  <span className="opacity-40">T{c.tier}</span>
+                  <span className={"ml-auto " + st.cls}>{st.txt}</span>
+                </div>
+                <div className="opacity-55 mt-0.5">
+                  {c.contributors ?? 0}/{c.required_users ?? 1} hands
+                  {builders.length > 0 &&
+                    <> · {builders.slice(0, 6).join(", ")}
+                      {builders.length > 6 && ` +${builders.length - 6}`}</>}
+                </div>
+              </div>);
+          })}
+        </div>)}
+    </div>);
+}
+
 function FloodWave({ active }) {
   // The water arrives ON SCREEN (user directive): a rising tide swallows the
   // world for a few seconds when a flood executes, then recedes.
@@ -1697,6 +1814,12 @@ function App() {
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
                         deals: snap.market_deals ?? [],
+                        progeny: snap.progeny ?? [],
+                        constructions: snap.constructions ?? [],
+                        agentsByUuid: Object.fromEntries(
+                          (snap.agents ?? []).map(a =>
+                            [a.agent_uuid,
+                             { name: a.name, colours: a.colour_pair }])),
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
@@ -1730,6 +1853,12 @@ function App() {
                         colours: snap.colours,
                         listings: snap.market_open ?? [],
                         deals: snap.market_deals ?? [],
+                        progeny: snap.progeny ?? [],
+                        constructions: snap.constructions ?? [],
+                        agentsByUuid: Object.fromEntries(
+                          (snap.agents ?? []).map(a =>
+                            [a.agent_uuid,
+                             { name: a.name, colours: a.colour_pair }])),
                         agentCount: (snap.agents ?? []).length });
           noteFloodCount(snap);
           setFlood(snap.flood_countdown ?? null);
@@ -1959,6 +2088,8 @@ whole game -- the commons market is how the far kinds arrive."
           </nav>)}
         <StockPanel info={snapInfo} />
         <MarketPanel info={snapInfo} />
+        <ProgenyPanel info={snapInfo} />
+        <ArtifactsPanel info={snapInfo} />
         {me?.authenticated && realm === me.world_realm &&
           <PlanTable realm={realm} info={snapInfo} />}
         <FloodWave active={floodAnim} />

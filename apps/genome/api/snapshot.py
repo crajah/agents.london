@@ -85,6 +85,9 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
                    "needs": s.payload.get("needs", {}),
                    "delivered": s.payload.get("delivered", {}),
                    "contributors": len(s.payload.get("contributors", {})),
+                   # which agents built it (Progeny/Artifacts panels, 2026-09-14):
+                   # uuids; the client maps them to names via the agents array
+                   "contributor_agents": s.payload.get("contributor_agents", []),
                    "required_users": s.payload.get("required_users", 1)}
                   for s in await _con.sites_in(client, world_realm)
                   if not s.payload.get("destroyed")]
@@ -98,6 +101,7 @@ async def world_snapshot(client: Any, world_realm: str) -> dict:
             "market_open": await _open_listings(client, world_realm,
                                                 agents),
             "market_deals": await _recent_deals(client, world_realm, agents),
+            "progeny": await _recent_progeny(client, world_realm, agents),
             "constructions": meta.get("constructions", []) + site_views,
             "time_scale": meta.get("time_scale", 1.0),
             "flood_countdown": _flood.countdown_visible(meta, _time.time()),
@@ -169,6 +173,47 @@ async def _recent_deals(client: Any, world_realm: str,
                     "from": fnm, "from_colours": fco,
                     "to": tnm, "to_colours": tco,
                     "at": d.get("filled_at", 0.0)})
+    return out
+
+
+async def _recent_progeny(client: Any, world_realm: str,
+                          agents: list[dict]) -> list[dict]:
+    """The mating ledger for the Progeny panel: proposals, acceptances/declines
+    and births, newest first, with agent names + colours resolved."""
+    try:
+        rows = await client.find_vertices("matings", realm=world_realm,
+                                          limit=300)
+    except Exception:
+        return []
+    names = {a.get("agent_uuid"): a.get("name") for a in agents}
+    cols = {a.get("agent_uuid"): a.get("colour_pair") for a in agents}
+
+    async def _who(uuid):
+        if not uuid:
+            return None
+        nm, co = names.get(uuid), cols.get(uuid)
+        if nm is None or co is None:
+            rows2 = await client.find_vertices("agents", realm=AGENTS_REALM,
+                                               filters={"key": uuid}, limit=1)
+            if rows2:
+                nm = nm or rows2[0].payload.get("name")
+                co = co or rows2[0].payload.get("colour_pair")
+        return {"name": nm or uuid[:14], "colours": co or []}
+
+    recs = sorted((v.payload for v in rows),
+                  key=lambda r: r.get("at", 0.0), reverse=True)[:30]
+    out = []
+    for r in recs:
+        e = {"kind": r.get("kind"), "at": r.get("at", 0.0)}
+        if r.get("proposer"):
+            e["proposer"] = await _who(r["proposer"])
+        if r.get("recipient"):
+            e["recipient"] = await _who(r["recipient"])
+        if r.get("parents"):
+            e["parents"] = [await _who(p) for p in r["parents"]]
+        if r.get("child_name"):
+            e["child"] = r["child_name"]
+        out.append(e)
     return out
 
 

@@ -1534,6 +1534,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         ans = pl["payload"]["answer"]
         proposer_uuid = pl["payload"]["proposer"]["agent_uuid"]
         await store.complete_event(world_realm, pl["key"], _iso(now))
+        await record_mating(store, world_realm,
+                            "accepted" if ans == "accept_mate" else "declined",
+                            now, proposer=proposer_uuid, recipient=agent_uuid)
         if ans != "accept_mate":
             return "mating:declined"
         p_view, p_pl = await load_agent(store, world_realm, proposer_uuid,
@@ -2370,6 +2373,8 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
         recipient = other_uuid if proposer == me else me
         prop_pl = agent_payload if proposer == me else other_payload
         recip_pl = other_payload if proposer == me else agent_payload
+        await record_mating(store, world_realm, "proposed", now,
+                             proposer=proposer, recipient=recipient)
         await store.schedule(world_realm, f"prop-{pair_key}",
                              _iso(now + 30.0 / _wts),
                              "mating_proposal", recipient,
@@ -2399,6 +2404,18 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
                              _iso(now + 60.0 / _wts), "decide", u, {})
     await store.complete_event(world_realm, pl["key"], _iso(now))
     return outcome
+
+
+async def record_mating(store: GenomeStore, world_realm: str, kind: str,
+                        now: float, **fields) -> None:
+    """Append to the world's mating ledger (Progeny panel, 2026-09-14): every
+    proposal, acceptance/decline, and birth, so breeding is tracked like the
+    market tracks trades. Best-effort -- a ledger write never blocks breeding."""
+    try:
+        await store._c.add_vertex("matings", realm=world_realm,
+                                  payload={"kind": kind, "at": now, **fields})
+    except Exception:
+        pass
 
 
 SETTLE_RADIUS = 0.05          # the two must be this close to shake on it
@@ -2700,6 +2717,9 @@ async def consummate(store: GenomeStore, world_realm: str,
             "choice": "born", "model": "arithmetic", "tier": "computed",
             "parents": [a_view.agent_uuid, b_view.agent_uuid],
             "identity": ident})
+        await record_mating(store, world_realm, "born", now,
+                            parents=[a_view.agent_uuid, b_view.agent_uuid],
+                            child=child_uuid, child_name=name)
     return "breeding:" + ";".join(f"{n} -> {h}" for _, n, h in born)
 
 

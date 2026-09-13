@@ -395,6 +395,12 @@ async def contribute(client: Any, realm: str, site_key: str,
     if user_id:
         contributors[user_id] = contributors.get(user_id, 0.0) \
             + sum(take.values())
+    # the AGENTS who poured in (Rule 3.4 counts users, but the observer wants to
+    # see which agents built it) -- deduped, most-recent-capped
+    cagents = [x for x in site.get("contributor_agents", []) if x != agent_uuid]
+    if agent_uuid:
+        cagents.append(agent_uuid)
+    cagents = cagents[-24:]
     filled = all(delivered.get(k, 0.0) >= units - 1e-9
                  for k, units in site["needs"].items())
     enough_users = len(contributors) >= site.get("required_users", 1)
@@ -410,6 +416,7 @@ async def contribute(client: Any, realm: str, site_key: str,
                                space="default",
                                payload={**site, "delivered": delivered,
                                         "contributors": contributors,
+                                        "contributor_agents": cagents,
                                         "complete": False,
                                         **({"building_until": building_until}
                                            if building_until else {})})
