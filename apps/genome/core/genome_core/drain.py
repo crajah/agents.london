@@ -2572,6 +2572,16 @@ async def apply_negotiation_turn(store: GenomeStore, world_realm: str,
             await store.set_movement(uuid_,
                 {"waypoints": [[view.x, view.y]], "departed_at": now,
                  "arrives_at": now, "cargo": cargo})
+        # document the barter in the market ledger so EVERY trade is tracked
+        # in one place (user directive 2026-09-14), not just board fills
+        try:
+            await market.record_barter(
+                store._c, world_realm, me, my_pl.get("owner_user_id", ""),
+                other_uuid, ot_pl.get("owner_user_id", ""),
+                out["gives"].get(me, {}), out["gives"].get(other_uuid, {}), now)
+        except Exception:
+            import logging as _lg
+            _lg.getLogger("genome.drain").warning("barter record failed")
         for uid in filter(None, {my_pl.get("owner_user_id"),
                                  ot_pl.get("owner_user_id")}):
             notify.emit_bg(store._c, uid, "agents", "trade_done",

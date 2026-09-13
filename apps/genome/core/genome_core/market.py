@@ -237,6 +237,26 @@ async def release(client: Any, realm: str, key: str) -> dict:
     return {"ok": True}
 
 
+async def record_barter(client: Any, realm: str, a: str, a_user: str,
+                        b: str, b_user: str, a_gives: dict[str, float],
+                        b_gives: dict[str, float], now: float) -> dict:
+    """Document an encounter-negotiated barter in the market ledger (user
+    directive 2026-09-14: ALL trades are tracked in the marketplace). This is not
+    an escrowed listing -- the goods already changed hands in the negotiation --
+    but a COLLECTED record so the exchange shows in the deals ticker/history
+    alongside board trades. `give` = what `a` handed over, `want` = what `a`
+    received (i.e. what `b` gave)."""
+    key = f"barter-{uuidlib.uuid4().hex[:10]}"
+    await client.add_vertex(TABLE, realm=realm, payload={
+        "key": key, "lister": a, "lister_user": a_user,
+        "give": {str(k): float(u) for k, u in (a_gives or {}).items()},
+        "want": {str(k): float(u) for k, u in (b_gives or {}).items()},
+        "proceeds": {}, "status": "collected",
+        "filled_by": b, "filler_user": b_user,
+        "listed_at": now, "filled_at": now, "source": "barter"})
+    return {"ok": True, "key": key}
+
+
 async def collect(client: Any, realm: str, key: str, lister: str,
                   cargo: dict[str, float]) -> dict:
     row = await _row(client, realm, key)

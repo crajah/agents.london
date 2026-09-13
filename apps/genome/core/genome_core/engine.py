@@ -148,11 +148,7 @@ def on_event(kind: str, agent: AgentView, piles: list[PileView],
         # Rule 3.7a/b: a held berth may change hands at any co-location,
         # countdown included -- the option appears only for a holder while
         # the water is coming
-        # No ad-hoc barter on contact (user directive 2026-09-14): ALL trades
-        # must be listed and agreed IN THE MARKET so every exchange is tracked.
-        # Meeting someone is for breeding/combat/social, not an untracked swap;
-        # to trade, an agent lists on the market and another accepts there.
-        enc_options = ["propose_breeding", "attack", "ignore"]
+        enc_options = ["offer_trade", "propose_breeding", "attack", "ignore"]
         if (ctx or {}).get("has_berth") and \
                 (ctx or {}).get("flood_in_s") is not None:
             enc_options.insert(0, "offer_berth")
