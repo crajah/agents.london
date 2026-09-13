@@ -476,7 +476,9 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
     idle set drains over a few passes."""
     from genome_core import drain as _d, forms as _f
     from types import SimpleNamespace as _NS
-    ARRIVE_RADIUS = 0.05          # ~PILE_STANDOFF (0.02) + separation spread
+    ARRIVE_RADIUS = 0.06          # PILE_STANDOFF (0.02) + separation spiral;
+    # generous so a just-arrived agent reliably reads as "at pile" (this is now
+    # the SOLE arrival signal -- arrival events are no longer minted)
     rctx = await _d.build_realm_ctx(store, realm)
     piles = list(rctx["piles_meta"].values())
     # an agent whose question is already in flight (event or decision) is busy
@@ -681,7 +683,9 @@ async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
                     try:
                         outcome = await drain.drain_one(
                             store, realm, realm, ev, decider,
-                            seed=int(time.time()), rctx=rctxs.get(realm))
+                            seed=int(time.time()), rctx=rctxs.get(realm),
+                            tick_chain=REFLEX_TICK)   # reflex owns routine
+                        # re-eval: don't let mechanical events re-queue decides
                         logger.info("%s %s -> %s (redis)", realm,
                                     d.get("subject"), outcome)
                     except Exception:

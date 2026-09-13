@@ -1658,17 +1658,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     eff = engine.apply_choice(
                         rc, agent, pile_views, now, merged_q, terrain,
                         world_payload.get("time_scale", 1.0), ctx)
-                    if tick_chain and eff.schedule \
-                            and eff.schedule[0] in ("arrival", "decide"):
-                        # the reflex tick re-evaluates this agent next pass, so
-                        # a routine re-eval need not round-trip the queue --
-                        # drop it (this is what stops travel minting arrivals).
-                        # Mechanical follow-ons (mining_done, deposit_arrival)
-                        # deliver cargo/loads and are KEPT. Effects is frozen, so
-                        # rebuild it rather than assign.
-                        eff = _dataclasses.replace(eff, schedule=None)
                     outcome = f"reflex:{rc.option}"
-                    # fall through to the effect-application tail
+                    # re-eval schedule (if any) is stripped at the tail under
+                    # tick_chain; fall through to the effect-application tail
                 else:
                     # the mind is off to the queue; the body wanders its style
                     # until the thought returns (free tier -- no LLM, no event)
@@ -1706,6 +1698,14 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         else:
             eff = res
             outcome = pl["kind"]
+    if tick_chain and eff.schedule and eff.schedule[0] in ("arrival", "decide"):
+        # reflex tick owns ALL routine re-evaluation, so no drained event -- not
+        # even a mechanical mining_done/deposit_arrival's decide follow-on --
+        # queues a routine re-eval. This is what keeps routine agents from
+        # re-accumulating `pending` events, so the continuous backend reflex loop
+        # (not the queue) drives them. Mechanical follow-ons themselves
+        # (mining_done, deposit_arrival) are NOT in this set and are kept.
+        eff = _dataclasses.replace(eff, schedule=None)
     await persist_effects(store, world_realm, agent, eff, piles_meta, now)
     if eff.contribute:
         await apply_contribution(store, world_realm, agent, agent_payload,
