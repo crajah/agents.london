@@ -8,6 +8,7 @@ kagent casts in Phase 2.
 """
 from __future__ import annotations
 
+import dataclasses as _dataclasses
 import json
 import os
 import time
@@ -1663,8 +1664,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                         # a routine re-eval need not round-trip the queue --
                         # drop it (this is what stops travel minting arrivals).
                         # Mechanical follow-ons (mining_done, deposit_arrival)
-                        # deliver cargo/loads and are KEPT.
-                        eff.schedule = None
+                        # deliver cargo/loads and are KEPT. Effects is frozen, so
+                        # rebuild it rather than assign.
+                        eff = _dataclasses.replace(eff, schedule=None)
                     outcome = f"reflex:{rc.option}"
                     # fall through to the effect-application tail
                 else:
