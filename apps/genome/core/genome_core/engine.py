@@ -1070,6 +1070,29 @@ def reflex_eligible(situation: str) -> bool:
     return bool(situation) and situation.startswith("at_")
 
 
+def deliberation_trigger(req: "DecisionRequest", agent_payload: dict,
+                         ctx: dict) -> bool:
+    """Salience TRIGGER: even on a routine (reflex-eligible) turn, some
+    conditions warrant the LLM NOW rather than at the next strategic heartbeat
+    (which is only the failsafe). Event-borne salience (encounters, mating,
+    market, world-chat, owner instructions) already arrives as its own
+    non-reflex situation and reaches the LLM directly; this covers salience the
+    engine can see WHILE an agent forages. Extend as new triggers land.
+      - imminent flood + no berth: survival is a decision, not a reflex.
+      - a fresh owner instruction / pending human reply the reflex can't honour.
+      - a market listing this agent can fill right now (trade opportunity)."""
+    fin = ctx.get("flood_in_s")
+    if fin is not None and fin < 600.0 and not ctx.get("has_berth") \
+            and not agent_payload.get("berth"):
+        return True
+    if agent_payload.get("owner_instruction_pending") \
+            or agent_payload.get("human_ask"):
+        return True
+    if ctx.get("has_fillable_listing"):        # set by the caller when the
+        return True                            # world board has a trade for us
+    return False
+
+
 def _nearest_reachable_pile(req: "DecisionRequest",
                             agent: AgentView, piles: list) -> str | None:
     reach = req.context.get("reachable") or []

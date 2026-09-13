@@ -1646,12 +1646,20 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 rc = None
                 if REFLEX_MODE != "off" \
                         and engine.reflex_eligible(res.situation) \
+                        and not agent_payload.get("carrying_site") \
+                        and engine.deliberation_trigger(
+                            res, agent_payload, ctx):
+                    # TRIGGER: a salient condition (imminent flood, owner
+                    # instruction, a fillable trade) wakes the LLM NOW, ahead of
+                    # the heartbeat -- rc stays None -> enqueue (LLM) below.
+                    rc = None
+                elif REFLEX_MODE != "off" \
+                        and engine.reflex_eligible(res.situation) \
                         and not agent_payload.get("carrying_site"):
-                    # STRATEGIC HEARTBEAT (reflex/deliberation §5): most turns run
-                    # on reflex, but every ~review_period the agent defers ONE
-                    # turn to the LLM so strategy still happens (trade, mate,
-                    # build, change goal) -- without this the reflex forages
-                    # forever and the LLM (markets, social life) goes idle.
+                    # STRATEGIC HEARTBEAT (reflex/deliberation §5) -- the FAILSAFE:
+                    # most turns run on reflex, but every ~review_period the agent
+                    # defers ONE turn to the LLM so strategy still happens (trade,
+                    # mate, build, change goal) even when no trigger fired.
                     ra = agent_payload.get("review_at")
                     if ra is None:                       # first sight: spread the
                         # first review across the coming period (don't defer now)
