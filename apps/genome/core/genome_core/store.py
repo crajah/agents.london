@@ -55,7 +55,7 @@ async def ensure_world_realm(client: Any, world_realm: str) -> None:
     due-event query can filter in the database."""
     r = _req(world_realm, "world realm")
     for table in (WORLD_META, PILES, PORTALS, PRESENCE, "constructions",
-                  "negotiations", "market_listings"):
+                  "negotiations", "market_listings", "matings"):
         await client.create_vertex_table(table, realm=r)
     for key in ("due_at", "done_at"):
         await client.create_payload_index(EVENTS, realm=r, key=key)
