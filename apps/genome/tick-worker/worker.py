@@ -846,8 +846,16 @@ async def main() -> None:
                             logger.info("recost %s: %d sites re-costed, "
                                         "%d completed", r, rc["recosted"],
                                         rc["completed"])
+                        # backstop: finalize builds whose clock ran out but whose
+                        # construction_done event was lost (restart/purge/never
+                        # scheduled) -- else they rise forever (2026-09-14)
+                        fin = await drain.construction.finalize_ready(
+                            store._c, r, time.time())
+                        if fin:
+                            logger.info("finalized %d overdue builds in %s: %s",
+                                        len(fin), r, ",".join(fin[:8]))
                     except Exception:
-                        logger.exception("recost failed: %s", r)
+                        logger.exception("recost/finalize failed: %s", r)
                 # uniform teleport layout (user directive 2026-09-13): lay every
                 # world's doors out on concentric rings, like the commons.
                 # Deterministic -> idempotent (a tidy map is a no-op).

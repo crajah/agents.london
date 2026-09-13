@@ -489,6 +489,34 @@ async def finalize(client: Any, realm: str, site_key: str, now: float) -> dict:
     return {"ok": True, "name": site["name"]}
 
 
+async def finalize_ready(client: Any, realm: str, now: float) -> list[str]:
+    """Backstop sweep (2026-09-14): finalize every build whose clock has run out
+    but that is still 'rising'. Finalization normally rides a scheduled
+    construction_done event, but a lost event -- a worker restart mid-claim, a
+    queue purge, or one that was never scheduled -- would otherwise strand the
+    build FOREVER (found 38 builds stuck, some 11 days overdue, with zero pending
+    finalize events). finalize() is idempotent and self-contained, so sweeping it
+    each maintenance cycle makes completion robust without the event."""
+    done = []
+    try:
+        sites = await client.find_vertices(TABLE, realm=realm, limit=1000)
+    except Exception:
+        return done
+    for v in sites:
+        s = v.payload
+        bu = s.get("building_until")
+        if not bu or s.get("complete") or s.get("destroyed"):
+            continue
+        try:
+            if now + 1e-6 >= float(bu):
+                res = await finalize(client, realm, s["key"], now)
+                if res.get("ok") and not res.get("already"):
+                    done.append(s.get("name", s["key"]))
+        except (TypeError, ValueError):
+            continue
+    return done
+
+
 def manifest_slots_used(ark: dict, sites: list[dict]) -> int:
     """Rule 4.3b: twelve slots, everything priced against them -- an agent 1,
     a construction its contributor count, stock 1 per unit (stock later)."""
