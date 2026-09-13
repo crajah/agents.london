@@ -1396,12 +1396,21 @@ async def build_realm_ctx(store: GenomeStore, world_realm: str) -> dict:
 
 
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
-                    ev, decider, seed: int, rctx: dict | None = None) -> str:
+                    ev, decider, seed: int, rctx: dict | None = None,
+                    light: bool = False) -> str:
     """Process one due event vertex. Returns the choice or event kind.
 
     `rctx` (from build_realm_ctx) lets a caller draining many events of one
     realm share the per-realm reads; when None every read is done inline (the
-    PG-poll fallback and any direct caller keep working unchanged)."""
+    PG-poll fallback and any direct caller keep working unchanged).
+
+    `light` (Phase 3 reflex tick): for arrival/decide, build only the CHEAP ctx
+    the reflex policy needs from the options `_decide_here` offers -- skipping
+    engine_ctx's per-agent reads (neighbours, world-chat, market, plan
+    discovery). A routine situation resolves in-tick; anything the reflex can't
+    settle is enqueued and the decision-worker rebuilds the full ctx there. Keeps
+    the continuous pass affordable (else engine_ctx per idle agent would blow the
+    PG budget)."""
     pl = ev.payload
     metrics.EVENTS.labels(pl["kind"]).inc()
     now = from_iso(pl["due_at"])
@@ -1574,22 +1583,41 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 time_scale=world_payload.get("time_scale", 1.0))
             outcome = "deposit"
     else:
-        if pl["kind"] in ("arrival", "decide"):
+        is_decide = pl["kind"] in ("arrival", "decide")
+        if is_decide and not light:
             await learn_nearby_plans(store, agent, agent_payload, sites)
-        ctx = (await engine_ctx(store, world_realm, world_payload,
-                                agent_payload, agent, pile_views, now,
-                                sites=sites)
-               if pl["kind"] in ("arrival", "decide")
-               else {"genotype": agent_payload.get("genotype") or {},
-                     "time_scale": world_payload.get("time_scale", 1.0),
-                     "sight_mult": fx["sight_mult"],
-                     "skill": (agent_payload.get("capability") or {}).get("name"),
-                     "crew_size": len(agent_payload.get("crew") or []),
-                     "has_objective": bool(agent_payload.get("objectives")),
-                     "carrying_site": agent_payload.get("carrying_site"),
-                     "has_berth": bool(agent_payload.get("berth")),
-                     "flood_in_s": _flood_mod.countdown_visible(
-                         world_payload, now)})
+        if is_decide and light:
+            # Phase 3 reflex tick: only the light world the routine policy reads
+            ctx = {"genotype": agent_payload.get("genotype") or {},
+                   "time_scale": world_payload.get("time_scale", 1.0),
+                   "skill": (agent_payload.get("capability") or {}).get("name"),
+                   "crew_size": len(agent_payload.get("crew") or []),
+                   "has_objective": bool(agent_payload.get("objectives")),
+                   "carrying_site": agent_payload.get("carrying_site"),
+                   "has_berth": bool(agent_payload.get("berth")),
+                   "is_commons": bool(world_payload.get("is_commons")),
+                   "world_kinds": world_payload.get("kinds", []),
+                   "portals": world_payload.get("portals", []),
+                   "muster": world_payload.get("muster_points", []),
+                   "occupied": [(pv.x, pv.y) for pv in pile_views],
+                   "flood_in_s": _flood_mod.countdown_visible(
+                       world_payload, now),
+                   **fx}
+        elif is_decide:
+            ctx = await engine_ctx(store, world_realm, world_payload,
+                                   agent_payload, agent, pile_views, now,
+                                   sites=sites)
+        else:
+            ctx = {"genotype": agent_payload.get("genotype") or {},
+                   "time_scale": world_payload.get("time_scale", 1.0),
+                   "sight_mult": fx["sight_mult"],
+                   "skill": (agent_payload.get("capability") or {}).get("name"),
+                   "crew_size": len(agent_payload.get("crew") or []),
+                   "has_objective": bool(agent_payload.get("objectives")),
+                   "carrying_site": agent_payload.get("carrying_site"),
+                   "has_berth": bool(agent_payload.get("berth")),
+                   "flood_in_s": _flood_mod.countdown_visible(
+                       world_payload, now)}
         res = engine.on_event(pl["kind"], agent, pile_views, now,
                               pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):

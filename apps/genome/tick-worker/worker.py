@@ -51,6 +51,14 @@ def _shard_index() -> int:
 SHARD_COUNT = max(1, int(os.getenv("SHARD_COUNT", "1")))
 SHARD_INDEX = _shard_index() % SHARD_COUNT
 
+# Reflex/deliberation Phase 3 (spec apps/genome/spec/reflex-*): the CONTINUOUS
+# reflex pass. When on, idle routine agents are decided+moved IN the tick (no
+# `decide` event round-trip through the shared queue), and heal stops scheduling
+# those polls. Off == today's heal-schedules-a-decide behaviour. Needs
+# GENOME_REFLEX != off (the drain reflex path resolves the synthetic decide).
+REFLEX_TICK = os.getenv("GENOME_REFLEX_TICK", "off") != "off"
+REFLEX_TICK_CAP = int(os.getenv("GENOME_REFLEX_TICK_CAP", "150"))
+
 
 def mine(realm: str) -> bool:
     return zlib.crc32(realm.encode()) % SHARD_COUNT == SHARD_INDEX
@@ -120,6 +128,9 @@ async def heal(store: GenomeStore, realm: str, now: float) -> int:
                                  "perish", a, {"cause": "attrition"})
         if a in pending_subjects:
             continue
+        if REFLEX_TICK:
+            continue          # Phase 3: reflex_tick drives idle agents in-tick,
+            # so heal no longer schedules a `decide` poll for them
         latest = await store.latest_movement(a)
         if latest and latest.payload.get("arrives_at", 0) > now:
             continue                      # still travelling; arrival comes
@@ -444,6 +455,60 @@ async def reconcile_presence(store: GenomeStore) -> int:
         return 0
 
 
+async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
+    """Phase 3 -- the CONTINUOUS reflex pass. For every present, idle, routine
+    agent, resolve its next move RIGHT HERE in the tick and write it directly,
+    instead of heal scheduling a `decide` event that then waits in the shared
+    queue behind the backlog (the ~30-min tail). Physics follow-ons (arrival,
+    mining_done) are still scheduled by the drain, so an agent kicked into motion
+    re-enters the event system and is skipped next pass (it becomes `pending`).
+    A social/novel/stuck agent falls to the LLM decision queue exactly as on the
+    event path. It REUSES drain_one via an in-memory `decide` event, so every
+    effect is persisted by the one audited code path and correctness is not
+    re-implemented; build_realm_ctx keeps the reads to once per realm. Capped so
+    the idle set drains over a few passes rather than one burst."""
+    from genome_core import drain as _d
+    from types import SimpleNamespace as _NS
+    rctx = await _d.build_realm_ctx(store, realm)
+    # an agent whose question is already in flight (event or decision) is busy
+    pending = {v.payload.get("subject")
+               for v in await store._c.find_vertices(
+                   "events", realm=realm,
+                   where=[("done_at", "is_null", None)], limit=4000)}
+    pending |= {v.payload.get("agent_uuid")
+                for v in await store._c.find_vertices(
+                    "decision_queue", realm="genome_agents",
+                    filters={"world_realm": realm},
+                    where=[("done_at", "is_null", None)], limit=4000)}
+    present = [v.payload["key"] for v in await store.agents_in(realm)]
+    metas = await _payloads_for(store, present)
+    acted = 0
+    for a in present:
+        if acted >= REFLEX_TICK_CAP:
+            break
+        if a in pending:
+            continue
+        apl = metas.get(a) or {}
+        if not apl.get("alive", True) or not apl.get("genotype"):
+            continue
+        if apl.get("carrying_site"):
+            continue          # a carrier moves as one body -- leave it be
+        latest = await store.latest_movement(a)
+        if latest and latest.payload.get("arrives_at", 0) > now:
+            continue          # still travelling; its arrival will re-decide
+        ev = _NS(payload={"kind": "decide", "subject": a,
+                          "due_at": _d._iso(now), "key": f"rtick-{a}",
+                          "payload": {}})
+        try:
+            outcome = await _d.drain_one(store, realm, realm, ev, None,
+                                         seed=int(now), rctx=rctx, light=True)
+            if isinstance(outcome, str) and outcome.startswith("reflex:"):
+                acted += 1
+        except Exception:
+            logger.exception("reflex_tick failed for %s in %s", a, realm)
+    return acted
+
+
 async def tick_once(store: GenomeStore, realm: str, decider,
                     do_heal: bool = True) -> int:
     now = time.time()
@@ -465,6 +530,13 @@ async def tick_once(store: GenomeStore, realm: str, decider,
     if happened:
         logger.info("%s: %s", realm, happened)
     await sweep(store, realm, now)
+    if REFLEX_TICK:
+        try:
+            moved = await reflex_tick(store, realm, now)
+            if moved:
+                logger.info("%s: reflex tick moved %d idle agents", realm, moved)
+        except Exception:
+            logger.exception("reflex_tick pass failed for %s", realm)
     if do_heal:
         await heal(store, realm, now)
     # Draining moved OFF the per-realm path (scale rewrite Phase 1, 2026-09-13):
