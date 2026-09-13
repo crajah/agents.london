@@ -15,6 +15,7 @@ import uuid as uuidlib
 from . import combat, construction, engine, forms, identity, market, \
     negotiation as nego, notify, opinion, pathogen
 from . import genotype as G
+from . import goals
 from . import metrics
 from . import skills as _skills
 from . import vitals as _vitals
@@ -29,6 +30,12 @@ from .store import GenomeStore
 # beyond this an offspring's home is "full" and the child isn't born, so a world
 # can't grow so dense it starves its own agents of decision throughput.
 BREED_DENSITY_CAP = int(os.getenv("GENOME_BREED_CAP", "60"))
+
+# Reflex/deliberation split, Phase 1 (spec: apps/genome/spec/reflex-*). "off"
+# (default) keeps every routine decision on the LLM; "provision"/"all" resolve
+# routine at_* situations with the deterministic reflex policy instead of
+# queueing an LLM decision. One-flag rollback; social situations always LLM.
+REFLEX_MODE = os.getenv("GENOME_REFLEX", "off")
 
 
 def _iso(t: float) -> str:
@@ -1547,42 +1554,67 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                               pl.get("payload", {}), stock, portals, ctx)
         if isinstance(res, engine.DecisionRequest):
             if decider is None:                     # queue mode (Rule 8.4)
-                # the mind is off to the queue; the body wanders its style
-                # until the thought returns (free tier -- no LLM, no event)
-                if res.situation.startswith("at_") \
-                        and not agent_payload.get("carrying_site"):
-                    dr = engine.drift_route(agent, ctx, terrain, now)
-                    if dr:
-                        await store.set_movement(agent.agent_uuid,
-                                                 {**dr, "cargo": agent.cargo})
                 merged_q = dict(pl.get("payload", {}))
                 for k in ("portal_to", "portal_xy", "proposer", "other",
                           "site_here", "cache_here", "ark_key",
                           "convoked_to", "convoked_by"):
                     if res.context.get(k):
                         merged_q[k] = res.context[k]
-                await enqueue_decision(store, world_realm, res,
-                                       merged_q, now)
-                await store.complete_event(world_realm, pl["key"], _iso(now))
-                return f"queued:{res.situation}"
-            decided = decider(res, agent_payload, seed)
-            # a decider may return (Choice, model_name) or a bare Choice
-            choice, model = decided if isinstance(decided, tuple) \
-                else (decided, "stub")
-            await store.record_decision(agent_uuid, {
-                "at": pl["due_at"], "situation": res.situation,
-                "options": list(res.options), "choice": choice.option,
-                "model": model, "tier": "economy" if model != "stub" else "stub"})
-            merged = dict(pl.get("payload", {}))
-            for k in ("portal_to", "portal_xy", "site_here", "cache_here",
-                      "ark_key"):
-                if res.context.get(k):
-                    merged[k] = res.context[k]
-            eff = engine.apply_choice(choice, agent, pile_views, now,
-                                      merged, terrain,
-                                      world_payload.get("time_scale", 1.0),
-                                      ctx)
-            outcome = choice.option
+                # REFLEX (Phase 1): resolve a routine situation deterministically
+                # from the options already offered -- no LLM, no queue. Returns
+                # None for social/novel situations or when no routine choice
+                # fits, in which case we fall back to the LLM queue below.
+                rc = None
+                if REFLEX_MODE != "off" \
+                        and engine.reflex_eligible(res.situation) \
+                        and not agent_payload.get("carrying_site"):
+                    rc = engine.goal_policy(
+                        goals.current_goal(agent_payload, now), res,
+                        agent, pile_views, ctx)
+                if rc is not None:
+                    await store.record_decision(agent_uuid, {
+                        "at": pl["due_at"], "situation": res.situation,
+                        "options": list(res.options), "choice": rc.option,
+                        "model": "reflex", "tier": "reflex"})
+                    eff = engine.apply_choice(
+                        rc, agent, pile_views, now, merged_q, terrain,
+                        world_payload.get("time_scale", 1.0), ctx)
+                    outcome = f"reflex:{rc.option}"
+                    # fall through to the effect-application tail
+                else:
+                    # the mind is off to the queue; the body wanders its style
+                    # until the thought returns (free tier -- no LLM, no event)
+                    if res.situation.startswith("at_") \
+                            and not agent_payload.get("carrying_site"):
+                        dr = engine.drift_route(agent, ctx, terrain, now)
+                        if dr:
+                            await store.set_movement(
+                                agent.agent_uuid,
+                                {**dr, "cargo": agent.cargo})
+                    await enqueue_decision(store, world_realm, res,
+                                           merged_q, now)
+                    await store.complete_event(world_realm, pl["key"], _iso(now))
+                    return f"queued:{res.situation}"
+            else:
+                decided = decider(res, agent_payload, seed)
+                # a decider may return (Choice, model_name) or a bare Choice
+                choice, model = decided if isinstance(decided, tuple) \
+                    else (decided, "stub")
+                await store.record_decision(agent_uuid, {
+                    "at": pl["due_at"], "situation": res.situation,
+                    "options": list(res.options), "choice": choice.option,
+                    "model": model,
+                    "tier": "economy" if model != "stub" else "stub"})
+                merged = dict(pl.get("payload", {}))
+                for k in ("portal_to", "portal_xy", "site_here", "cache_here",
+                          "ark_key"):
+                    if res.context.get(k):
+                        merged[k] = res.context[k]
+                eff = engine.apply_choice(choice, agent, pile_views, now,
+                                          merged, terrain,
+                                          world_payload.get("time_scale", 1.0),
+                                          ctx)
+                outcome = choice.option
         else:
             eff = res
             outcome = pl["kind"]

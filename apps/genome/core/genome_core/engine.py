@@ -1055,3 +1055,54 @@ def stub_decider(req: DecisionRequest, seed: int) -> Choice:
     target = r.choice(req.context["reachable"]) \
         if option == "travel_to_pile" and req.context["reachable"] else None
     return Choice(option=option, target=target)
+
+
+# --- Reflex layer (reflex/deliberation split, Phase 1) ------------------------
+# A deterministic POLICY over the options _decide_here already produced, so the
+# routine provisioning loop needs no LLM. Social/novel situations are NOT
+# reflex-eligible and still go to the deliberation (LLM) layer. See
+# apps/genome/spec/reflex-deliberation-{spec,plan}.md.
+
+def reflex_eligible(situation: str) -> bool:
+    """Only routine 'at the ground' situations (at_<pile> / at_large) are
+    resolved reflexively; encounters, mating, market, negotiate, service and the
+    like carry their own situations and stay with the LLM."""
+    return bool(situation) and situation.startswith("at_")
+
+
+def _nearest_reachable_pile(req: "DecisionRequest",
+                            agent: AgentView, piles: list) -> str | None:
+    reach = req.context.get("reachable") or []
+    by_id = {p.pile_uuid: p for p in piles}
+    cand = [((by_id[u].x - agent.x) ** 2 + (by_id[u].y - agent.y) ** 2, u)
+            for u in reach if u in by_id]
+    return min(cand)[1] if cand else None
+
+
+def goal_policy(goal: dict, req: "DecisionRequest",
+                agent: AgentView, piles: list, ctx: dict) -> "Choice | None":
+    """Pick the reflex action for the agent's current goal from the options the
+    engine offered (all rule-gated already: home-only mining, ceilings, etc.).
+    Returns None when no routine choice fits -- the caller then defers to the
+    LLM. Phase 1 implements the `provision` loop (also the fallback for any goal
+    not yet given its own policy)."""
+    opts = set(req.options)
+    kind = (goal or {}).get("kind", "provision")
+    STRATEGIC = ("seek_mate", "trade", "build", "explore", "survive", "serve")
+    if kind == "provision" or kind not in STRATEGIC:
+        # forage -> deposit -> travel-to-pile -> get-home -> explore, in order
+        if "mine_here" in opts:
+            return Choice(option="mine_here")
+        if "go_home_deposit" in opts and agent.cargo_total() > 0:
+            return Choice(option="go_home_deposit")
+        if "travel_to_pile" in opts:
+            tgt = _nearest_reachable_pile(req, agent, piles)
+            if tgt:
+                return Choice(option="travel_to_pile", target=tgt)
+        if "head_home" in opts:
+            return Choice(option="head_home")
+        if "explore_frontier" in opts:
+            return Choice(option="explore_frontier")
+        if "survey_far" in opts:
+            return Choice(option="survey_far")
+    return None
