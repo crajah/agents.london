@@ -172,6 +172,10 @@ spec:
               value: genome_demo,genome_demo2,genome_demo3
             - name: SHARD_COUNT
               value: "8"
+            - name: GENOME_REFLEX
+              value: "provision"   # reflex/deliberation Phase 1: routine at_*
+              # decisions resolve deterministically in-drain (no LLM); social
+              # situations still queue. off|provision|all; one-flag rollback.
             - name: GENOME_TOOLS_URL
               value: http://tool-registry-service:8002
             - name: GENOME_SMTP_HOST

@@ -539,7 +539,7 @@ async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
     event itself; the claim already removed the member from the queue."""
     from genome_core import redisq
     from types import SimpleNamespace as _NS
-    sem = asyncio.Semaphore(8)
+    sem = asyncio.Semaphore(int(os.getenv("GENOME_DRAIN_CONCURRENCY", "16")))
     idle = 0
     while not stop.is_set():
         rq = redisq.queue()
@@ -558,6 +558,16 @@ async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
         groups: dict[str, list] = {}
         for d in claimed:
             groups.setdefault(d.get("subject") or "", []).append(d)
+        # per-REALM reads (piles/sites/world/stock) loaded ONCE and shared by
+        # every event of that realm in this batch -- drain_one was doing ~6 PG
+        # reads/event, which capped the consumer near the event-generation rate
+        # and left a ~30-min queue tail. A handful of realms per claim, cheap.
+        rctxs: dict[str, dict] = {}
+        for rlm in {d.get("realm") for d in claimed if d.get("realm")}:
+            try:
+                rctxs[rlm] = await drain.build_realm_ctx(store, rlm)
+            except Exception:
+                logger.exception("build_realm_ctx failed for %s", rlm)
 
         async def _drain_subject(items):
             async with sem:
@@ -575,7 +585,7 @@ async def redis_consumer_loop(store: GenomeStore, decider, stop) -> None:
                     try:
                         outcome = await drain.drain_one(
                             store, realm, realm, ev, decider,
-                            seed=int(time.time()))
+                            seed=int(time.time()), rctx=rctxs.get(realm))
                         logger.info("%s %s -> %s (redis)", realm,
                                     d.get("subject"), outcome)
                     except Exception:
@@ -589,7 +599,8 @@ async def main() -> None:
     _metrics.serve(9100)   # pod annotation scrape (marty infra/telemetry)
     if not REALMS:
         raise SystemExit("set GENOME_REALMS")
-    client = AsyncPostGraph(dsn=dsn(), pool_min_size=1, pool_max_size=4,
+    client = AsyncPostGraph(dsn=dsn(), pool_min_size=1,
+                            pool_max_size=int(os.getenv("GENOME_PG_POOL", "10")),
                             statement_cache_size=0)  # pgbouncer; SCHEMA_PER_REALM unset
     await client.connect()
     store = GenomeStore(client)

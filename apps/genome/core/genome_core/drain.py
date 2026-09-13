@@ -1369,30 +1369,71 @@ async def relayout_all_portals(store: GenomeStore) -> int:
     return changed
 
 
+async def build_realm_ctx(store: GenomeStore, world_realm: str) -> dict:
+    """The per-REALM reads drain_one needs -- piles, sites, world payload and
+    stock -- loaded ONCE so a whole claim-batch of one realm's events shares
+    them instead of re-reading per event (the drain-throughput ceiling: ~6 PG
+    reads/event capped the consumer at ~gen-rate). now-independent: pile_views
+    are still recomputed per event from piles_meta at the event's virtual clock.
+    Eventual-consistency is the same the concurrent consumer already has --
+    mining/deposit see a snapshot at most one batch stale, self-correcting next
+    tick; kept out of the ledgers' own atomicity."""
+    pile_rows = await store.piles_in(world_realm)
+    piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
+    sites = [v.payload for v in await construction.sites_in(store._c,
+                                                            world_realm)
+             if not v.payload.get("destroyed")]
+    world_payload = await _world_payload(store, world_realm)
+    return {
+        "piles_meta": piles_meta,
+        "sites": sites,
+        "fx": construction.effects_from(sites),
+        "world_payload": world_payload,
+        "terrain": nav_obstacles(world_payload.get("terrain", []), piles_meta,
+                                 sites, world_payload),
+        "stock": await get_stock(store, world_realm),
+    }
+
+
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
-                    ev, decider, seed: int) -> str:
-    """Process one due event vertex. Returns the choice or event kind."""
+                    ev, decider, seed: int, rctx: dict | None = None) -> str:
+    """Process one due event vertex. Returns the choice or event kind.
+
+    `rctx` (from build_realm_ctx) lets a caller draining many events of one
+    realm share the per-realm reads; when None every read is done inline (the
+    PG-poll fallback and any direct caller keep working unchanged)."""
     pl = ev.payload
     metrics.EVENTS.labels(pl["kind"]).inc()
     now = from_iso(pl["due_at"])
     agent_uuid = pl["subject"]
     agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
                                             home_realm, now)
-    pile_rows = await store.piles_in(world_realm)
-    piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
-    sites = [v.payload for v in await construction.sites_in(store._c,
-                                                            world_realm)
-             if not v.payload.get("destroyed")]
-    fx = construction.effects_from(sites)
+    if rctx is not None:
+        piles_meta = rctx["piles_meta"]
+        sites = rctx["sites"]
+        fx = rctx["fx"]
+    else:
+        pile_rows = await store.piles_in(world_realm)
+        piles_meta = {v.payload["key"]: v.payload for v in pile_rows}
+        sites = [v.payload for v in await construction.sites_in(store._c,
+                                                                world_realm)
+                 if not v.payload.get("destroyed")]
+        fx = construction.effects_from(sites)
     pile_views = [engine.PileView(
         k, m["kind"], m["x"], m["y"],
         forms.pile_quantity(forms.PileState(
             m["qty_at"], m.get("measured_at", 0.0),
             m["rate"] * fx["regen_mult"], m["cap"]), now))   # a Grove renews
         for k, m in piles_meta.items()]
-    world_payload = await _world_payload(store, world_realm)
-    terrain = nav_obstacles(world_payload.get("terrain", []), piles_meta,
-                            sites, world_payload)
+    if rctx is not None:
+        world_payload = rctx["world_payload"]
+        terrain = rctx["terrain"]
+        stock = rctx["stock"]
+    else:
+        world_payload = await _world_payload(store, world_realm)
+        terrain = nav_obstacles(world_payload.get("terrain", []), piles_meta,
+                                sites, world_payload)
+        stock = await get_stock(store, world_realm)
     portals = world_payload.get("portals", [])
     if world_payload.get("is_commons") and not portals:
         # 6.2g revised (user directive): links are two-way and the commons
@@ -1402,7 +1443,6 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
         portals = ([{"x": 0.5, "y": 0.08, "to_world": entry,
                      "dest_xy": agent_payload.get("commons_entry_xy") or [0.5, 0.5],
                      "dest_colours": None}] if entry else [])
-    stock = await get_stock(store, world_realm)
 
     if pl["kind"] == "evacuate":
         # scurry, second half (user directive 2026-09-05: agents NAVIGATE
