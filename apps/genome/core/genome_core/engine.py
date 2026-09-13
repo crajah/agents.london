@@ -1123,4 +1123,13 @@ def goal_policy(goal: dict, req: "DecisionRequest",
             return Choice(option="explore_frontier")
         if "survey_far" in opts:
             return Choice(option="survey_far")
+        # crossing worlds is a reflex too (user 2026-09-14): the engine only
+        # OFFERS these to agents disposed to step through (Teleport Affinity +
+        # off cooldown), so reflex just walks a disposed wanderer to the nearest
+        # door and through it -- continuous, no LLM. Lowest priority, so home
+        # foraging always comes first.
+        if "take_portal" in opts:
+            return Choice(option="take_portal")
+        if "travel_to_portal" in opts:
+            return Choice(option="travel_to_portal")
     return None
