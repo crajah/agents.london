@@ -1398,7 +1398,7 @@ async def build_realm_ctx(store: GenomeStore, world_realm: str) -> dict:
 
 async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     ev, decider, seed: int, rctx: dict | None = None,
-                    light: bool = False) -> str:
+                    light: bool = False, tick_chain: bool = False) -> str:
     """Process one due event vertex. Returns the choice or event kind.
 
     `rctx` (from build_realm_ctx) lets a caller draining many events of one
@@ -1657,6 +1657,14 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                     eff = engine.apply_choice(
                         rc, agent, pile_views, now, merged_q, terrain,
                         world_payload.get("time_scale", 1.0), ctx)
+                    if tick_chain and eff.schedule \
+                            and eff.schedule[0] in ("arrival", "decide"):
+                        # the reflex tick re-evaluates this agent next pass, so
+                        # a routine re-eval need not round-trip the queue --
+                        # drop it (this is what stops travel minting arrivals).
+                        # Mechanical follow-ons (mining_done, deposit_arrival)
+                        # deliver cargo/loads and are KEPT.
+                        eff.schedule = None
                     outcome = f"reflex:{rc.option}"
                     # fall through to the effect-application tail
                 else:

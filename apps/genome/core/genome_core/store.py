@@ -189,15 +189,21 @@ class GenomeStore:
 
     async def complete_event(self, world_realm: str, event_id: str, now: str) -> None:
         r = _req(world_realm, "world realm")
-        rows = await self._c.find_vertices(EVENTS, realm=r,
-                                           filters={"key": event_id}, limit=1)
-        if not rows:
-            # Idempotent (2026-09-13): a competing-consumer world races -- an
-            # event can be completed then pruned between another path's read and
-            # its complete. Missing = already done/pruned; a no-op, not an error.
-            return
-        await self._c.upsert_vertex(EVENTS, realm=r, vertex_id=int(rows[0].id),
-                                    payload={**rows[0].payload, "done_at": now})
+        # Complete EVERY undone row for this key. The schedule path can leave
+        # duplicate rows under one key (e.g. post-encounter decides keyed on a
+        # fixed encounter timestamp): the old find(limit=1) had no done filter,
+        # so it could re-complete an already-done twin and leave the live
+        # duplicate undone FOREVER -- an immortal event that pinned oldest_due_age
+        # and kept the world's stalled flag on regardless of real liveness.
+        # Filtering to undone rows and marking all of them makes "complete the
+        # key" mean the key, twins included. Idempotent: no undone rows => no-op
+        # (a raced/pruned event is simply already done).
+        rows = await self._c.find_vertices(
+            EVENTS, realm=r, filters={"key": event_id},
+            where=[("done_at", "is_null", None)], limit=100)
+        for row in rows:
+            await self._c.upsert_vertex(EVENTS, realm=r, vertex_id=int(row.id),
+                                        payload={**row.payload, "done_at": now})
 
     async def claim_due_events(self, now_s: str, lease_until_s: str,
                                batch: int = 64) -> list:

@@ -459,17 +459,26 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
     """Phase 3 -- the CONTINUOUS reflex pass. For every present, idle, routine
     agent, resolve its next move RIGHT HERE in the tick and write it directly,
     instead of heal scheduling a `decide` event that then waits in the shared
-    queue behind the backlog (the ~30-min tail). Physics follow-ons (arrival,
-    mining_done) are still scheduled by the drain, so an agent kicked into motion
-    re-enters the event system and is skipped next pass (it becomes `pending`).
-    A social/novel/stuck agent falls to the LLM decision queue exactly as on the
-    event path. It REUSES drain_one via an in-memory `decide` event, so every
-    effect is persisted by the one audited code path and correctness is not
-    re-implemented; build_realm_ctx keeps the reads to once per realm. Capped so
-    the idle set drains over a few passes rather than one burst."""
-    from genome_core import drain as _d
+    queue behind the backlog (the ~30-min tail).
+
+    Volume cut (tick_chain): routine motion no longer round-trips the queue. A
+    reflex-driven action's `arrival`/`decide` re-eval schedule is DROPPED -- the
+    next tick re-evaluates the agent instead -- so travel stops minting the
+    biggest event category (arrivals). Mechanical follow-ons (mining_done,
+    deposit_arrival) are kept: they deliver cargo / drop loads and must fire. To
+    re-evaluate a moved agent the tick reconstructs its pile context by
+    PROXIMITY (the dropped arrival event used to carry pile_uuid): an agent
+    standing within ARRIVE_RADIUS of a pile is treated as at it.
+
+    A social/novel/stuck agent still falls to the LLM decision queue exactly as
+    on the event path. Reuses drain_one so every effect is persisted by the one
+    audited path; build_realm_ctx keeps reads to once per realm; capped so the
+    idle set drains over a few passes."""
+    from genome_core import drain as _d, forms as _f
     from types import SimpleNamespace as _NS
+    ARRIVE_RADIUS = 0.05          # ~PILE_STANDOFF (0.02) + separation spread
     rctx = await _d.build_realm_ctx(store, realm)
+    piles = list(rctx["piles_meta"].values())
     # an agent whose question is already in flight (event or decision) is busy
     pending = {v.payload.get("subject")
                for v in await store._c.find_vertices(
@@ -495,13 +504,28 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
             continue          # a carrier moves as one body -- leave it be
         latest = await store.latest_movement(a)
         if latest and latest.payload.get("arrives_at", 0) > now:
-            continue          # still travelling; its arrival will re-decide
+            continue          # still travelling; the tick re-decides on arrival
+        # reconstruct pile context by proximity (the dropped arrival event used
+        # to carry pile_uuid): if the agent stands at a pile, offer mining there
+        dpay: dict = {}
+        if latest and "waypoints" in latest.payload:
+            r = _f.Route(tuple(tuple(q) for q in latest.payload["waypoints"]),
+                         latest.payload["departed_at"],
+                         latest.payload.get("arrives_at"))
+            ax, ay = _f.route_position(r, now)
+            near = min(piles,
+                       key=lambda m: (m["x"] - ax) ** 2 + (m["y"] - ay) ** 2,
+                       default=None)
+            if near and (near["x"] - ax) ** 2 + (near["y"] - ay) ** 2 \
+                    <= ARRIVE_RADIUS ** 2:
+                dpay["pile_uuid"] = near["key"]
         ev = _NS(payload={"kind": "decide", "subject": a,
                           "due_at": _d._iso(now), "key": f"rtick-{a}",
-                          "payload": {}})
+                          "payload": dpay})
         try:
             outcome = await _d.drain_one(store, realm, realm, ev, None,
-                                         seed=int(now), rctx=rctx, light=True)
+                                         seed=int(now), rctx=rctx, light=True,
+                                         tick_chain=True)
             if isinstance(outcome, str) and outcome.startswith("reflex:"):
                 acted += 1
         except Exception:
