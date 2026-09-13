@@ -39,6 +39,12 @@ BREED_DENSITY_CAP = int(os.getenv("GENOME_BREED_CAP", "60"))
 # queueing an LLM decision. One-flag rollback; social situations always LLM.
 REFLEX_MODE = os.getenv("GENOME_REFLEX", "off")
 
+# A world-chat conversation is bounded: once a thread has had its say, agents
+# stop piling onto it (user report 2026-09-14: agents flooded one thread with
+# ~200 remarks, drowning the chat). New topics start their own threads, so the
+# owner sees several usable conversations, not one runaway.
+WORLD_CHAT_THREAD_CAP = int(os.getenv("GENOME_WORLD_CHAT_CAP", "14"))
+
 
 def _iso(t: float) -> str:
     # virtual-clock ISO: fixed-width seconds since epoch sorts lexically,
@@ -621,6 +627,16 @@ async def world_say(store: GenomeStore, world_realm: str,
     if not recent:
         return "world_chat:quiet"
     latest = recent[0].payload
+    thread = latest.get("thread") or latest.get("key")
+    # a spent conversation is left alone -- no endless pile-on (2026-09-14)
+    try:
+        in_thread = await store._c.find_vertices(
+            "world_chats", realm=world_realm, filters={"thread": thread},
+            limit=WORLD_CHAT_THREAD_CAP + 1)
+        if len(in_thread) >= WORLD_CHAT_THREAD_CAP:
+            return "world_chat:thread_full"
+    except Exception:
+        pass
     transcript = "\n".join(
         f"{m.payload.get('name', m.payload.get('from'))}: "
         f"{m.payload.get('text', '')[:160]}"
@@ -637,7 +653,7 @@ async def world_say(store: GenomeStore, world_realm: str,
     await store._c.add_vertex("world_chats", realm=world_realm,
         space="default", payload={
             "key": f"wc-{uuidlib.uuid4().hex[:12]}",
-            "thread": latest.get("thread") or latest.get("key"),
+            "thread": thread,
             "from": agent.agent_uuid, "name": name,
             "colour_pair": agent_payload.get("colour_pair"),
             "kind": "say", "text": remark[:600], "at": now})
