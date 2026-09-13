@@ -153,25 +153,37 @@ async def work_one(store: GenomeStore, client, item) -> str:
                                    payload={**pl, "done_at": drain._iso(now),
                                             "outcome": outcome})
         return outcome
+    _prompt = None
     if USE_LLM and g:
         from genome_core import pathogen
         eff = pathogen.phenotype(agent_payload, now) \
             if agent_payload.get("infections") else g
         from genome_core import vitals as _vt
-        choice, model = llm_decider(req, eff, seed=int(now),
-                                    pools=_vt.pools(agent_payload, now),
-                                    objectives=agent_payload.get("objectives"),
-                                    heard=agent_payload.get("heard"),
-                                    capability=agent_payload.get("capability"),
-                                    prompt_mods=agent_payload.get("prompt_mods"),
-                                    influences=agent_payload.get("influences"))
+
+        # NON-BLOCKING decider (2026-09-13): llm_decider calls the router with
+        # BLOCKING urllib, which froze this worker's event loop -- so sem=16
+        # concurrency was wasted and decisions ran ONE at a time per worker, the
+        # bottleneck that backed the queue up to 2000+ and stalled worlds. Run it
+        # off the loop in a thread so all 16 slots issue LLM calls concurrently.
+        # LAST_PROMPT is a contextvar (won't propagate back from the thread), so
+        # capture it INSIDE the thread and return it alongside the choice.
+        def _decide():
+            from genome_core.decider import LAST_PROMPT as _LP
+            c = llm_decider(req, eff, seed=int(now),
+                            pools=_vt.pools(agent_payload, now),
+                            objectives=agent_payload.get("objectives"),
+                            heard=agent_payload.get("heard"),
+                            capability=agent_payload.get("capability"),
+                            prompt_mods=agent_payload.get("prompt_mods"),
+                            influences=agent_payload.get("influences"))
+            return c, _LP.get()
+        (choice, model), _prompt = await asyncio.to_thread(_decide)
     else:
         choice, model = engine.stub_decider(req, int(now)), "stub"
-    from genome_core.decider import LAST_PROMPT
     outcome = await drain.apply_decided(
         store, pl["world_realm"], pl["agent_uuid"], choice, model,
         pl["situation"], pl["options"], pl.get("event_payload", {}), now,
-        prompt=LAST_PROMPT.get() if model != "stub" else None)
+        prompt=_prompt if model != "stub" else None)
     await client.upsert_vertex("decision_queue", realm=AGENTS_REALM,
                                vertex_id=int(item.id),
                                payload={**pl, "done_at": drain._iso(now),
