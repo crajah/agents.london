@@ -1081,10 +1081,19 @@ on a tower of 10 of kind 16, two users for the tower…"
     </div>);
 }
 
-function MarketPanel({ info }) {
-  const [open, setOpen] = useState(false);
-  const listings = info?.listings ?? [];
+function WorldPanels({ info }) {
+  // one tabbed panel for market / progeny / artifacts, so the three no longer
+  // overlap as separate floating dropdowns (user 2026-09-14). Sits just left of
+  // the stock box; the dropdown opens downward with nothing to its right.
+  const [tab, setTab] = useState(null);          // null = closed
   const colourOf = kindColour;
+  const listings = info?.listings ?? [];
+  const deals = info?.deals ?? [];
+  const progeny = info?.progeny ?? [];
+  const byUuid = info?.agentsByUuid ?? {};
+  const cons = (info?.constructions ?? [])
+    .filter(c => c && c.name && c.tier != null && !c.wreck)
+    .slice().sort((a, b) => (b.tier - a.tier) || (a.name < b.name ? -1 : 1));
   const Chip = ({ k, u }) => (
     <span className="inline-flex items-center gap-1 bg-neutral-800 rounded
                      px-1 py-0.5 mr-1" title={`kind ${k}`}>
@@ -1092,127 +1101,16 @@ function MarketPanel({ info }) {
       <span className="w-2.5 h-2.5 rounded-full inline-block"
             style={{ background: colourOf(k) }} />
     </span>);
-  // an agent's lineage colours, shown beside its name (user directive)
   const Cols = ({ c }) => (
     <>{(c ?? []).map((col, i) =>
       <span key={i} className="w-2.5 h-2.5 rounded-full inline-block ml-0.5
                                align-middle" style={{ background: col }} />)}</>);
   const Who = ({ name, colours }) => (
     <span className="inline-flex items-center gap-0.5">
-      <span className="opacity-80 truncate max-w-[8rem]">{name ?? "someone"}</span>
+      <span className="opacity-80 truncate max-w-[7rem]">{name ?? "someone"}</span>
       <Cols c={colours} /></span>);
-  const deals = info?.deals ?? [];
-  return (
-    <div className="absolute top-2 right-60 z-20 text-xs">
-      <button onClick={() => setOpen(o => !o)}
-              title="Open market listings in this world"
-              className="px-2 py-1 bg-neutral-900/85 border
-                         border-neutral-700 rounded">
-        ⌗ market{listings.length > 0 && ` (${listings.length})`}
-      </button>
-      {open && (
-        <div className="mt-1 w-72 max-h-64 overflow-y-auto bg-neutral-900/95
-                        border border-neutral-700 rounded p-2">
-          <div className="opacity-60 mb-1">open listings — hand-to-hand at
-            the board</div>
-          {listings.length === 0 &&
-            <div className="opacity-50">the board is bare</div>}
-          {listings.map(l => (
-            <div key={l.key} className="py-1 border-t border-neutral-800">
-              <div className="mb-0.5"><Who name={l.by} colours={l.colours} /></div>
-              <span className="opacity-60">gives </span>
-              {Object.entries(l.give ?? {}).map(([k, u]) =>
-                <Chip key={k} k={k} u={u} />)}
-              <span className="opacity-60"> for </span>
-              {Object.entries(l.want ?? {}).map(([k, u]) =>
-                <Chip key={k} k={k} u={u} />)}
-            </div>))}
-          <div className="opacity-60 mt-2 mb-1 pt-1 border-t
-                          border-neutral-700">deals done — recent trades</div>
-          {deals.length === 0 &&
-            <div className="opacity-50">no trades yet</div>}
-          {deals.map((d, i) => (
-            <div key={i} className="py-1 border-t border-neutral-800">
-              <div className="flex items-center gap-1 mb-0.5 flex-wrap">
-                <Who name={d.from} colours={d.from_colours} />
-                <span className="opacity-50">→</span>
-                <Who name={d.to} colours={d.to_colours} />
-              </div>
-              {Object.entries(d.give ?? {}).map(([k, u]) =>
-                <Chip key={k} k={k} u={u} />)}
-              <span className="opacity-60"> for </span>
-              {Object.entries(d.want ?? {}).map(([k, u]) =>
-                <Chip key={"w" + k} k={k} u={u} />)}
-            </div>))}
-        </div>)}
-    </div>);
-}
-
-function ProgenyPanel({ info }) {
-  const [open, setOpen] = useState(false);
-  const entries = info?.progeny ?? [];
-  const Cols = ({ c }) => (
-    <>{(c ?? []).map((col, i) =>
-      <span key={i} className="w-2.5 h-2.5 rounded-full inline-block ml-0.5
-                               align-middle" style={{ background: col }} />)}</>);
-  const Who = ({ w }) => (
-    <span className="inline-flex items-center gap-0.5">
-      <span className="opacity-80 truncate max-w-[7rem]">{w?.name ?? "someone"}</span>
-      <Cols c={w?.colours} /></span>);
-  const births = entries.filter(e => e.kind === "born").length;
-  return (
-    <div className="absolute top-2 right-[24rem] z-20 text-xs">
-      <button onClick={() => setOpen(o => !o)}
-              title="Breeding in this world: proposals, acceptances, progeny"
-              className="px-2 py-1 bg-neutral-900/85 border
-                         border-neutral-700 rounded">
-        ⚭ progeny{births > 0 && ` (${births})`}
-      </button>
-      {open && (
-        <div className="mt-1 w-72 max-h-64 overflow-y-auto bg-neutral-900/95
-                        border border-neutral-700 rounded p-2">
-          <div className="opacity-60 mb-1">proposals · acceptances · progeny —
-            newest first</div>
-          {entries.length === 0 &&
-            <div className="opacity-50">no courtship yet</div>}
-          {entries.map((e, i) => (
-            <div key={i} className="py-1 border-t border-neutral-800
-                                    flex items-center gap-1 flex-wrap">
-              {e.kind === "born" ? (
-                <>
-                  <span className="text-emerald-400">✦ born</span>
-                  <span className="opacity-90 truncate max-w-[7rem]">{e.child}</span>
-                  <span className="opacity-50">of</span>
-                  {(e.parents ?? []).map((p, j) =>
-                    <React.Fragment key={j}>
-                      {j > 0 && <span className="opacity-40">+</span>}
-                      <Who w={p} />
-                    </React.Fragment>)}
-                </>
-              ) : (
-                <>
-                  <span className={e.kind === "accepted" ? "text-sky-400"
-                    : e.kind === "declined" ? "opacity-50" : "text-amber-400"}>
-                    {e.kind === "proposed" ? "❥ proposed"
-                      : e.kind === "accepted" ? "♥ accepted" : "✕ declined"}
-                  </span>
-                  <Who w={e.proposer} />
-                  <span className="opacity-50">→</span>
-                  <Who w={e.recipient} />
-                </>)}
-            </div>))}
-        </div>)}
-    </div>);
-}
-
-function ArtifactsPanel({ info }) {
-  const [open, setOpen] = useState(false);
-  const byUuid = info?.agentsByUuid ?? {};
-  // real constructions only (named, tiered sites), highest tier first
-  const cons = (info?.constructions ?? [])
-    .filter(c => c && c.name && c.tier != null && !c.wreck)
-    .slice().sort((a, b) => (b.tier - a.tier)
-      || (a.name < b.name ? -1 : 1));
+  const births = progeny.filter(e => e.kind === "born").length;
+  const done = cons.filter(c => c.complete).length;
   const now = Date.now() / 1000;
   const statusOf = (c) => {
     if (c.complete) return { txt: "✓ complete", cls: "text-emerald-400" };
@@ -1221,46 +1119,103 @@ function ArtifactsPanel({ info }) {
       return { txt: m > 0 ? `▲ rising ~${m}m` : "▲ finishing…",
                cls: "text-amber-400" };
     }
-    const p = Math.round((c.progress ?? 0) * 100);
-    return { txt: `◧ gathering ${p}%`, cls: "text-sky-400" };
+    return { txt: `◧ gathering ${Math.round((c.progress ?? 0) * 100)}%`,
+             cls: "text-sky-400" };
   };
-  const done = cons.filter(c => c.complete).length;
+  const TabBtn = ({ id, label }) => (
+    <button onClick={() => setTab(t => t === id ? null : id)}
+            className={"px-2 py-1 border border-neutral-700 rounded "
+              + (tab === id ? "bg-neutral-700" : "bg-neutral-900/85")}>
+      {label}
+    </button>);
   return (
-    <div className="absolute top-2 right-[33rem] z-20 text-xs">
-      <button onClick={() => setOpen(o => !o)}
-              title="Constructions in this world by tier + who is building them"
-              className="px-2 py-1 bg-neutral-900/85 border
-                         border-neutral-700 rounded">
-        ⚒ artifacts{cons.length > 0 && ` (${done}/${cons.length})`}
-      </button>
-      {open && (
-        <div className="mt-1 w-80 max-h-72 overflow-y-auto bg-neutral-900/95
-                        border border-neutral-700 rounded p-2">
-          <div className="opacity-60 mb-1">artifacts by tier — status &
-            builders</div>
-          {cons.length === 0 &&
-            <div className="opacity-50">nothing under construction</div>}
-          {cons.map((c, i) => {
-            const st = statusOf(c);
-            const builders = (c.contributor_agents ?? [])
-              .map(u => byUuid[u]?.name).filter(Boolean);
-            return (
-              <div key={c.key ?? i} className="py-1 border-t border-neutral-800">
-                <div className="flex items-center gap-1 flex-wrap">
-                  {c.colour && <span className="w-2.5 h-2.5 rounded-full
-                    inline-block" style={{ background: c.colour }} />}
-                  <span className="opacity-90">{c.name}</span>
-                  <span className="opacity-40">T{c.tier}</span>
-                  <span className={"ml-auto " + st.cls}>{st.txt}</span>
+    <div className="absolute top-2 right-[15rem] z-30 text-xs">
+      <div className="flex gap-1 justify-end">
+        <TabBtn id="market" label={`⌗ market${listings.length ? ` (${listings.length})` : ""}`} />
+        <TabBtn id="progeny" label={`⚭ progeny${births ? ` (${births})` : ""}`} />
+        <TabBtn id="artifacts" label={`⚒ artifacts${cons.length ? ` (${done}/${cons.length})` : ""}`} />
+      </div>
+      {tab && (
+        <div className="mt-1 ml-auto w-80 max-h-72 overflow-y-auto
+                        bg-neutral-900/95 border border-neutral-700 rounded p-2">
+          {tab === "market" && <>
+            <div className="opacity-60 mb-1">open listings</div>
+            {listings.length === 0 &&
+              <div className="opacity-50">the board is bare</div>}
+            {listings.map(l => (
+              <div key={l.key} className="py-1 border-t border-neutral-800">
+                <div className="mb-0.5"><Who name={l.by} colours={l.colours} /></div>
+                <span className="opacity-60">gives </span>
+                {Object.entries(l.give ?? {}).map(([k, u]) => <Chip key={k} k={k} u={u} />)}
+                <span className="opacity-60"> for </span>
+                {Object.entries(l.want ?? {}).map(([k, u]) => <Chip key={k} k={k} u={u} />)}
+              </div>))}
+            <div className="opacity-60 mt-2 mb-1 pt-1 border-t border-neutral-700">deals done</div>
+            {deals.length === 0 && <div className="opacity-50">no trades yet</div>}
+            {deals.map((d, i) => (
+              <div key={i} className="py-1 border-t border-neutral-800">
+                <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                  <Who name={d.from} colours={d.from_colours} />
+                  <span className="opacity-50">→</span>
+                  <Who name={d.to} colours={d.to_colours} />
                 </div>
-                <div className="opacity-55 mt-0.5">
-                  {c.contributors ?? 0}/{c.required_users ?? 1} hands
-                  {builders.length > 0 &&
-                    <> · {builders.slice(0, 6).join(", ")}
+                {Object.entries(d.give ?? {}).map(([k, u]) => <Chip key={k} k={k} u={u} />)}
+                <span className="opacity-60"> for </span>
+                {Object.entries(d.want ?? {}).map(([k, u]) => <Chip key={"w" + k} k={k} u={u} />)}
+              </div>))}
+          </>}
+          {tab === "progeny" && <>
+            <div className="opacity-60 mb-1">proposals · acceptances · progeny</div>
+            {progeny.length === 0 && <div className="opacity-50">no courtship yet</div>}
+            {progeny.map((e, i) => (
+              <div key={i} className="py-1 border-t border-neutral-800
+                                      flex items-center gap-1 flex-wrap">
+                {e.kind === "born" ? <>
+                  <span className="text-emerald-400">✦ born</span>
+                  <span className="opacity-90 truncate max-w-[7rem]">{e.child}</span>
+                  <span className="opacity-50">of</span>
+                  {(e.parents ?? []).map((p, j) => (
+                    <React.Fragment key={j}>
+                      {j > 0 && <span className="opacity-40">+</span>}
+                      <Who name={p?.name} colours={p?.colours} />
+                    </React.Fragment>))}
+                </> : <>
+                  <span className={e.kind === "accepted" ? "text-sky-400"
+                    : e.kind === "declined" ? "opacity-50" : "text-amber-400"}>
+                    {e.kind === "proposed" ? "❥ proposed"
+                      : e.kind === "accepted" ? "♥ accepted" : "✕ declined"}
+                  </span>
+                  <Who name={e.proposer?.name} colours={e.proposer?.colours} />
+                  <span className="opacity-50">→</span>
+                  <Who name={e.recipient?.name} colours={e.recipient?.colours} />
+                </>}
+              </div>))}
+          </>}
+          {tab === "artifacts" && <>
+            <div className="opacity-60 mb-1">artifacts by tier — status & builders</div>
+            {cons.length === 0 &&
+              <div className="opacity-50">nothing under construction</div>}
+            {cons.map((c, i) => {
+              const st = statusOf(c);
+              const builders = (c.contributor_agents ?? [])
+                .map(u => byUuid[u]?.name).filter(Boolean);
+              return (
+                <div key={c.key ?? i} className="py-1 border-t border-neutral-800">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {c.colour && <span className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ background: c.colour }} />}
+                    <span className="opacity-90">{c.name}</span>
+                    <span className="opacity-40">T{c.tier}</span>
+                    <span className={"ml-auto " + st.cls}>{st.txt}</span>
+                  </div>
+                  <div className="opacity-55 mt-0.5">
+                    {c.contributors ?? 0}/{c.required_users ?? 1} hands
+                    {builders.length > 0 && <> · {builders.slice(0, 6).join(", ")}
                       {builders.length > 6 && ` +${builders.length - 6}`}</>}
-                </div>
-              </div>);
-          })}
+                  </div>
+                </div>);
+            })}
+          </>}
         </div>)}
     </div>);
 }
@@ -2087,9 +2042,7 @@ whole game -- the commons market is how the far kinds arrive."
               <div className="px-3 py-2 opacity-60">nobody here</div>}
           </nav>)}
         <StockPanel info={snapInfo} />
-        <MarketPanel info={snapInfo} />
-        <ProgenyPanel info={snapInfo} />
-        <ArtifactsPanel info={snapInfo} />
+        <WorldPanels info={snapInfo} />
         {me?.authenticated && realm === me.world_realm &&
           <PlanTable realm={realm} info={snapInfo} />}
         <FloodWave active={floodAnim} />
