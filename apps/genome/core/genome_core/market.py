@@ -158,6 +158,85 @@ async def fill(client: Any, realm: str, key: str, filler: str,
             "received": dict(l["give"])}
 
 
+async def reserve(client: Any, realm: str, key: str, filler: str,
+                  filler_user: str, filler_cargo: dict[str, float]) -> dict:
+    """Accept ANYWHERE (user directive 2026-09-14): agreeing to a listing is a
+    world-public act -- it needs no co-location. It reserves the listing (open ->
+    agreed) for this filler; the two then rendezvous and the swap SETTLES only
+    when they meet (see settle). The lister's `give` is already escrowed at post;
+    the filler's `want` is checked here and taken at settle, so it can't be spent
+    away meanwhile without failing the settle."""
+    row = await _row(client, realm, key)
+    if row is None or row.payload.get("status") != "open":
+        return {"error": "that listing is gone"}
+    l = row.payload
+    if l.get("lister") == filler:
+        return {"error": "you cannot fill your own listing"}
+    for k, u in l["want"].items():
+        if filler_cargo.get(k, 0.0) + 1e-9 < u:
+            return {"error": "you cannot pay the ask"}
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(row.id),
+                               space="default",
+                               payload={**l, "status": "agreed",
+                                        "filled_by": filler,
+                                        "filler_user": filler_user,
+                                        "agreed_at": time.time()})
+    return {"ok": True, "lister": l["lister"], "lister_user": l.get("lister_user"),
+            "give": dict(l["give"]), "want": dict(l["want"])}
+
+
+async def settle(client: Any, realm: str, key: str, filler: str,
+                 filler_cargo: dict[str, float],
+                 lister_cargo: dict[str, float]) -> dict:
+    """Execute an AGREED trade once the two have met (proximity checked by the
+    caller). Atomic swap: the filler pays `want` and receives the escrowed
+    `give`; the lister receives `want`. open->agreed->collected."""
+    row = await _row(client, realm, key)
+    if row is None or row.payload.get("status") != "agreed" \
+            or row.payload.get("filled_by") != filler:
+        return {"error": "the agreed trade is gone"}
+    l = row.payload
+    for k, u in l["want"].items():
+        if filler_cargo.get(k, 0.0) + 1e-9 < u:
+            return {"error": "the filler can no longer pay the ask"}
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(row.id),
+                               space="default",
+                               payload={**l, "status": "collected",
+                                        "proceeds": {}, "filled_at": time.time()})
+    after = dict(filler_cargo)
+    for k, u in l["want"].items():
+        after[k] = after.get(k, 0.0) - u
+        if after[k] <= 1e-9:
+            del after[k]
+    for k, u in l["give"].items():
+        after[k] = after.get(k, 0.0) + u
+    lister_after = dict(lister_cargo)
+    for k, u in l["want"].items():
+        lister_after[k] = lister_after.get(k, 0.0) + u
+    if l.get("lister_user"):
+        notify.emit_bg(client, l["lister_user"], "agents", "listing_filled",
+                       f"Hands met away from any stall: your listing cleared "
+                       f"for {l['want']}.")
+    return {"ok": True, "cargo_after": after,
+            "lister_cargo_after": lister_after, "received": dict(l["give"])}
+
+
+async def release(client: Any, realm: str, key: str) -> dict:
+    """Rendezvous failed (a party strayed, died, or the wait expired): re-open
+    the agreed listing so others can accept it. Escrow was never touched."""
+    row = await _row(client, realm, key)
+    if row is None or row.payload.get("status") != "agreed":
+        return {"error": "nothing to release"}
+    l = dict(row.payload)
+    l.pop("filled_by", None)
+    l.pop("filler_user", None)
+    l.pop("agreed_at", None)
+    await client.upsert_vertex(TABLE, realm=realm, vertex_id=int(row.id),
+                               space="default",
+                               payload={**l, "status": "open"})
+    return {"ok": True}
+
+
 async def collect(client: Any, realm: str, key: str, lister: str,
                   cargo: dict[str, float]) -> dict:
     row = await _row(client, realm, key)

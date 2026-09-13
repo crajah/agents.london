@@ -1464,6 +1464,9 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                      "dest_xy": agent_payload.get("commons_entry_xy") or [0.5, 0.5],
                      "dest_colours": None}] if entry else [])
 
+    if pl["kind"] == "trade_settle":
+        return await settle_trade(store, world_realm, pl, now)
+
     if pl["kind"] == "evacuate":
         # scurry, second half (user directive 2026-09-05: agents NAVIGATE
         # to a teleport point and leave that way) -- the walk was written
@@ -2398,6 +2401,73 @@ async def resolve_encounter(store: GenomeStore, world_realm: str,
     return outcome
 
 
+SETTLE_RADIUS = 0.05          # the two must be this close to shake on it
+TRADE_MAX_TRIES = 3           # rendezvous attempts before the trade is released
+
+
+async def settle_trade(store: GenomeStore, world_realm: str, pl: dict,
+                       now: float) -> str:
+    """Close an AGREED trade once the counterparties have met (user directive
+    2026-09-14: accept anywhere, settle in proximity). Fires at expected arrival:
+    if the two are within SETTLE_RADIUS, execute the swap and free them; if not,
+    re-route both to a fresh midpoint and retry, releasing the listing after
+    TRADE_MAX_TRIES so a strayed/dead party never strands it."""
+    import math as _m
+    p = pl["payload"]
+    key = p["key"]
+    filler = p["filler"]
+    lister = p["lister"]
+    tries = int(p.get("tries", 0))
+    wts = max(1.0, (await _world_payload(store, world_realm)).get(
+        "time_scale", 1.0))
+    fv, fpl = await load_agent(store, world_realm, filler, world_realm, now)
+    lv, lpl = await load_agent(store, world_realm, lister, world_realm, now)
+
+    async def _clear(uuid: str, upl: dict) -> None:
+        if (upl.get("awaiting_trade") or {}).get("key") == key:
+            np = dict(upl)
+            np.pop("awaiting_trade", None)
+            await store.put_agent(uuid, np)
+
+    await store.complete_event(world_realm, pl["key"], _iso(now))
+    both_alive = fpl.get("alive", True) and lpl.get("alive", True)
+    close = _m.hypot(fv.x - lv.x, fv.y - lv.y) <= SETTLE_RADIUS
+    if both_alive and close:
+        res = await market.settle(store._c, world_realm, key, filler,
+                                  fv.cargo, lv.cargo)
+        await _clear(filler, fpl)
+        await _clear(lister, lpl)
+        if res.get("ok"):
+            await store.set_movement(filler, {
+                "waypoints": [[fv.x, fv.y]], "departed_at": now,
+                "arrives_at": now, "cargo": res["cargo_after"]})
+            await store.set_movement(lister, {
+                "waypoints": [[lv.x, lv.y]], "departed_at": now,
+                "arrives_at": now, "cargo": res["lister_cargo_after"]})
+            return f"trade:settled({key})"
+        await market.release(store._c, world_realm, key)
+        return f"trade:settle_failed({res.get('error', '?')[:30]})"
+    if tries >= TRADE_MAX_TRIES or not both_alive:
+        await market.release(store._c, world_realm, key)
+        await _clear(filler, fpl)
+        await _clear(lister, lpl)
+        return "trade:released"
+    mx = round((fv.x + lv.x) / 2, 4)
+    my = round((fv.y + lv.y) / 2, 4)
+    arrive = now
+    for wv in (fv, lv):
+        dist = _m.hypot(mx - wv.x, my - wv.y)
+        a = now + (dist / 0.03) / wts
+        arrive = max(arrive, a)
+        await store.set_movement(wv.agent_uuid, {
+            "waypoints": [[wv.x, wv.y], [mx, my]],
+            "departed_at": now, "arrives_at": a, "cargo": wv.cargo})
+    await store.schedule(world_realm, f"tsettle-{key}",
+                         _iso(arrive + 3.0 / wts), "trade_settle", filler,
+                         {**p, "tries": tries + 1})
+    return f"trade:rendezvous_retry({tries + 1})"
+
+
 async def apply_market_turn(store: GenomeStore, world_realm: str,
                             me: str, action: str, listing: str | None,
                             give: dict | None, want: dict | None,
@@ -2410,25 +2480,42 @@ async def apply_market_turn(store: GenomeStore, world_realm: str,
                                 pl.get("owner_user_id", ""), give or {},
                                 want or {}, cargo)
     elif action == "fill":
-        # hand-to-hand (Rule 4.22): the lister must stand at the stall too
+        # ACCEPT ANYWHERE + RENDEZVOUS (user directive 2026-09-14): agreeing to a
+        # listing is world-public and needs no co-location; the swap SETTLES only
+        # when the two agents meet. Reserve the listing, then send both to their
+        # midpoint and mark them awaiting_trade so reflex holds them to it; a
+        # trade_settle event closes it on proximity (or retries / releases).
         lrow = await market._row(store._c, world_realm, listing or "")
-        lister_present, l_view, l_pl = False, None, None
-        if lrow is not None:
-            lister = lrow.payload.get("lister")
-            wp = await _world_payload(store, world_realm)
-            mkt = wp.get("market") or {"x": 0.5, "y": 0.5}
-            l_view, l_pl = await load_agent(store, world_realm, lister,
-                                            world_realm, now)
-            lister_present = (
-                (l_view.x - mkt["x"]) ** 2 + (l_view.y - mkt["y"]) ** 2
-                <= 0.06 ** 2)
-        res = await market.fill(store._c, world_realm, listing or "", me,
-                                cargo, lister_present,
-                                l_view.cargo if l_view else None)
-        if res.get("ok") and l_view is not None:
-            await store.set_movement(l_view.agent_uuid,
-                {"waypoints": [[l_view.x, l_view.y]], "departed_at": now,
-                 "arrives_at": now, "cargo": res["lister_cargo_after"]})
+        if lrow is None or lrow.payload.get("status") != "open":
+            return "market:fill_refused(listing gone)"
+        lister = lrow.payload["lister"]
+        l_view, l_pl = await load_agent(store, world_realm, lister,
+                                        world_realm, now)
+        res = await market.reserve(store._c, world_realm, listing or "", me,
+                                   pl.get("owner_user_id", ""), cargo)
+        if not res.get("ok"):
+            return f"market:fill_refused({res.get('error', '?')[:40]})"
+        import math as _m
+        _wts = max(1.0, (await _world_payload(store, world_realm))
+                   .get("time_scale", 1.0))
+        mx = round((view.x + l_view.x) / 2, 4)
+        my = round((view.y + l_view.y) / 2, 4)
+        arrive = now
+        for wv, wpl, partner in ((view, pl, lister), (l_view, l_pl, me)):
+            dist = _m.hypot(mx - wv.x, my - wv.y)
+            a = now + (dist / 0.03) / _wts        # ~0.03 world-units/s, straight
+            arrive = max(arrive, a)
+            await store.set_movement(wv.agent_uuid, {
+                "waypoints": [[wv.x, wv.y], [mx, my]],
+                "departed_at": now, "arrives_at": a, "cargo": wv.cargo})
+            await store.put_agent(wv.agent_uuid, {
+                **wpl, "awaiting_trade": {"key": listing, "meet": [mx, my],
+                                          "with": partner}})
+        await store.schedule(world_realm, f"tsettle-{listing}",
+                             _iso(arrive + 3.0 / _wts), "trade_settle", me,
+                             {"key": listing, "lister": lister, "filler": me,
+                              "tries": 0})
+        return "market:accepted->rendezvous"
     elif action == "collect":
         res = await market.collect(store._c, world_realm, listing or "", me,
                                    cargo)

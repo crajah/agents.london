@@ -440,12 +440,12 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
         if not have_mine and _c2.cache_cost(agent.cargo) is not None and \
                 _c2.cache_spot_clear_payloads(caches, agent.x, agent.y):
             options.append("build_cache")
-    # the marketplace (Rule 4.20): at the board with business — or business
-    # worth walking to. Listings are world-public; ACTING needs presence.
-    mkt = ctx.get("market")
-    if mkt:
-        at_market = (mkt["x"] - agent.x) ** 2 + (mkt["y"] - agent.y) ** 2 \
-            < REACH ** 2
+    # the marketplace (Rule 4.20, revised 2026-09-14): the market is an AMBIENT
+    # world facility, not a place. Listings are world-public and ACCEPTING one
+    # (or posting) can happen from anywhere -- the swap itself settles later, when
+    # the two counterparties rendezvous (drain.settle_trade). So the option is
+    # offered wherever the agent stands, given business; no board, no walking.
+    if ctx.get("market"):
         lst = ctx.get("listings", [])       # market.summary() shape
         can_fill = any(
             not l.get("mine") and l.get("want")
@@ -453,13 +453,8 @@ def _decide_here(agent: AgentView, piles: list[PileView], payload: dict,
                     for k, u in l["want"].items())
             for l in lst)
         my_open = any(l.get("mine") for l in lst)
-        if at_market and (agent.cargo_total() > 0 or can_fill or my_open):
+        if can_fill or my_open or agent.cargo_total() >= 2:
             options.append("trade_at_market")
-        elif not at_market and (can_fill or my_open or
-                                (agent.cargo_total() >= 2 and lst)):
-            # my_open included: the board summons its listers -- a trade
-            # completes hand-to-hand, so an absent lister closes nothing
-            options.append("go_to_market")
     # a completed construction within reach may be TAKEN UP (Rule 3.10) —
     # it lifts only when the pledges span its full crew of distinct users
     from . import construction as _c3

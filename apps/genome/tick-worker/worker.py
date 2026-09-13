@@ -504,6 +504,9 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
             continue
         if apl.get("carrying_site"):
             continue          # a carrier moves as one body -- leave it be
+        if apl.get("awaiting_trade"):
+            continue          # committed to a rendezvous; the trade_settle event
+            # (not reflex) drives it -- don't wander it off the meeting
         latest = await store.latest_movement(a)
         if latest and latest.payload.get("arrives_at", 0) > now:
             continue          # still travelling; the tick re-decides on arrival
