@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid as uuidlib
 
 from . import combat, construction, engine, forms, identity, market, \
@@ -1413,7 +1414,16 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     PG budget)."""
     pl = ev.payload
     metrics.EVENTS.labels(pl["kind"]).inc()
-    now = from_iso(pl["due_at"])
+    # Clock floor (2026-09-13): process at the LATER of the event's due time and
+    # wall-clock. An event drained late used to keep its stale due_at as `now`,
+    # so every follow-on it scheduled (now + delay) stayed behind wall-clock too
+    # -- a chain that fell behind never caught up, showed as perpetually "old
+    # due" (tripping the world's stalled flag), and was never idle so the reflex
+    # tick could not reset it. Flooring at wall-clock lets a late chain schedule
+    # its NEXT step at the present, so it catches up in one hop. Due_at is a
+    # wall-clock epoch (delays are ts-scaled into it), so this preserves ordering
+    # for on-time events (due_at ~= now) and only lifts the laggards.
+    now = max(from_iso(pl["due_at"]), time.time())
     agent_uuid = pl["subject"]
     agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
                                             home_realm, now)
