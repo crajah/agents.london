@@ -132,7 +132,8 @@ def generate_world(seed: int, owner_user_id: str) -> dict:
     muster = muster_points(r, terrain, avoid=piles + portal_slots)
     # the marketplace (Rule 4.20): one board, terrain-clear, near the middle
     market = {"x": 0.5, "y": 0.5}
-    for _try in range(40):
+    market = {"x": 0.5, "y": 0.5}          # default board (centre) if no clear
+    for _try in range(40):                 # spot is found in the tries below
         q = (r.uniform(0.35, 0.65), r.uniform(0.35, 0.65))
         if not any((q[0]-o["x"])**2 + (q[1]-o["y"])**2
                    < (o["r"]+pathmod.INFLATE)**2 for o in terrain) \

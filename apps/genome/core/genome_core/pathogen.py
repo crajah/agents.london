@@ -75,8 +75,12 @@ def infect(agent_payload: dict, strain: dict, now: float,
                                          RANGES["Immune Vigilance"][0]))
     spd = norm("Synthesis Speed", g.get("Synthesis Speed",
                                         RANGES["Synthesis Speed"][0]))
-    detect_after = 3600.0 * (0.5 + 6.0 * (1.0 - vig)) / ts     # 0.5h-6.5h
-    synth_span = 3600.0 * (2.0 + 20.0 * (1.0 - spd)) \
+    # Durations cut ~4x (user report 2026-09-14: at real-time/1x worlds the old
+    # 0.5-6.5h detect + 2-22h synthesis meant infections lingered for the better
+    # part of a day of wall-clock and "took a while to heal"). Genotype
+    # dependence (Immune Vigilance, Synthesis Speed) and time_scale are kept.
+    detect_after = 3600.0 * (0.15 + 1.5 * (1.0 - vig)) / ts    # ~9-99 min @1x
+    synth_span = 3600.0 * (0.5 + 5.0 * (1.0 - spd)) \
         * (0.5 + strain["replication"]) / ts                    # the race
     rec = {"strain": strain, "since": now, "caught_at": now,
            "time_scale": ts,

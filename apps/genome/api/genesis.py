@@ -90,6 +90,9 @@ async def ensure_user_world(client: Any, user_id: str,
         "terrain": w["terrain"], "founding_centre": w["founding_centre"],
         "portal_slots": w["portal_slots"], "portals": [], "stock": {},
         "muster_points": w["muster_points"],
+        # every world always has a market (user directive 2026-09-14) -- worldgen
+        # always produces one; it was being dropped here, so user worlds had none
+        "market": w.get("market") or {"x": 0.5, "y": 0.5},
         "cert": cert, "root_public_pem": root_public})
     for p in w["piles"]:
         await store.put_pile(realm, p["pile_uuid"], p)

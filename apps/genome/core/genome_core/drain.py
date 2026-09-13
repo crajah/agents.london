@@ -1647,9 +1647,27 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
                 if REFLEX_MODE != "off" \
                         and engine.reflex_eligible(res.situation) \
                         and not agent_payload.get("carrying_site"):
-                    rc = engine.goal_policy(
-                        goals.current_goal(agent_payload, now), res,
-                        agent, pile_views, ctx)
+                    # STRATEGIC HEARTBEAT (reflex/deliberation §5): most turns run
+                    # on reflex, but every ~review_period the agent defers ONE
+                    # turn to the LLM so strategy still happens (trade, mate,
+                    # build, change goal) -- without this the reflex forages
+                    # forever and the LLM (markets, social life) goes idle.
+                    ra = agent_payload.get("review_at")
+                    if ra is None:                       # first sight: spread the
+                        # first review across the coming period (don't defer now)
+                        ra = goals.first_review_at(agent_payload, now)
+                        agent_payload = {**agent_payload, "review_at": ra}
+                        await store.put_agent(agent_uuid, agent_payload)
+                    if now >= ra:                        # heartbeat: defer to LLM
+                        agent_payload = {**agent_payload,
+                                         "review_at": now
+                                         + goals.review_period(agent_payload)}
+                        await store.put_agent(agent_uuid, agent_payload)
+                        rc = None                        # -> enqueue (LLM) below
+                    else:
+                        rc = engine.goal_policy(
+                            goals.current_goal(agent_payload, now), res,
+                            agent, pile_views, ctx)
                 if rc is not None:
                     await store.record_decision(agent_uuid, {
                         "at": pl["due_at"], "situation": res.situation,
