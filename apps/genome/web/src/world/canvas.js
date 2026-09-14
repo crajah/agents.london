@@ -22,6 +22,71 @@ function lerpColour(hex, t) {
 }
 const P = ([x, y]) => isoProject([x * WORLD_PX, y * WORLD_PX]);
 
+// Resource ICON ATLAS (prototype, flag-gated): 20 distinct vector glyphs, one
+// per kind, stamped on a pile heap so kinds are told apart by SHAPE as well as
+// hue (the A100 palette has several near-duplicate pales). Flag via ?icons=1 or
+// localStorage; toggled live from the UI. Drawn as a dark stamp -- reads on any
+// pale heap. Kept cheap: same pixi Graphics the heap already uses, no textures.
+let ICON_MODE = (typeof location !== "undefined"
+  && new URLSearchParams(location.search).has("icons"))
+  || (typeof localStorage !== "undefined"
+      && localStorage.getItem("genome_icons") === "1");
+function drawKindGlyph(g, cx, cy, R, kind) {
+  const r = R * 0.5, col = 0x0e0e12, a = 0.6;
+  const poly = (n, rot = -Math.PI / 2, rad = r) => {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = rot + i * 2 * Math.PI / n;
+      pts.push(cx + Math.cos(t) * rad, cy + Math.sin(t) * rad);
+    }
+    return pts;
+  };
+  const star = (n, rot = -Math.PI / 2) => {
+    const pts = [];
+    for (let i = 0; i < n * 2; i++) {
+      const t = rot + i * Math.PI / n, rad = i % 2 ? r * 0.45 : r;
+      pts.push(cx + Math.cos(t) * rad, cy + Math.sin(t) * rad);
+    }
+    return pts;
+  };
+  const F = { color: col, alpha: a };
+  switch (((kind % 20) + 20) % 20) {
+    case 0: g.circle(cx, cy, r * 0.78).fill(F); break;                        // disc
+    case 1: g.circle(cx, cy, r * 0.7).stroke({ width: r * 0.4, ...F }); break; // ring
+    case 2: g.poly(poly(3)).fill(F); break;                                   // triangle
+    case 3: g.poly(poly(3, Math.PI / 2)).fill(F); break;                      // tri down
+    case 4: g.rect(cx - r * 0.72, cy - r * 0.72, r * 1.44, r * 1.44).fill(F); break; // square
+    case 5: g.poly(poly(4)).fill(F); break;                                   // diamond
+    case 6: g.poly(poly(5)).fill(F); break;                                   // pentagon
+    case 7: g.poly(poly(6)).fill(F); break;                                   // hexagon
+    case 8: g.poly(star(5)).fill(F); break;                                   // 5-star
+    case 9: g.poly(star(6)).fill(F); break;                                   // 6-star
+    case 10: g.rect(cx - r * 0.9, cy - r * 0.26, r * 1.8, r * 0.52).fill(F)
+             .rect(cx - r * 0.26, cy - r * 0.9, r * 0.52, r * 1.8).fill(F); break; // plus
+    case 11: g.moveTo(cx - r * 0.7, cy - r * 0.7).lineTo(cx + r * 0.7, cy + r * 0.7)
+             .moveTo(cx + r * 0.7, cy - r * 0.7).lineTo(cx - r * 0.7, cy + r * 0.7)
+             .stroke({ width: r * 0.3, ...F }); break;                        // X
+    case 12: g.poly([cx - r * 0.8, cy + r * 0.15, cx, cy - r * 0.6, cx + r * 0.8, cy + r * 0.15,
+                     cx + r * 0.45, cy + r * 0.55, cx, cy - r * 0.05, cx - r * 0.45, cy + r * 0.55]).fill(F); break; // chevron
+    case 13: g.circle(cx, cy, r * 0.82).stroke({ width: r * 0.2, ...F })
+             .circle(cx, cy, r * 0.34).stroke({ width: r * 0.2, ...F }); break; // concentric
+    case 14: for (const [dx, dy] of [[0, -0.55], [-0.5, 0.35], [0.5, 0.35]])
+               g.circle(cx + dx * r, cy + dy * r, r * 0.33).fill(F); break;   // 3 dots
+    case 15: g.rect(cx - r * 0.22, cy - r * 0.9, r * 0.44, r * 1.8).fill(F); break; // bar
+    case 16: g.poly([cx, cy - r, cx + r * 0.55, cy, cx, cy + r, cx - r * 0.55, cy]).fill(F); break; // lens
+    case 17: g.arc(cx, cy, r * 0.78, -Math.PI * 0.7, Math.PI * 0.7)
+             .stroke({ width: r * 0.34, ...F }); break;                       // C-arc
+    case 18: g.poly([cx, cy - r * 0.95, cx + r * 0.7, cy + r * 0.35, cx, cy + r * 0.95,
+                     cx - r * 0.7, cy + r * 0.35]).fill(F); break;            // kite
+    default: for (let i = 0; i < 3; i++) {
+               const t = i * Math.PI / 3;
+               g.moveTo(cx - Math.cos(t) * r, cy - Math.sin(t) * r)
+                .lineTo(cx + Math.cos(t) * r, cy + Math.sin(t) * r);
+             }
+             g.stroke({ width: r * 0.26, ...F }); break;                      // asterisk
+  }
+}
+
 // deterministic sub-contact display spread for agents parked on one point —
 // visual only, never in data; radius stays inside the contact radius
 function spread(uuid) {
@@ -326,6 +391,7 @@ export async function createWorldCanvas(el, opts = {}) {
           e.g.ellipse(cx + dx * R, cy + dy * R * 0.5, R * s, R * s * 0.55)
             .fill({ color: lerpColour(kindColour[e.p.kind] ?? "#888888",
                                       fill), alpha: 0.85 });
+        if (ICON_MODE) drawKindGlyph(e.g, cx, cy, R, e.p.kind);
       }
     }
     // portal throats every frame — transforms only: the disc shrinks to
@@ -433,6 +499,12 @@ export async function createWorldCanvas(el, opts = {}) {
   return {
     setSnapshot,
     follow: (uuid) => { followUuid = uuid; },
+    setIconMode: (v) => {                       // prototype toggle (resource icons)
+      ICON_MODE = !!v;
+      for (const e of piles.values()) e.lastFill = -1;   // force pile redraw
+      forceDraw(Date.now() / 1000);
+    },
+    iconMode: () => ICON_MODE,
     destroy: () => app.destroy(true, { children: true, texture: true }),
   };
 }

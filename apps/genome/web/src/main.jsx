@@ -1766,6 +1766,11 @@ function App() {
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
   const [menu, setMenu] = useState(null);         // {hit, x, y}
   const canvasApi = useRef(null);
+  // prototype: resource icons (shape glyphs on piles), flag-gated + persisted
+  const [iconsOn, setIconsOn] = useState(() =>
+    new URLSearchParams(location.search).has("icons")
+    || localStorage.getItem("genome_icons") === "1");
+  useEffect(() => { canvasApi.current?.setIconMode?.(iconsOn); }, [iconsOn]);
   // open the inspect panel for an agent; reused by the entity menu AND by every
   // agent reference inside the panel (parents, offspring) so lineage is
   // navigable (user directive 2026-09-14)
@@ -2085,6 +2090,16 @@ whole game -- the commons market is how the far kinds arrive."
           <PlanTable realm={realm} info={snapInfo} />}
         <FloodWave active={floodAnim} />
         <Legend />
+        <button
+          onClick={() => { const n = !iconsOn; setIconsOn(n);
+            localStorage.setItem("genome_icons", n ? "1" : "0"); }}
+          title="Prototype: stamp a per-kind shape on resource piles so kinds
+                 are told apart by shape as well as colour"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30 text-xs
+                     px-2 py-1 bg-neutral-900/85 border border-neutral-700
+                     rounded">
+          ⬡ resource icons: {iconsOn ? "on" : "off"}
+        </button>
         <Timeline realm={realm} />
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} info={snapInfo}
