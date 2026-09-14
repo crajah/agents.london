@@ -8,6 +8,7 @@ rules. The wire carries intents and closed-form anchors, never frames
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 AGENTS_REALM = "genome_agents"
@@ -231,6 +232,31 @@ async def _parent_names(client: Any, parents) -> list[dict]:
     return out
 
 
+async def _children(client: Any, agent_uuid: str) -> list[dict]:
+    """Offspring: agents whose `parents` array includes this one (user directive
+    2026-09-14) -- so the inspect panel shows a G-parent's children, each
+    clickable through to its own inspect."""
+    try:
+        rows = await client.fetch(
+            "SELECT payload FROM agents WHERE realm=$1 "
+            "AND payload->'parents' @> $2::jsonb LIMIT 80",
+            AGENTS_REALM, json.dumps([agent_uuid]))
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        pl = r["payload"]
+        if isinstance(pl, str):
+            pl = json.loads(pl)
+        out.append({"uuid": pl.get("key"),
+                    "name": pl.get("name") or (pl.get("key") or "")[:14],
+                    "colours": pl.get("colour_pair") or [],
+                    "generation": pl.get("generation", 1),
+                    "born_at": pl.get("born_at", 0.0)})
+    out.sort(key=lambda c: c.get("born_at", 0.0))
+    return out
+
+
 async def agent_inspect(client: Any, agent_uuid: str) -> dict:
     """Rule 13.1: a user may see ANY agent's genotype and its expression.
     Faculties and expressed values are computed server-side so the client never
@@ -253,6 +279,7 @@ async def agent_inspect(client: Any, agent_uuid: str) -> dict:
            "home_realm": payload.get("home_realm"),
            "parents": payload.get("parents"),
            "parent_names": await _parent_names(client, payload.get("parents")),
+           "children": await _children(client, agent_uuid),
            "capability": payload.get("capability"),
            "generation": payload.get("generation", 1),
            "influences": payload.get("influences") or [],

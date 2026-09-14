@@ -1299,7 +1299,7 @@ function StrainStrip({ vec, dead }) {
     </span>);
 }
 
-function AgentModal({ inspect, onClose }) {
+function AgentModal({ inspect, onClose, onInspect }) {
   const [locusInfo, setLocusInfo] = useState(null);  // {name, value, text}
   const [chat, setChat] = useState([]);
   const [beliefs, setBeliefs] = useState([]);
@@ -1368,20 +1368,41 @@ side of the capability economy.">born plain</span>}
           <span className="flex-1" />
           <button onClick={onClose} className="opacity-60 text-lg">✕</button>
         </div>
-        {inspect.generation > 1 && (inspect.parent_names?.length ?? 0) > 0 && (
-          <div className="px-4 py-2 border-b border-neutral-800 text-xs
-                          flex items-center gap-2 flex-wrap opacity-80">
-            <span className="opacity-55">lineage — born of</span>
-            {inspect.parent_names.map((p, i) => (
-              <span key={p.uuid} className="inline-flex items-center gap-1">
-                {i > 0 && <span className="opacity-40">+</span>}
-                {(p.colours ?? []).map((c, j) =>
-                  <span key={j} className="w-2.5 h-2.5 rounded-full inline-block"
-                        style={{ background: c }} />)}
-                <span>{p.name}</span>
-                <span className="opacity-40 font-mono">G{p.generation}</span>
-              </span>))}
-          </div>)}
+        {(() => {
+          // a clickable agent reference (parent / offspring) -> inspect it
+          const Ref = ({ p }) => (
+            <button onClick={() => onInspect && p.uuid && onInspect(p.uuid)}
+                    title="Inspect this agent"
+                    className="inline-flex items-center gap-1 rounded px-1
+                               hover:bg-neutral-700">
+              {(p.colours ?? []).map((c, j) =>
+                <span key={j} className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ background: c }} />)}
+              <span className="underline decoration-dotted">{p.name}</span>
+              <span className="opacity-40 font-mono">G{p.generation}</span>
+            </button>);
+          const parents = inspect.parent_names ?? [];
+          const kids = inspect.children ?? [];
+          if (parents.length === 0 && kids.length === 0) return null;
+          return (
+            <div className="px-4 py-2 border-b border-neutral-800 text-xs
+                            flex flex-col gap-1 opacity-90">
+              {inspect.generation > 1 && parents.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="opacity-55">born of</span>
+                  {parents.map((p, i) => (
+                    <React.Fragment key={p.uuid || i}>
+                      {i > 0 && <span className="opacity-40">+</span>}
+                      <Ref p={p} />
+                    </React.Fragment>))}
+                </div>)}
+              {kids.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="opacity-55">offspring ({kids.length})</span>
+                  {kids.map((p, i) => <Ref key={p.uuid || i} p={p} />)}
+                </div>)}
+            </div>);
+        })()}
         {locusInfo && (
           <div className="absolute inset-0 z-50 flex items-center
                           justify-center"
@@ -1745,6 +1766,23 @@ function App() {
   const [inspect, setInspect] = useState(null);   // Rule 13.1 panel
   const [menu, setMenu] = useState(null);         // {hit, x, y}
   const canvasApi = useRef(null);
+  // open the inspect panel for an agent; reused by the entity menu AND by every
+  // agent reference inside the panel (parents, offspring) so lineage is
+  // navigable (user directive 2026-09-14)
+  const openInspect = async (uuid) => {
+    setMenu(null);
+    setInspect({ agent_uuid: uuid });
+    try {
+      const [r, rd] = await Promise.all([
+        fetch(`${API}/agents/${uuid}`, { credentials: "include" }),
+        fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
+      const base = r.ok ? await r.json() : { agent_uuid: uuid };
+      const dec = rd.ok ? await rd.json() : [];
+      setInspect({ ...base, decisions: dec });
+    } catch (e) {
+      setInspect(cur => ({ ...cur, error: String(e) }));
+    }
+  };
 
   useEffect(() => {
     if (!realm || !ref.current) return;
@@ -2051,30 +2089,15 @@ whole game -- the commons market is how the far kinds arrive."
         <Ticker realm={realm} />
         {menu && <EntityMenu menu={menu} info={snapInfo}
           onClose={() => setMenu(null)}
-          onInspect={async (uuid) => {
-            setMenu(null);
-            // open at once with what we know; details stream in — a failed
-            // fetch degrades the panel, never swallows the click
-            setInspect({ agent_uuid: uuid });
-            try {
-              const [r, rd] = await Promise.all([
-                fetch(`${API}/agents/${uuid}`,
-                      { credentials: "include" }),
-                fetch(`${API}/agents/${uuid}/decisions?limit=8`)]);
-              const base = r.ok ? await r.json() : { agent_uuid: uuid };
-              const dec = rd.ok ? await rd.json() : [];
-              setInspect({ ...base, decisions: dec });
-            } catch (e) {
-              setInspect(cur => ({ ...cur, error: String(e) }));
-            }
-          }}
+          onInspect={openInspect}
           onFollow={(uuid) => { canvasApi.current?.follow(uuid); setMenu(null); }}
           onTravel={(toWorld) => {
             history.pushState({}, "", `?world=${toWorld}`);
             setInspect(null); setMenu(null); setRealm(toWorld);
           }} />}
         {inspect && (
-          <AgentModal inspect={inspect} onClose={() => setInspect(null)} />)}
+          <AgentModal inspect={inspect} onClose={() => setInspect(null)}
+                      onInspect={openInspect} />)}
       </div>
     </div>
   );
