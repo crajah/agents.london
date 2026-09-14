@@ -14,11 +14,17 @@ Config lives on ONE vertex (agents realm, key "sim_config"):
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 import uuid as uuidlib
 from typing import Any
 
 from . import drain, identity as I, worldgen
+
+# Every world keeps at least this many LIVING citizens (home_realm == the world).
+# Permanent old-age death can thin a line; if it drops below the floor the world
+# is topped up for free, at once (user directive 2026-09-14).
+MIN_AGENTS_PER_WORLD = int(os.getenv("GENOME_MIN_WORLD_AGENTS", "5"))
 
 CONFIG_KEY = "sim_config"
 DEFAULTS = {"free_agent_spawn": False,
@@ -101,15 +107,38 @@ async def maybe_spawn(store, realm: str, meta: dict, cfg: dict,
                       now: float) -> str | None:
     """Called each heal cycle. Spawns at most one agent per interval per
     world, never past the cap, never in the commons or a tombstone."""
-    if not cfg.get("free_agent_spawn"):
-        return None
     if meta.get("is_commons") or meta.get("tombstoned") or meta.get("paused"):
+        return None
+    live = [v.payload["key"] for v in await store.agents_in(realm)
+            if not v.payload["key"].startswith("user:")]
+    # FLOOR (user directive 2026-09-14): keep >= MIN living citizens per world.
+    # Only pay for the home-count query when the world LOOKS thin (few present);
+    # a world can be below the present-count while its line lives on abroad.
+    if len(live) < MIN_AGENTS_PER_WORLD:
+        living = len(live)
+        try:
+            hc = await store._c.fetch(
+                "SELECT count(*) n FROM agents WHERE realm='genome_agents' "
+                "AND payload->>'home_realm'=$1 "
+                "AND coalesce(payload->>'alive','true') <> 'false'", realm)
+            living = int(hc[0]["n"])
+        except Exception:
+            pass
+        if living < MIN_AGENTS_PER_WORLD:
+            n = 0
+            for _ in range(MIN_AGENTS_PER_WORLD - living):
+                if await spawn_free_agent(store, realm, meta, now):
+                    n += 1
+            if n:
+                await store.put_world(realm,
+                                      {**meta, "last_free_spawn_at": now})
+            return f"floor_topup:{n}" if n else None
+    # normal free-agent drip above the floor (config-gated, slow, capped)
+    if not cfg.get("free_agent_spawn"):
         return None
     if now - meta.get("last_free_spawn_at", 0.0) \
             < float(cfg.get("spawn_interval_s", 3600.0)):
         return None
-    live = [v.payload["key"] for v in await store.agents_in(realm)
-            if not v.payload["key"].startswith("user:")]
     if len(live) >= int(cfg.get("spawn_cap_per_world", 12)):
         return None
     a = await spawn_free_agent(store, realm, meta, now)

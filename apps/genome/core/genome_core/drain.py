@@ -1444,6 +1444,12 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
     agent_uuid = pl["subject"]
     agent, agent_payload = await load_agent(store, world_realm, agent_uuid,
                                             home_realm, now)
+    if not agent_payload.get("alive", True):
+        # the dead do not act (permanent old-age death, 2026-09-14): a gone
+        # agent may still have leftover queued events -- complete and skip them
+        # so nothing drives it. (The perish event fires while still alive.)
+        await store.complete_event(world_realm, pl["key"], _iso(now))
+        return "dead:skip"
     if rctx is not None:
         piles_meta = rctx["piles_meta"]
         sites = rctx["sites"]
@@ -1515,8 +1521,15 @@ async def drain_one(store: GenomeStore, world_realm: str, home_realm: str,
 
     if pl["kind"] == "perish":
         await store.complete_event(world_realm, pl["key"], _iso(now))
+        cause = pl["payload"].get("cause", "longevity")
+        # OLD AGE is PERMANENT (user directive 2026-09-14): a life that has run
+        # its genotype-set span is gone for good -- not reborn. Other ends
+        # (burnout, attrition) still recycle the line at home.
+        if cause == "longevity":
+            return await die_permanently(store, world_realm, agent,
+                                         agent_payload, now, cause)
         return await regenerate(store, world_realm, agent, agent_payload, now,
-                                cause=pl["payload"].get("cause", "longevity"))
+                                cause=cause)
 
     if pl["kind"] in ("decide", "arrival") \
             and _vitals.incapacitated(agent_payload, now,
@@ -2740,9 +2753,25 @@ async def consummate(store: GenomeStore, world_realm: str,
 
 
 def lifespan_seconds(genotype: dict) -> float:
-    """Longevity's expressed value maps to 20-90 real days (calibration 3.0)."""
+    """Longevity's expressed value maps to 20-90 real days (calibration 3.0).
+    This is the MAX age -- how long a life can be at a neutral aging pace."""
     b = len(BUDGETED) / 2.0
     return lifespan_days(expressed(genotype)["Longevity"], b) * 86400.0
+
+
+def aging_speed(genotype: dict) -> float:
+    """How fast this agent ages toward its natural end (user directive
+    2026-09-14): Maturation-driven, 0.6x (slow) to 1.4x (fast). Together with
+    Longevity (max age) it sets the TRUE lifespan -- a long-lived line that ages
+    fast still meets old age sooner."""
+    from .genotype import norm
+    m = norm("Maturation", (genotype or {}).get("Maturation", 5000))
+    return 0.6 + 0.8 * max(0.0, min(1.0, m))
+
+
+def effective_lifespan(genotype: dict) -> float:
+    """The real span: max age divided by how fast the agent ages."""
+    return lifespan_seconds(genotype) / max(0.1, aging_speed(genotype))
 
 
 async def schedule_perish(store: GenomeStore, agent_uuid: str,
@@ -2753,7 +2782,7 @@ async def schedule_perish(store: GenomeStore, agent_uuid: str,
     home = agent_payload.get("home_realm")
     _lts = max(1.0, (await _world_payload(store, home))
                .get("time_scale", 1.0))
-    due = now + lifespan_seconds(agent_payload["genotype"]) / _lts
+    due = now + effective_lifespan(agent_payload["genotype"]) / _lts
     # STABLE key (dedup fix 2026-09-13): one perish appointment per agent. The
     # due-stamped key of old let every reschedule (each rebirth) leave a fresh
     # perish row behind -- agents piled up ~2 stale perishes each. Same key now
@@ -2762,6 +2791,55 @@ async def schedule_perish(store: GenomeStore, agent_uuid: str,
                          "perish", agent_uuid, {"cause": "longevity"})
     await store.put_agent(agent_uuid, {**agent_payload, "perishes_at": due})
     return due
+
+
+async def die_permanently(store: GenomeStore, event_realm: str,
+                          agent: engine.AgentView, agent_payload: dict,
+                          now: float, cause: str) -> str:
+    """Permanent death (user directive 2026-09-14): the agent is gone -- removed
+    from every world, no rebirth. The row is KEPT but marked dead so lineage
+    (parents/offspring) still resolves; presence and movement are cleared so it
+    no longer acts or renders. A carried construction is set down where it fell.
+    The min-population floor (spawnpool) reseeds a world that drops too low."""
+    a = agent.agent_uuid
+    home = agent_payload.get("home_realm", event_realm)
+    for realm in {event_realm, agent_payload.get("realm", event_realm), home}:
+        try:
+            await store.set_presence(realm, a, False)
+        except Exception:
+            pass
+    # Rule 3.12a: a dead carrier's construction is SET DOWN where it stood
+    c_key = agent_payload.get("carrying_site")
+    c_realm = agent_payload.get("carrying_realm")
+    if c_key and c_realm:
+        try:
+            await construction.set_down(store._c, c_realm, c_key,
+                                        agent.x, agent.y,
+                                        reason=f"carrier died ({cause})")
+        except Exception:
+            pass
+    dead = {**agent_payload, "alive": False, "died_at": now,
+            "died_of": cause}
+    for k in ("perishes_at", "carrying_site", "carrying_realm",
+              "awaiting_trade", "human_ask", "review_at"):
+        dead.pop(k, None)
+    await store.put_agent(a, dead)
+    try:
+        await store.set_movement(a, {"waypoints": [[agent.x, agent.y]],
+                                     "departed_at": now, "arrives_at": now,
+                                     "cargo": {}})
+    except Exception:
+        pass
+    if agent_payload.get("owner_user_id"):
+        notify.emit_bg(store._c, agent_payload["owner_user_id"], "agents",
+                       "death",
+                       f"{agent_payload.get('name', a)} died of old age; "
+                       f"its line ends. A new citizen may rise to keep the "
+                       f"world peopled.")
+    await store.record_decision(a, {
+        "at": _iso(now), "situation": "death", "options": [],
+        "choice": f"died({cause})", "model": "arithmetic", "tier": "computed"})
+    return f"died:{cause}"
 
 
 async def regenerate(store: GenomeStore, event_realm: str,
