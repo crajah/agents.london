@@ -298,6 +298,47 @@ function WorldChat({ realm, isOwner }) {
 }
 
 
+function EmailSignIn() {
+  // The third door: no provider, just an address. The button becomes an input
+  // in place rather than opening a modal -- signing in should not feel like a
+  // detour, and at this size a modal would be more ceremony than the task.
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState(null);   // null | "sending" | "sent" | error
+  const send = async () => {
+    if (!email.includes("@")) { setState("That does not look like an email."); return; }
+    setState("sending");
+    try {
+      const r = await fetch("/authority/login/email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, return_to: "/genome/" }) });
+      const d = await r.json().catch(() => ({}));
+      setState(r.ok ? "sent" : (d.error || `could not send (${r.status})`));
+    } catch (e) { setState(String(e.message || e)); }
+  };
+  if (state === "sent")
+    return <span className="text-xs text-emerald-400">
+      Check your email — the link works once and expires in 15 minutes.</span>;
+  if (!open)
+    return <button onClick={() => setOpen(true)}
+                   className="text-sm px-2 py-1 rounded bg-neutral-700
+                              hover:bg-neutral-600 font-medium">Email</button>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input autoFocus type="email" placeholder="you@example.com"
+             className="bg-neutral-800 px-2 py-1 rounded text-sm w-52"
+             value={email} onChange={e => setEmail(e.target.value)}
+             onKeyDown={e => e.key === "Enter" && send()} />
+      <button onClick={send} disabled={state === "sending"}
+              className="text-sm px-2 py-1 rounded bg-neutral-100
+                         text-neutral-900 hover:bg-white font-medium
+                         disabled:opacity-50">
+        {state === "sending" ? "sending…" : "send link"}</button>
+      {state && state !== "sending" &&
+        <span className="text-xs text-amber-400 max-w-[14rem]">{state}</span>}
+    </span>);
+}
+
 function Bell() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -1957,6 +1998,7 @@ function App() {
                         hover:bg-neutral-600 no-underline font-medium"
              href={`/authority/login/microsoft?return_to=${
                encodeURIComponent("/genome/")}`}>Microsoft</a>
+          <EmailSignIn />
         </>}
         <button className="text-sm opacity-60" title="Simulation admin"
                 onClick={() => setAdminOpen(true)}>⌘</button>

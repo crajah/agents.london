@@ -15,9 +15,12 @@ import hmac
 import json
 import logging
 import os
+import secrets
+import smtplib
 import time
 import urllib.parse
 import urllib.request
+from email.message import EmailMessage
 
 import jwt
 from fastapi import FastAPI, Request
@@ -52,6 +55,23 @@ TOKEN_TTL = int(os.getenv("AUTHORITY_TOKEN_TTL", "900"))       # 15 minutes
 ALLOWED_RETURN = tuple(os.getenv(
     "AUTHORITY_ALLOWED_RETURN",
     "https://agents.london/,http://localhost").split(","))
+
+# --- Magic-link sign-in (the third door) ------------------------------------
+# Email is already the root of identity here: user_id_from_email() is what every
+# provider resolves to, so a link sent to an address grants exactly the identity
+# that address already owns -- no more, no less. It is not a weaker door than
+# OIDC; it is the same door without the middleman.
+MAGIC_TTL = int(os.getenv("AUTHORITY_MAGIC_TTL", "900"))        # 15 minutes
+MAGIC_PER_EMAIL = int(os.getenv("AUTHORITY_MAGIC_PER_EMAIL", "5"))
+MAGIC_PER_WINDOW = int(os.getenv("AUTHORITY_MAGIC_WINDOW", "3600"))
+MAGIC_REALM = "authority_magic"
+
+SMTP_HOST = os.getenv("AUTHORITY_SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("AUTHORITY_SMTP_PORT", "587"))
+SMTP_USER = os.getenv("AUTHORITY_SMTP_USER", "")
+SMTP_PASS = os.getenv("AUTHORITY_SMTP_PASS", "")
+SMTP_FROM = os.getenv("AUTHORITY_SMTP_FROM", "no-reply@agents.london")
+SMTP_TLS = os.getenv("AUTHORITY_SMTP_TLS", "1") != "0"
 
 _PRIV = os.getenv("AUTHORITY_JWT_KEY", "")
 if not _PRIV:
@@ -165,6 +185,27 @@ async def jwks():
                       "e": b64u(pub.e, 3)}]}
 
 
+def _return_ok(return_to: str) -> bool:
+    return not return_to or return_to.startswith("/") \
+        or return_to.startswith(ALLOWED_RETURN)
+
+
+async def _complete_login(sub: str, provider: str, email: str,
+                          return_to: str) -> RedirectResponse:
+    """The tail every door shares: provision the tenant, mint, set the cookie,
+    bounce back. Extracted so the magic-link and OIDC paths cannot drift --
+    a second copy of this is how one door ends up with a different session."""
+    await _ensure_tenant_record(sub, email)   # best-effort; never blocks login
+    token = mint(sub, provider, email=email)
+    dest = return_to or "/"
+    sep = "&" if "?" in dest else "?"
+    resp = RedirectResponse(dest + sep + "authority_token=" + token)
+    resp.set_cookie("authority_token", token, max_age=TOKEN_TTL,
+                    secure=BASE.startswith("https"), samesite="lax",
+                    path="/")
+    return resp
+
+
 @app.get("/login/{provider}")
 async def login(provider: str, return_to: str = ""):
     if provider not in PROVIDERS:
@@ -214,16 +255,139 @@ async def callback(provider: str, code: str = "", state: str = "",
     if not email:
         return JSONResponse({"error": "provider withheld the email claim"},
                             status_code=400)
-    sub = user_id_from_email(email)
-    await _ensure_tenant_record(sub, email)   # best-effort; never blocks login
-    token = mint(sub, provider, email=email)
-    dest = doc.get("r") or "/"
-    sep = "&" if "?" in dest else "?"
-    resp = RedirectResponse(dest + sep + "authority_token=" + token)
-    resp.set_cookie("authority_token", token, max_age=TOKEN_TTL,
-                    secure=BASE.startswith("https"), samesite="lax",
-                    path="/")
-    return resp
+    return await _complete_login(user_id_from_email(email), provider, email,
+                                 doc.get("r") or "/")
+
+
+# --- Magic link -------------------------------------------------------------
+
+_magic_ready = False
+
+
+async def _magic_client():
+    global _magic_ready
+    c = await _vault_client()
+    if not _magic_ready:
+        await c.create_vertex_table("magic_links", realm=MAGIC_REALM)
+        _magic_ready = True
+    return c
+
+
+def _magic_hash(nonce: str) -> str:
+    """Rows store the HASH, never the nonce. A leaked dump of this table is
+    therefore a list of dead ends rather than a bag of working logins -- the
+    same reason password tables are hashed."""
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
+def _send_magic_mail(to: str, link: str) -> None:
+    msg = EmailMessage()
+    msg["From"] = SMTP_FROM
+    msg["To"] = to
+    msg["Subject"] = "Your sign-in link for agents.london"
+    mins = MAGIC_TTL // 60
+    msg.set_content(
+        f"Sign in to agents.london by opening this link:\n\n{link}\n\n"
+        f"The link works once and expires in {mins} minutes.\n"
+        "If you did not ask to sign in, ignore this email -- nobody can use "
+        "the link but you, and no account was changed.\n")
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as srv:
+        if SMTP_TLS:
+            srv.starttls()
+        if SMTP_USER:
+            srv.login(SMTP_USER, SMTP_PASS)
+        srv.send_message(msg)
+
+
+@app.post("/login/email")
+async def login_email(request: Request):
+    """Ask for a sign-in link. The response is deliberately identical whether
+    or not the address has ever been seen: this endpoint must not become a way
+    to ask the platform who its users are."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    email = normalise_email(str(body.get("email") or ""))
+    return_to = str(body.get("return_to") or "/")
+    accepted = {"status": "sent",
+                "detail": "If that address can receive mail, a sign-in "
+                          "link is on its way."}
+
+    if "@" not in email or len(email) > 320:
+        return JSONResponse({"error": "a valid email address is required"},
+                            status_code=400)
+    if not _return_ok(return_to):
+        return JSONResponse({"error": "return_to not allowed"},
+                            status_code=400)
+    if not SMTP_HOST:
+        # Fail loudly rather than pretending: a login mechanism that silently
+        # sends nothing is worse than one that is plainly switched off.
+        logger.error("magic link requested but AUTHORITY_SMTP_HOST is unset")
+        return JSONResponse(
+            {"error": "email sign-in is not configured on this deployment"},
+            status_code=503)
+
+    now = int(time.time())
+    try:
+        c = await _magic_client()
+        recent = await c.find_vertices(
+            "magic_links", realm=MAGIC_REALM,
+            filters={"email": email}, limit=MAGIC_PER_EMAIL + 1)
+        fresh = [v for v in recent
+                 if int(v.payload.get("created_at", 0)) > now - MAGIC_PER_WINDOW]
+        if len(fresh) >= MAGIC_PER_EMAIL:
+            # Rate limited, but the caller is told the same thing as everyone
+            # else -- otherwise this is an oracle for "is this address in use".
+            logger.warning("magic link rate limit hit for %s", email)
+            return JSONResponse(accepted, status_code=202)
+
+        nonce = secrets.token_urlsafe(32)
+        await c.add_vertex("magic_links", realm=MAGIC_REALM, payload={
+            "key": _magic_hash(nonce), "email": email,
+            "return_to": return_to, "created_at": now,
+            "expires_at": now + MAGIC_TTL, "used_at": None})
+        link = (BASE + PREFIX + "/callback/email?t="
+                + urllib.parse.quote(nonce))
+        _send_magic_mail(email, link)
+    except Exception:
+        logger.exception("magic link issue failed")
+        return JSONResponse({"error": "could not send the sign-in link"},
+                            status_code=502)
+    return JSONResponse(accepted, status_code=202)
+
+
+@app.get("/callback/email")
+async def callback_email(t: str = ""):
+    """Spend the link. Single use and time-bounded: the row is marked before
+    the token is minted, so a replayed link -- forwarded, cached by a scanner,
+    or sitting in a mailbox someone else later reads -- finds it already spent."""
+    bad = JSONResponse({"error": "this sign-in link is invalid, expired, or "
+                                 "has already been used"}, status_code=400)
+    if not t:
+        return bad
+    now = int(time.time())
+    try:
+        c = await _magic_client()
+        rows = await c.find_vertices("magic_links", realm=MAGIC_REALM,
+                                     filters={"key": _magic_hash(t)}, limit=1)
+        if not rows:
+            return bad
+        row = rows[0]
+        pl = dict(row.payload)
+        if pl.get("used_at") or int(pl.get("expires_at", 0)) <= now:
+            return bad
+        pl["used_at"] = now
+        await c.upsert_vertex("magic_links", realm=MAGIC_REALM,
+                              vertex_id=int(row.id), space="default",
+                              payload=pl)
+    except Exception:
+        logger.exception("magic link redemption failed")
+        return JSONResponse({"error": "could not complete sign-in"},
+                            status_code=502)
+    email = pl["email"]
+    return await _complete_login(user_id_from_email(email), "email", email,
+                                 pl.get("return_to") or "/")
 
 
 @app.get("/me")

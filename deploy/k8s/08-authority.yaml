@@ -41,6 +41,25 @@ spec:
             - name: AUTHORITY_INTERNAL_KEY
               valueFrom:
                 secretKeyRef: { name: authority-jwt, key: internal_key }
+            # Magic-link sign-in. Every ref is optional:true, so the service
+            # still starts without the secret -- it just refuses /login/email
+            # with a 503 rather than pretending to send mail. Create the
+            # secret `authority-smtp` to switch the third door on.
+            - name: AUTHORITY_SMTP_HOST
+              valueFrom:
+                secretKeyRef: { name: authority-smtp, key: host, optional: true }
+            - name: AUTHORITY_SMTP_PORT
+              valueFrom:
+                secretKeyRef: { name: authority-smtp, key: port, optional: true }
+            - name: AUTHORITY_SMTP_USER
+              valueFrom:
+                secretKeyRef: { name: authority-smtp, key: user, optional: true }
+            - name: AUTHORITY_SMTP_PASS
+              valueFrom:
+                secretKeyRef: { name: authority-smtp, key: pass, optional: true }
+            - name: AUTHORITY_SMTP_FROM
+              valueFrom:
+                secretKeyRef: { name: authority-smtp, key: from, optional: true }
             # $(VAR) substitution only sees variables defined EARLIER in
             # this list -- the parts must precede the DSN
             - name: POSTGRES_USER
