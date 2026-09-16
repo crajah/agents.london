@@ -12,6 +12,7 @@ import dataclasses as _dataclasses
 import json
 import os
 import time
+import logging as _logging
 import uuid as uuidlib
 
 from . import combat, construction, engine, forms, identity, market, \
@@ -31,6 +32,7 @@ from .store import GenomeStore
 # Max present agents a world sustains via breeding (user directive 2026-09-13):
 # beyond this an offspring's home is "full" and the child isn't born, so a world
 # can't grow so dense it starves its own agents of decision throughput.
+logger = _logging.getLogger("genome.drain")
 BREED_DENSITY_CAP = int(os.getenv("GENOME_BREED_CAP", "60"))
 
 # Reflex/deliberation split, Phase 1 (spec: apps/genome/spec/reflex-*). "off"
@@ -2803,11 +2805,33 @@ async def die_permanently(store: GenomeStore, event_realm: str,
     The min-population floor (spawnpool) reseeds a world that drops too low."""
     a = agent.agent_uuid
     home = agent_payload.get("home_realm", event_realm)
-    for realm in {event_realm, agent_payload.get("realm", event_realm), home}:
+    # Clear presence WHEREVER the body actually is, not in a guessed set of
+    # realms. A perish is scheduled in the HOME realm, so an agent that died
+    # while abroad kept standing in the foreign world for ever: 28 of 87 bodies
+    # in one world were dead but still present (measured 2026-09-16), counted in
+    # its population and re-drained on every tick as "dead:skip".
+    realms = {event_realm, agent_payload.get("realm", event_realm), home}
+    try:
+        rows = await store._c.fetch(
+            "SELECT realm FROM presence WHERE payload->>'key'=$1 "
+            "AND payload->>'present'='true'", a)
+        realms |= {r["realm"] for r in rows}
+    except Exception:
+        logger.exception("presence sweep failed for %s", a)
+    for realm in realms:
         try:
             await store.set_presence(realm, a, False)
         except Exception:
             pass
+    # The dead are owed no further turns: complete their outstanding events so
+    # the drain stops re-reading them for ever.
+    try:
+        await store._c.execute(
+            "UPDATE events SET payload = jsonb_set(payload::jsonb,'{done_at}',"
+            "to_jsonb($2::text), true) WHERE payload->>'subject'=$1 "
+            "AND payload->>'done_at' IS NULL", a, _iso(now))
+    except Exception:
+        logger.exception("event cancel failed for %s", a)
     # Rule 3.12a: a dead carrier's construction is SET DOWN where it stood
     c_key = agent_payload.get("carrying_site")
     c_realm = agent_payload.get("carrying_realm")

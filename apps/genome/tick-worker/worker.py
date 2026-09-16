@@ -61,6 +61,8 @@ REFLEX_TICK_CAP = int(os.getenv("GENOME_REFLEX_TICK_CAP", "150"))
 # How far ahead a scheduled event counts as "the agent is mid-turn". Wide
 # enough to cover work about to fire, far short of a perish appointment.
 PENDING_LOOKAHEAD_S = float(os.getenv("GENOME_PENDING_LOOKAHEAD", "60"))
+# How long a rendezvous commitment may hold a body still before it is released.
+TRADE_HOLD_S = float(os.getenv("GENOME_TRADE_HOLD", "300"))
 
 
 def mine(realm: str) -> bool:
@@ -506,6 +508,21 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
                     where=[("done_at", "is_null", None)], limit=4000)}
     present = [v.payload["key"] for v in await store.agents_in(realm)]
     metas = await _payloads_for(store, present)
+    # Arrival times for the WHOLE realm in one query. This used to be one
+    # latest_movement() round trip per agent; on an 87-agent world that is 87
+    # sequential queries against a pool the redis consumer is already using, and
+    # the pass took long enough to starve the tick loop of its own realms.
+    arrivals: dict[str, float] = {}
+    try:
+        rows = await store._c.fetch(
+            "SELECT DISTINCT ON (a.payload->>'key') a.payload->>'key' k, "
+            "       (d.payload->>'arrives_at')::float8 arr "
+            "FROM agents a JOIN agents_data d ON d.id = a.id AND d.realm = a.realm "
+            "WHERE a.realm = 'genome_agents' AND a.payload->>'key' = ANY($1) "
+            "ORDER BY a.payload->>'key', d.\"timestamp\" DESC", present)
+        arrivals = {r["k"]: (r["arr"] or 0.0) for r in rows}
+    except Exception:
+        logger.exception("batched arrivals failed for %s", realm)
     acted = 0
     for a in present:
         if acted >= REFLEX_TICK_CAP:
@@ -517,11 +534,22 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
             continue
         if apl.get("carrying_site"):
             continue          # a carrier moves as one body -- leave it be
-        if apl.get("awaiting_trade"):
-            continue          # committed to a rendezvous; the trade_settle event
-            # (not reflex) drives it -- don't wander it off the meeting
-        latest = await store.latest_movement(a)
-        if latest and latest.payload.get("arrives_at", 0) > now:
+        at = apl.get("awaiting_trade")
+        if at:
+            # Committed to a rendezvous: trade_settle drives it, not reflex. But
+            # a lost settle event used to freeze the body for ever (22 of 87 in
+            # one world), so the commitment expires and the agent is released.
+            since = float(at.get("at") or at.get("since") or 0.0)
+            if since and now - since < TRADE_HOLD_S:
+                continue
+            if not since:
+                await store.put_agent(a, {**apl,
+                                          "awaiting_trade": {**at, "at": now}})
+                continue
+            logger.info("%s: releasing %s from a stale rendezvous", realm, a)
+            apl = {k: v for k, v in apl.items() if k != "awaiting_trade"}
+            await store.put_agent(a, apl)
+        if arrivals.get(a, 0.0) > now:
             continue          # still travelling; the tick re-decides on arrival
         if a in thinking:
             # Waiting on the LLM: keep the body ambling in its own style while
@@ -543,6 +571,7 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
         # reconstruct pile context by proximity (the dropped arrival event used
         # to carry pile_uuid): if the agent stands at a pile, offer mining there
         dpay: dict = {}
+        latest = await store.latest_movement(a)
         if latest and "waypoints" in latest.payload:
             r = _f.Route(tuple(tuple(q) for q in latest.payload["waypoints"]),
                          latest.payload["departed_at"],
