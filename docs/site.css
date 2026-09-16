@@ -127,3 +127,7 @@ footer a { color: var(--dim); }
 .cta-ghost { border: 1px solid var(--hairline); color: var(--bone); }
 .cta-ghost:hover { border-color: var(--violet); }
 @media (prefers-reduced-motion: reduce) { .cta:hover { transform: none; } }
+
+/* the one footer link that is asking to be clicked */
+footer a.me { color: var(--ink); border-bottom: 1px solid var(--dim); }
+footer a.me:hover { border-color: currentColor; }

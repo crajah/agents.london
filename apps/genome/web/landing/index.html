@@ -83,6 +83,25 @@
   .flist a:hover { border-color: var(--accent); }
   .flist .sub { display: block; font-size: .8rem; color: var(--dim); border: 0; margin-top: .25rem; }
   .foundations { padding: 2.6rem 0; border-bottom: 1px solid var(--line); }
+  /* Who-built-this: the one place on the page asking for a click rather than
+     offering a door. It sits after the evidence, where a convinced reader is,
+     and the LinkedIn action is the only accent-filled button on the page so it
+     reads as the primary action without another colour being introduced. */
+  .author { padding-top: .4rem; }
+  .author-card {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    padding: 1.4rem 1.5rem; display: flex; gap: 1.5rem;
+    align-items: center; flex-wrap: wrap; justify-content: space-between;
+  }
+  .author-copy { max-width: 34rem; }
+  .author-name { color: var(--ink); font-weight: 600; margin: 0 0 .25rem; }
+  .author-line { color: var(--dim); margin: 0; font-size: .95rem; }
+  .author .cta-row { margin-top: 0; }
+  .cta-linkedin { background: var(--accent); color: #06222a; border-color: var(--accent); }
+  .cta-linkedin:hover { filter: brightness(1.08); }
+  @media (max-width: 720px) {
+    .author-card { flex-direction: column; align-items: flex-start; }
+  }
   footer { padding: 2.6rem 0 3.6rem; color: var(--dim); font-size: .9rem; }
   footer .who { color: var(--ink); font-weight: 600; }
   footer a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
@@ -177,13 +196,34 @@
       </div>
     </section>
 
+    <section class="author">
+      <h3>Who built this</h3>
+      <div class="author-card">
+        <div class="author-copy">
+          <p class="author-name">Chandan Rajah</p>
+          <p class="author-line">Both simulations, the graph substrate beneath
+            them and the research behind it. If any of this is useful to you,
+            the best place to reach me is LinkedIn.</p>
+        </div>
+        <div class="cta-row">
+          <a class="cta cta-linkedin" href="https://www.linkedin.com/in/crajah"
+             target="_blank" rel="noopener">Connect on LinkedIn &rarr;</a>
+          <a class="cta cta-ghost" href="https://github.com/crajah/agents.london"
+             target="_blank" rel="noopener">Source on GitHub</a>
+          <a class="cta cta-ghost" href="https://crajah.github.io/agents.london/"
+             target="_blank" rel="noopener">Read the write-up</a>
+        </div>
+      </div>
+    </section>
+
     <footer>
       <div>The brainchild of <span class="who">Chandan Rajah</span>. Both
         simulations run continuously — what you see is live.</div>
       <div class="links">
         <a href="mailto:chandan.rajah@gmail.com">chandan.rajah@gmail.com</a>
         <a href="https://www.linkedin.com/in/crajah">LinkedIn</a>
-        <a href="https://github.com/crajah">GitHub</a>
+        <a href="https://github.com/crajah/agents.london">GitHub repo</a>
+        <a href="https://crajah.github.io/agents.london/">GitHub Pages</a>
       </div>
     </footer>
   </div>

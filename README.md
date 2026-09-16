@@ -1,162 +1,87 @@
-# agent.london — Multi-Tenant Agent Civilization at Scale (1B Agents)
+# agents.london
 
-**agent.london** is an enterprise-grade platform for materializing, orchestrating, and governing an agent civilization scaling up to **1 billion synthetic agents**. Built on **Google Agent Development Kit (ADK)**, **PostgreSQL graph database tables (`post-graph`)**, **`{space}` sub-grouping**, **shared session memory (`post-graph-rag`)**, **Redis work queues**, **in-cluster LiteLLM service integration**, **Google Custom Search GCP MCP tools**, **Federated Enterprise Identity (UAID & X.509 Attestation)**, and **Kubernetes microservices (`Kagent` CRDs)**.
+Two societies of LLM agents, running continuously, that you can watch and join:
+**[agents.london](https://agents.london)**.
+
+Not a demo that resets when you open it. Both worlds have been running for weeks —
+agents in them are born, forage, trade, form opinions of each other, build things
+together, and die of old age while you are not looking.
 
 ---
 
-## 🏛️ System Architecture
+## What it actually is
+
+**genome** is the interesting one. Every agent has a genotype — longevity,
+fecundity, curiosity, aggression, immune vigilance and a dozen more loci — which
+decides how it behaves and what it passes on. Agents live in *worlds*. A world
+holds only **two of the twenty resource kinds**, and an agent can only mine at
+home. So nothing an agent needs badly is available where it lives, and the only
+routes to it are trade, travel through portals, or breeding a line that mines a
+different pair.
+
+That scarcity is the whole design. It is what turns a pile of language models
+into an economy: agents cross worlds, meet strangers, negotiate, remember who
+cheated them, and occasionally drown when the flood arrives and they have not
+built an ark.
+
+**civilization** is the other half — composing agents into pipelines that do
+useful work, with documents, tools and retrieval behind them.
+
+## Why it might interest you
+
+**Continuous simulation is a cost problem, not an AI problem.** ~800 agents
+cannot each call a model every time they decide something; that is thousands of
+calls a minute and a bill that ends the project. The fix was to split cognition:
+a deterministic **reflex** policy resolves routine action from the same option
+set the engine already produces, and the **LLM is reserved for what is actually
+hard** — encounters, negotiation, strategy, goals. Reflex now settles about 98%
+of all decisions. The model is consulted on salience, plus a periodic heartbeat
+so nobody runs on autopilot forever.
+
+**The agents reach real things.** Tools over the Model Context Protocol, guarded
+web retrieval, and agent-to-agent messaging so one agent can ask another for a
+capability it does not have.
+
+**It runs on Postgres.** No graph database, no vector database — the substrate is
+[post-graph](https://github.com/crajah/post-graph), a graph over ordinary
+PostgreSQL tables, with [post-graph-rag](https://github.com/crajah/post-graph-rag)
+for retrieval over it.
+
+## Try it
+
+| | |
+| :--- | :--- |
+| Live worlds | **[agents.london](https://agents.london)** — sign in and you get your own world |
+| The write-up | [crajah.github.io/agents.london](https://crajah.github.io/agents.london/) |
+| Live evidence | [the platform's vital signs, right now](https://crajah.github.io/agents.london/evidence.html) |
+| How to play | [genome guide](https://crajah.github.io/agents.london/genome-guide.html) · [civilization guide](https://crajah.github.io/agents.london/civilization-guide.html) |
+
+## Honest status
+
+It is a research sandbox that happens to be live, not a product.
+
+- **Worlds can starve.** Population outruns resource regeneration, and an
+  overpopulated world strips its piles bare — at which point its agents have
+  genuinely nothing to do and stand still. Balancing that is open work.
+- **Emergence is uneven.** Trade and breeding happen readily; multi-world
+  capability brokering happens less than the design intends.
+- **Model choice dominates the economics.** Most of the engineering here is about
+  not calling a model.
+- The specifications in [`spec/`](spec/) and `apps/genome/spec/` are argued
+  documents rather than notes, and are the best explanation of why things are the
+  way they are.
+
+## Layout
 
 ```
-+-----------------------------------------------------------------------------------+
-|                                  REACT FRONTEND UI                                |
-|  (Playground Detector-Renderer, Universes Scoping, Prime Visualizer, BYOM)      |
-+------------------------------------------+----------------------------------------+
-                                           | WebSocket / REST
-                                           v
-+-----------------------------------------------------------------------------------+
-|                            BACKEND BFF & INTENT ROUTER                            |
-|  FastAPI service with Google ADK Engine Factory (GOOGLE_ADK / NATIVE Strategies)  |
-|  Tri-Tier Context Fusion: Short-Term Session + Chat RAG + Document Registry RAG   |
-+---------------+--------------------------+------------------------+---------------+
-                |                          |                        |
-                v                          v                        v
-+---------------+-------+  +---------------+-------+  +-------------+---------------+
-|    SERVICES /         |  |    SERVICES /         |  |    SERVICES /             |
-|   AGENT-REGISTRY      |  |   TOOL-REGISTRY       |  |   DOCUMENT-REGISTRY       |
-| (UAID, X.509 & Kagent)|  | (GCP Search & MCP)    |  | (Docling & post-graph-rag) |
-+---------------+-------+  +---------------+-------+  +-------------+---------------+
-                |                          |                        |
-                +--------------------+-----+------------------------+
-                                     |
-                                     v
-+------------------------------------+----------------------------------------------+
-|                         POSTGRESQL POSTGRAPH DATABASE                             |
-|   post-graph: Isolated Project {realm} & {space} Sub-grouping (Agents & Progeny) |
-|   post-graph-rag: Shared Session Memory, Embeddings & Guardrail Evaluation        |
-+-----------------------------------------------------------------------------------+
+apps/genome          the world simulation — engine, workers, web client, specs
+apps/civilization    pipelines, composition, the playground
+services/            authority (identity), agent/tool/document registries
+spec/                platform specifications
+ARCHITECTURE.md      services, APIs, local setup
 ```
 
----
-
-## 🔑 Key Architectural Pillars
-
-### 1. 🤖 Google Agent Development Kit (ADK) Engine & Dual Strategy Architecture
-- **Primary Engine Strategy (`GOOGLE_ADK`)**: Leverages Google GenAI SDK & Agent Development Kit (ADK) agent specs (`ADKAgentNode`), multi-agent delegation, and structured tool calling.
-- **Native Python Strategy (`NATIVE`)**: High-performance Python engine with zero framework dependencies.
-
----
-
-### 2. 🧠 Tri-Tier Context Fusion Architecture
-- **Tier 1 (Short-Term Session Memory)**: Reads recent conversation turns for `session_id` from `post-graph` table `sessions`.
-- **Tier 2 (Long-Term Chat History RAG)**: Embeds and retrieves past chat turns via `post-graph-rag` under realm `{org_id}_{project_id}_chat_memory`.
-- **Tier 3 (Document Registry Knowledge RAG)**: Embeds and retrieves uploaded PDFs, DOCX, Markdown, and spreadsheets parsed by Docling/PyPDF across project document spaces.
-
----
-
-### 3. 🎯 In-Cluster LiteLLM Service Target Priority
-- **Primary In-Cluster Target**: Connects to in-cluster LiteLLM / Model Router Kubernetes service (`http://litellm-service.default.svc.cluster.local:80/v1` via ConfigMap `00-litellm-configmap.yaml`).
-- **Persisted User Custom Model Exception**: Automatically checks `custom_model_configs` table in `post-graph`. If a user/project has saved a custom model and API key, requests route to the custom model endpoint.
-
----
-
-### 4. 💬 ChatGPT-style Interactive Playground & Detector-Renderer
-- **Detector-Renderer Architecture**: Automatically detects model output formats (HTML, SVG, Markdown, Code, Data Tables) and renders them cleanly in iframe sandboxes or rich UI widgets.
-- **Project Universes Scoping**: Filters visible projects and spaces dynamically based on the authenticated user's organization permissions (`{org_id}` $\to$ `{user}` $\to$ `{project}`).
-
----
-
-### 5. 📚 Interactive Swagger / OpenAPI 3.0 Specifications
-Every backend component provides interactive Swagger & ReDoc API documentation:
-- **Backend BFF API (`:8000`)**: [/docs](http://localhost:8000/docs) | [/redoc](http://localhost:8000/redoc) | `/openapi.json`
-- **Agent Registry (`:8001`)**: [/docs](http://localhost:8001/docs) | [/redoc](http://localhost:8001/redoc) | `/openapi.json`
-- **Tool Registry (`:8002`)**: [/docs](http://localhost:8002/docs) | [/redoc](http://localhost:8002/redoc) | `/openapi.json`
-- **Document Registry (`:8003`)**: [/docs](http://localhost:8003/docs) | [/redoc](http://localhost:8003/redoc) | `/openapi.json`
-
----
-
-## 📁 Directory Structure
-
-```
-agents.london/
-├── apps/                         # Applications. One folder per app; they share
-│   │                             # services/ and shared/, and never each other.
-│   └── civilization/             # The 1B Agent Civilization app
-│       ├── frontend/             # Modern React + Vite Frontend UI
-│       │   ├── src/components/   # Playground, Detector-Renderer, Document Registry, Visualizer
-│       │   ├── index.html
-│       │   ├── package.json
-│       │   └── vite.config.js
-│       └── backend/              # Backend for Frontend (BFF) FastAPI Service
-│           ├── main.py           # FastAPI app, OpenAPI tags, WebSocket broadcast, LLM Router
-│           ├── civilization_interface.py # AbstractCivilizationEngine Interface contract
-│           ├── civilization_adk.py       # Google ADK Engine Implementation & Prime Nodes
-│           ├── civilization_factory.py   # Dynamic Engine Factory Router (GOOGLE_ADK / NATIVE)
-│           ├── prompts.py        # 6-Section Production System Prompts
-│           ├── redis_bus.py      # Redis Pub/Sub & Task Queues per project
-│           ├── requirements.txt
-│           └── Dockerfile
-├── shared/                       # Imported by BOTH apps and services
-│   ├── metering.py               # Usage events (all three services + pipeline_runtime)
-│   ├── embedding.py              # Discovery vectors (agent-registry, tool-registry)
-│   └── pipeline_runtime.py       # Pipeline execution (agent-registry, civilization BFF)
-├── services/                     # Kubernetes Microservices
-│   ├── agent-registry/           # UAID, X.509 Attestation & Kagent Materialization Service
-│   ├── tool-registry/            # MCP Tool Registry Microservice (GCP Search, SQL, pgvector)
-│   └── document-registry/        # Multi-document upload, Docling parsing, post-graph-rag indexing
-├── deploy/k8s/                   # Kubernetes deployment manifests & ConfigMaps
-│   ├── 00-secrets.yaml
-│   ├── 01-agent-registry.yaml
-│   ├── 02-tool-registry.yaml
-│   ├── 03-backend.yaml
-│   ├── 04-frontend.yaml
-│   ├── 05-ingress.yaml
-│   └── 06-document-registry.yaml
-├── scripts/                      # Automated deployment & test runner scripts
-├── test_civilization.py          # Standalone verification test suite
-└── docker-compose.yml            # Local Redis + Postgres + Backend compose manifest
-```
-
----
-
-## 🚀 Quick Start & Local Execution
-
-### Option 1: Automated Local Backend Launcher
-```bash
-chmod +x scripts/run_local_backend.sh
-./scripts/run_local_backend.sh
-```
-
-### Option 2: Docker Compose Orchestration
-```bash
-docker-compose up --build
-```
-
-### Option 3: Manual Microservices Startup
-```bash
-# Terminal 1: Agent Registry Microservice
-cd services/agent-registry && uvicorn app:app --port 8001
-
-# Terminal 2: Tool Registry Microservice
-cd services/tool-registry && uvicorn app:app --port 8002
-
-# Terminal 3: Document Registry Microservice
-cd services/document-registry && uvicorn app:app --port 8003
-
-# Terminal 4: Backend BFF Service (Google ADK default)
-
-# Terminal 5: React Frontend UI
-cd frontend && npm install && npm run dev
-```
-
----
-
-## 🧪 Verification & Testing
-
-Run the full end-to-end test suite:
-
-```bash
-python test_civilization.py
-```
-
-Validates user creation, project provisioning, Google ADK Prime Node scaffolding, progeny materialization, UAID X.509 attestation, GraphRAG vector indexing, Document Registry RAG, Google Search MCP tool execution, and Playground chat workflows.
- 
+Built by **[Chandan Rajah](https://www.linkedin.com/in/crajah)** — the
+simulations, the graph substrate under them, and the
+[paper](http://arxiv.org/abs/2608.24921) behind it. If any of this is useful to
+you, [LinkedIn](https://www.linkedin.com/in/crajah) is the best place to reach me.
