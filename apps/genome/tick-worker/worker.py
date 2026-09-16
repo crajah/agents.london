@@ -58,6 +58,9 @@ SHARD_INDEX = _shard_index() % SHARD_COUNT
 # GENOME_REFLEX != off (the drain reflex path resolves the synthetic decide).
 REFLEX_TICK = os.getenv("GENOME_REFLEX_TICK", "off") != "off"
 REFLEX_TICK_CAP = int(os.getenv("GENOME_REFLEX_TICK_CAP", "150"))
+# How far ahead a scheduled event counts as "the agent is mid-turn". Wide
+# enough to cover work about to fire, far short of a perish appointment.
+PENDING_LOOKAHEAD_S = float(os.getenv("GENOME_PENDING_LOOKAHEAD", "60"))
 
 
 def mine(realm: str) -> bool:
@@ -474,19 +477,29 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
     on the event path. Reuses drain_one so every effect is persisted by the one
     audited path; build_realm_ctx keeps reads to once per realm; capped so the
     idle set drains over a few passes."""
-    from genome_core import drain as _d, forms as _f
+    from genome_core import drain as _d, forms as _f, engine
     from types import SimpleNamespace as _NS
     ARRIVE_RADIUS = 0.06          # PILE_STANDOFF (0.02) + separation spiral;
     # generous so a just-arrived agent reliably reads as "at pile" (this is now
     # the SOLE arrival signal -- arrival events are no longer minted)
     rctx = await _d.build_realm_ctx(store, realm)
     piles = list(rctx["piles_meta"].values())
-    # an agent whose question is already in flight (event or decision) is busy
+    # An agent whose question is in flight is busy -- but "undone" is NOT the
+    # same as "in flight". Every agent carries a `perish` appointment scheduled
+    # DAYS ahead and undone for its whole life, so treating any undone event as
+    # pending froze ~2 of every 3 agents permanently (measured 2026-09-16:
+    # 18% of the world in motion, median stall 17 minutes, worst 3 hours).
+    # Only work that is due, or due imminently, means the agent is mid-turn.
+    soon = drain._iso(now + PENDING_LOOKAHEAD_S)
     pending = {v.payload.get("subject")
                for v in await store._c.find_vertices(
                    "events", realm=realm,
-                   where=[("done_at", "is_null", None)], limit=4000)}
-    pending |= {v.payload.get("agent_uuid")
+                   where=[("done_at", "is_null", None),
+                          ("due_at", "<=", soon)], limit=4000)}
+    # A queued LLM decision is different: the MIND is busy for minutes, but the
+    # body should not stand still for them (execution-spec 5.1 -- movement is
+    # free). These are collected separately and given a drift below.
+    thinking = {v.payload.get("agent_uuid")
                 for v in await store._c.find_vertices(
                     "decision_queue", realm="genome_agents",
                     filters={"world_realm": realm},
@@ -510,6 +523,23 @@ async def reflex_tick(store: GenomeStore, realm: str, now: float) -> int:
         latest = await store.latest_movement(a)
         if latest and latest.payload.get("arrives_at", 0) > now:
             continue          # still travelling; the tick re-decides on arrival
+        if a in thinking:
+            # Waiting on the LLM: keep the body ambling in its own style while
+            # the mind is out. drift_route is a multi-leg wander, so this is one
+            # write that covers the whole thinking gap and is interrupted the
+            # moment the real decision lands.
+            try:
+                dctx = {"genotype": apl.get("genotype") or {},
+                        "neighbours": [],
+                        "time_scale": rctx["world_payload"].get("time_scale", 1.0)}
+                av, _ = await _d.load_agent(store, realm, a, realm, now)
+                dr = engine.drift_route(av, dctx, rctx["terrain"], now)
+                if dr:
+                    await store.set_movement(a, {**dr, "cargo": av.cargo})
+                    acted += 1
+            except Exception:
+                logger.exception("drift failed for %s in %s", a, realm)
+            continue
         # reconstruct pile context by proximity (the dropped arrival event used
         # to carry pile_uuid): if the agent stands at a pile, offer mining there
         dpay: dict = {}
