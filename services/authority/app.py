@@ -17,6 +17,7 @@ import logging
 import os
 import secrets
 import smtplib
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -341,9 +342,20 @@ def _send_magic_mail(to: str, link: str) -> None:
         f"The link works once and expires in {mins} minutes.\n"
         "If you did not ask to sign in, ignore this email -- nobody can use "
         "the link but you, and no account was changed.\n")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as srv:
-        if SMTP_TLS:
-            srv.starttls()
+    # Port 465 is implicit TLS (SMTPS) and must be wrapped from the first byte;
+    # 587 is cleartext-then-STARTTLS. Using the 587 pattern against 465 does not
+    # negotiate -- it hangs or disconnects -- so the transport follows the port
+    # rather than a single flag (AUTHORITY_SMTP_SSL overrides if ever needed).
+    implicit = os.getenv("AUTHORITY_SMTP_SSL",
+                         "1" if SMTP_PORT == 465 else "0") != "0"
+    ctx = ssl.create_default_context()
+    if implicit:
+        srv = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20, context=ctx)
+    else:
+        srv = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20)
+    with srv:
+        if not implicit and SMTP_TLS:
+            srv.starttls(context=ctx)
         if SMTP_USER:
             srv.login(SMTP_USER, SMTP_PASS)
         srv.send_message(msg)
