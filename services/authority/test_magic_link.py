@@ -72,3 +72,27 @@ def test_expiry_and_single_use_are_both_refusal_conditions():
     assert refused(spent)
     assert refused(stale)
     assert not refused(live)
+
+
+def test_typed_address_is_marked_unverified_and_oidc_is_not():
+    """The claim that carries the whole distinction: a typed address is a claim,
+    an OIDC login is a proof, and the token has to say which it was."""
+    sub = app_mod.user_id_from_email("person@example.com")
+    typed = app_mod.verify(app_mod.mint(sub, "email",
+                                        email="person@example.com",
+                                        email_verified=False))
+    oidc = app_mod.verify(app_mod.mint(sub, "google",
+                                       email="person@example.com"))
+    assert typed["email_verified"] is False
+    assert oidc["email_verified"] is True
+    # ...and both are still the same person: sign-in method never forks identity
+    assert typed["sub"] == oidc["sub"] == sub
+
+
+def test_vault_refuses_unverified_sessions_only():
+    """The vault holds other people's API keys, so it is the one door an
+    unproved address must not open. Every other session is untouched."""
+    assert app_mod._vault_denied({"email_verified": False}) is not None
+    assert app_mod._vault_denied({"email_verified": True}) is None
+    # a token minted before this claim existed must not be locked out
+    assert app_mod._vault_denied({}) is None

@@ -298,6 +298,94 @@ function WorldChat({ realm, isOwner }) {
 }
 
 
+function SignInGate() {
+  // Three doors, one identity: whichever is used, the account is keyed off the
+  // email address, so a person who starts with email and later uses Google
+  // lands back in the same world rather than a second empty one.
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [sent, setSent] = useState(false);
+  const back = encodeURIComponent("/genome/");
+
+  const go = async () => {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setErr("Enter a valid email address."); return;
+    }
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/authority/login/email", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, return_to: "/genome/" }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setErr(d.error || `Could not sign in (${r.status}).`); return; }
+      // One endpoint, two modes: a token means we are in; "sent" means a link
+      // is on its way. The client needs no change when verification is enabled.
+      if (d.token) { location.href = d.return_to || "/genome/"; return; }
+      setSent(true);
+    } catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="h-screen w-screen flex items-center justify-center
+                    bg-neutral-900 text-neutral-200 px-4">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 3 A13 13 0 0 0 16 29 Z" fill="#34d399" />
+            <path d="M16 3 A13 13 0 0 1 16 29 Z" fill="#a78bfa" />
+          </svg>
+          <h1 className="text-2xl font-semibold m-0">genome</h1>
+        </div>
+        <p className="text-sm opacity-60 mt-0 mb-6">
+          Sign in to build your world. Your agents, resources and history are
+          kept against your email address.
+        </p>
+
+        {sent ? (
+          <div className="border border-emerald-800 bg-emerald-950/40 rounded
+                          p-3 text-sm text-emerald-300">
+            Check your email — the link works once and expires shortly.
+          </div>
+        ) : (
+          <>
+            <label className="block text-xs opacity-60 mb-1"
+                   htmlFor="signin-email">Email</label>
+            <input id="signin-email" type="email" autoFocus
+                   className="w-full bg-neutral-800 border border-neutral-700
+                              rounded px-3 py-2 mb-2"
+                   placeholder="you@example.com" value={email}
+                   onChange={e => setEmail(e.target.value)}
+                   onKeyDown={e => e.key === "Enter" && go()} />
+            <button onClick={go} disabled={busy}
+                    className="w-full px-3 py-2 rounded bg-emerald-700
+                               hover:bg-emerald-600 font-medium
+                               disabled:opacity-50">
+              {busy ? "Signing in…" : "Continue with email"}</button>
+            {err && <div className="text-amber-400 text-xs mt-2">{err}</div>}
+
+            <div className="flex items-center gap-3 my-5 opacity-40">
+              <span className="flex-1 h-px bg-neutral-600" />
+              <span className="text-xs">or</span>
+              <span className="flex-1 h-px bg-neutral-600" />
+            </div>
+
+            <a href={`/authority/login/google?return_to=${back}`}
+               className="block text-center px-3 py-2 rounded bg-neutral-100
+                          text-neutral-900 hover:bg-white no-underline
+                          font-medium mb-2">Continue with Google</a>
+            <a href={`/authority/login/microsoft?return_to=${back}`}
+               className="block text-center px-3 py-2 rounded bg-neutral-700
+                          hover:bg-neutral-600 no-underline font-medium">
+              Continue with Microsoft</a>
+          </>
+        )}
+      </div>
+    </div>);
+}
+
 function EmailSignIn() {
   // The third door: no provider, just an address. The button becomes an input
   // in place rather than opening a modal -- signing in should not feel like a
@@ -1917,6 +2005,11 @@ function App() {
     return () => { dead = true; clearInterval(timer);
                    esRef.current?.close(); canvas?.destroy(); };
   }, [realm]);
+
+  // An unauthenticated visitor used to land on an empty canvas with no agents
+  // and nothing to do -- a world that looks broken rather than one that looks
+  // locked. Sign in first, then the world.
+  if (me && !me.authenticated) return <SignInGate />;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-900 text-neutral-200">

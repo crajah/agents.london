@@ -61,6 +61,11 @@ ALLOWED_RETURN = tuple(os.getenv(
 # provider resolves to, so a link sent to an address grants exactly the identity
 # that address already owns -- no more, no less. It is not a weaker door than
 # OIDC; it is the same door without the middleman.
+# Verification is a SWITCH, not a rewrite. Off (today): entering an address
+# signs you straight in -- the address is a claim, not a proof. On: the same
+# endpoint emails a link instead. The client calls one endpoint either way and
+# branches on the response, so turning verification on later changes no UI.
+EMAIL_VERIFY = os.getenv("AUTHORITY_EMAIL_VERIFY", "0") != "0"
 MAGIC_TTL = int(os.getenv("AUTHORITY_MAGIC_TTL", "900"))        # 15 minutes
 MAGIC_PER_EMAIL = int(os.getenv("AUTHORITY_MAGIC_PER_EMAIL", "5"))
 MAGIC_PER_WINDOW = int(os.getenv("AUTHORITY_MAGIC_WINDOW", "3600"))
@@ -133,7 +138,8 @@ def tenant_id_from_sub(sub: str) -> str:
 
 
 def mint(sub: str, provider: str, grants: list | None = None,
-         email: str | None = None, tenant_id: str | None = None) -> str:
+         email: str | None = None, tenant_id: str | None = None,
+         email_verified: bool = True) -> str:
     """The email rides as a CLAIM in a 15-minute same-site token -- transit,
     not storage; the authority itself keeps nothing. Apps that key tenancy
     off the address (civilization) read it; apps that key off the hash
@@ -147,6 +153,11 @@ def mint(sub: str, provider: str, grants: list | None = None,
            "provider": provider, "grants": grants or []}
     if email:
         doc["email"] = normalise_email(email)
+    # Whether anyone actually PROVED they hold this address. OIDC and magic
+    # links do; a typed address does not. Carried as a claim so each service
+    # decides for itself what an unproved session may do -- the vault says no
+    # (it holds other people's API keys), genome says yes (it holds a game).
+    doc["email_verified"] = bool(email_verified)
     return jwt.encode(doc, _key, algorithm="RS256", headers={"kid": KID})
 
 
@@ -191,12 +202,13 @@ def _return_ok(return_to: str) -> bool:
 
 
 async def _complete_login(sub: str, provider: str, email: str,
-                          return_to: str) -> RedirectResponse:
+                          return_to: str,
+                          email_verified: bool = True) -> RedirectResponse:
     """The tail every door shares: provision the tenant, mint, set the cookie,
     bounce back. Extracted so the magic-link and OIDC paths cannot drift --
     a second copy of this is how one door ends up with a different session."""
     await _ensure_tenant_record(sub, email)   # best-effort; never blocks login
-    token = mint(sub, provider, email=email)
+    token = mint(sub, provider, email=email, email_verified=email_verified)
     dest = return_to or "/"
     sep = "&" if "?" in dest else "?"
     resp = RedirectResponse(dest + sep + "authority_token=" + token)
@@ -258,7 +270,8 @@ async def callback_email(t: str = ""):
                             status_code=502)
     email = pl["email"]
     return await _complete_login(user_id_from_email(email), "email", email,
-                                 pl.get("return_to") or "/")
+                                 pl.get("return_to") or "/",
+                                 email_verified=True)
 
 
 @app.get("/callback/{provider}")
@@ -357,6 +370,24 @@ async def login_email(request: Request):
     if not _return_ok(return_to):
         return JSONResponse({"error": "return_to not allowed"},
                             status_code=400)
+
+    if not EMAIL_VERIFY:
+        # Direct entry: the address is taken at its word. This is deliberate
+        # for the beta -- a login that needs working outbound mail is a login
+        # that is broken until the mail is. The session is marked unverified
+        # so the vault can refuse it (a typed address must not unlock someone
+        # else's API keys); everything else treats it as a normal session.
+        sub = user_id_from_email(email)
+        await _ensure_tenant_record(sub, email)
+        token = mint(sub, "email", email=email, email_verified=False)
+        resp = JSONResponse({"status": "signed_in", "token": token,
+                             "email_verified": False,
+                             "return_to": return_to or "/"})
+        resp.set_cookie("authority_token", token, max_age=TOKEN_TTL,
+                        secure=BASE.startswith("https"), samesite="lax",
+                        path="/")
+        return resp
+
     if not SMTP_HOST:
         # Fail loudly rather than pretending: a login mechanism that silently
         # sends nothing is worse than one that is plainly switched off.
@@ -511,6 +542,20 @@ def _open(sealed: dict) -> str:
 PROVIDER_RE = None
 
 
+def _vault_denied(claims: dict) -> JSONResponse | None:
+    """The vault holds OTHER PEOPLE'S API keys, so it is the one place an
+    unproved address must not reach. With AUTHORITY_EMAIL_VERIFY off, anyone
+    can type any address and be signed in as its owner -- acceptable for a
+    game world, not for a credential store. Verified sessions (OIDC, magic
+    link) are unaffected."""
+    if claims.get("email_verified") is False:
+        return JSONResponse(
+            {"error": "this session signed in with an unverified email "
+                      "address; verify it to use the key vault"},
+            status_code=403)
+    return None
+
+
 @app.put("/vault/keys")
 async def vault_put(request: Request):
     if _VAULT_KEY is None:
@@ -519,6 +564,9 @@ async def vault_put(request: Request):
     claims = verify(_bearer(request) or "")
     if not claims:
         return JSONResponse({"error": "invalid token"}, status_code=401)
+    denied = _vault_denied(claims)
+    if denied:
+        return denied
     import re as _re2
     body = json.loads((await request.body()) or b"{}")
     provider = str(body.get("provider", ""))
@@ -552,6 +600,9 @@ async def vault_list(request: Request):
     claims = verify(_bearer(request) or "")
     if not claims:
         return JSONResponse({"error": "invalid token"}, status_code=401)
+    denied = _vault_denied(claims)
+    if denied:
+        return denied
     c = await _vault_client()
     rows = await c.find_vertices("credentials", realm=VAULT_REALM,
                                  filters={"sub": claims["sub"]}, limit=50)
@@ -566,6 +617,9 @@ async def vault_delete(request: Request, provider: str):
     claims = verify(_bearer(request) or "")
     if not claims:
         return JSONResponse({"error": "invalid token"}, status_code=401)
+    denied = _vault_denied(claims)
+    if denied:
+        return denied
     c = await _vault_client()
     rows = await c.find_vertices("credentials", realm=VAULT_REALM,
                                  filters={"key": f"{claims['sub']}:"
