@@ -427,8 +427,13 @@ async def login_email(request: Request):
             "key": _magic_hash(nonce), "email": email,
             "return_to": return_to, "created_at": now,
             "expires_at": now + MAGIC_TTL, "used_at": None})
-        link = (BASE + PREFIX + "/callback/email?t="
-                + urllib.parse.quote(nonce))
+        # BASE already carries the public prefix (it is
+        # https://agents.london/authority), which is why every OIDC redirect_uri
+        # is BASE + "/callback/..." with no PREFIX. Adding PREFIX here produced
+        # .../authority/authority/callback/email -- a 404 on every emailed link,
+        # while the endpoint itself tested fine because those tests hit the
+        # service directly and never went through the public path.
+        link = BASE + "/callback/email?t=" + urllib.parse.quote(nonce)
         _send_magic_mail(email, link)
     except Exception:
         logger.exception("magic link issue failed")

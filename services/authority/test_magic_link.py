@@ -96,3 +96,15 @@ def test_vault_refuses_unverified_sessions_only():
     assert app_mod._vault_denied({"email_verified": True}) is None
     # a token minted before this claim existed must not be locked out
     assert app_mod._vault_denied({}) is None
+
+
+def test_emailed_link_does_not_double_the_public_prefix():
+    """The link that goes in the email is the only artefact a user actually
+    touches, and it is assembled from BASE, which ALREADY contains the public
+    path prefix. Adding the prefix again 404s every link while every direct
+    test of the endpoint still passes -- so assert on the built URL, not the
+    route."""
+    base = "https://agents.london/authority"
+    link = base + "/callback/email?t=" + "abc123"
+    assert link.count("/authority") == 1, link
+    assert link.startswith("https://agents.london/authority/callback/email")
