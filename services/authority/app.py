@@ -224,6 +224,43 @@ async def login(provider: str, return_to: str = ""):
     return RedirectResponse(p["auth"] + "?" + q)
 
 
+# NOTE: this MUST be registered before /callback/{provider}. FastAPI matches in
+# registration order, so the parameterised route would otherwise swallow
+# "email" and reject it as an unknown OIDC provider -- redemption 404s and the
+# whole magic-link flow silently does not work. (Caught at the endpoint, 2026-09-16.)
+@app.get("/callback/email")
+async def callback_email(t: str = ""):
+    """Spend the link. Single use and time-bounded: the row is marked before
+    the token is minted, so a replayed link -- forwarded, cached by a scanner,
+    or sitting in a mailbox someone else later reads -- finds it already spent."""
+    bad = JSONResponse({"error": "this sign-in link is invalid, expired, or "
+                                 "has already been used"}, status_code=400)
+    if not t:
+        return bad
+    now = int(time.time())
+    try:
+        c = await _magic_client()
+        rows = await c.find_vertices("magic_links", realm=MAGIC_REALM,
+                                     filters={"key": _magic_hash(t)}, limit=1)
+        if not rows:
+            return bad
+        row = rows[0]
+        pl = dict(row.payload)
+        if pl.get("used_at") or int(pl.get("expires_at", 0)) <= now:
+            return bad
+        pl["used_at"] = now
+        await c.upsert_vertex("magic_links", realm=MAGIC_REALM,
+                              vertex_id=int(row.id), space="default",
+                              payload=pl)
+    except Exception:
+        logger.exception("magic link redemption failed")
+        return JSONResponse({"error": "could not complete sign-in"},
+                            status_code=502)
+    email = pl["email"]
+    return await _complete_login(user_id_from_email(email), "email", email,
+                                 pl.get("return_to") or "/")
+
+
 @app.get("/callback/{provider}")
 async def callback(provider: str, code: str = "", state: str = "",
                    error: str = ""):
@@ -355,39 +392,6 @@ async def login_email(request: Request):
         return JSONResponse({"error": "could not send the sign-in link"},
                             status_code=502)
     return JSONResponse(accepted, status_code=202)
-
-
-@app.get("/callback/email")
-async def callback_email(t: str = ""):
-    """Spend the link. Single use and time-bounded: the row is marked before
-    the token is minted, so a replayed link -- forwarded, cached by a scanner,
-    or sitting in a mailbox someone else later reads -- finds it already spent."""
-    bad = JSONResponse({"error": "this sign-in link is invalid, expired, or "
-                                 "has already been used"}, status_code=400)
-    if not t:
-        return bad
-    now = int(time.time())
-    try:
-        c = await _magic_client()
-        rows = await c.find_vertices("magic_links", realm=MAGIC_REALM,
-                                     filters={"key": _magic_hash(t)}, limit=1)
-        if not rows:
-            return bad
-        row = rows[0]
-        pl = dict(row.payload)
-        if pl.get("used_at") or int(pl.get("expires_at", 0)) <= now:
-            return bad
-        pl["used_at"] = now
-        await c.upsert_vertex("magic_links", realm=MAGIC_REALM,
-                              vertex_id=int(row.id), space="default",
-                              payload=pl)
-    except Exception:
-        logger.exception("magic link redemption failed")
-        return JSONResponse({"error": "could not complete sign-in"},
-                            status_code=502)
-    email = pl["email"]
-    return await _complete_login(user_id_from_email(email), "email", email,
-                                 pl.get("return_to") or "/")
 
 
 @app.get("/me")
