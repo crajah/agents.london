@@ -41,6 +41,15 @@ spec:
             - name: AUTHORITY_INTERNAL_KEY
               valueFrom:
                 secretKeyRef: { name: authority-jwt, key: internal_key }
+            # Which email door is open. "1" = a magic link is emailed and the
+            # address must be proved; "0" = a typed address signs in directly
+            # and the session is marked email_verified=false (the vault then
+            # refuses it -- see safety notes in services/authority/app.py).
+            # Declared explicitly rather than left to the code default so the
+            # choice is visible here, and so a deploy stops silently reverting
+            # a `kubectl set env` (which is exactly what happened 2026-09-16).
+            - name: AUTHORITY_EMAIL_VERIFY
+              value: "1"
             # Magic-link sign-in. Every ref is optional:true, so the service
             # still starts without the secret -- it just refuses /login/email
             # with a 503 rather than pretending to send mail. Create the
