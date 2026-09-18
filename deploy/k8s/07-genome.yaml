@@ -1,12 +1,56 @@
 # genome — four services, one world-engine. Applied as a unit; images are
 # retagged by the pipeline like every other manifest here.
+#
+# PAUSED BY DEFAULT. The workers are the whole cost of genome -- 18 of its 22
+# pods and ~9.5Gi of requests -- and the simulation is not needed running most
+# of the time, so both StatefulSets ship at replicas: 0. Resume from the admin
+# screen (Simulation admin -> Engine), which scales each worker back to its own
+# SHARD_COUNT. Leaving the committed default at 0 is what makes the pause
+# survive a redeploy; a redeploy of a hand-scaled cluster would otherwise
+# resurrect all 18 pods.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: genome-api
+  namespace: default
+---
+# The narrowest grant that lets the admin screen pause and resume: read and
+# write the scale of exactly the two worker StatefulSets, nothing else. No pod
+# access, no create, no delete, and resourceNames pins it to these two objects
+# so the token cannot touch any other workload in the namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: genome-engine-scaler
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "statefulsets/scale"]
+    resourceNames: ["genome-tick-worker", "genome-decision-worker"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: genome-engine-scaler
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: genome-api
+    namespace: default
+roleRef:
+  kind: Role
+  name: genome-engine-scaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: genome-api
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector: { matchLabels: { app: genome-api } }
   template:
     metadata:
@@ -16,6 +60,7 @@ spec:
         prometheus.io/port: "8800"
         prometheus.io/path: /metrics
     spec:
+      serviceAccountName: genome-api
       containers:
         - name: genome-api
           image: gcr.io/crajah-dev/genome-api:latest
@@ -93,7 +138,7 @@ metadata:
   name: genome-web
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector: { matchLabels: { app: genome-web } }
   template:
     metadata: { labels: { app: genome-web } }
@@ -139,7 +184,11 @@ spec:
   # queue (any worker, any world) and Phase 3 made the sweep O(n), so maintenance
   # is cheap and 16 is no longer needed -- back down to 8 (2026-09-13). Draining
   # no longer depends on this count at all; only per-realm maintenance does.
-  replicas: 8
+  #
+  # 0 = paused, the committed default. SHARD_COUNT below stays 8: it is the
+  # running width, and resume scales back to exactly it. The two must match --
+  # a resume to any other number leaves realms whose shard nobody owns.
+  replicas: 0
   serviceName: genome-tick-worker-hs
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-tick-worker } }
@@ -221,7 +270,11 @@ spec:
   # replica k owns agents where crc32(uuid) % SHARD_COUNT == k -- no two
   # replicas ever answer for the same agent. Scale out = raise replicas AND
   # SHARD_COUNT together (kept equal), else shards collide or go unclaimed.
-  replicas: 10
+  #
+  # 0 = paused, the committed default; resume scales back to SHARD_COUNT below.
+  # That equality is the whole reason resume reads SHARD_COUNT off the pod spec
+  # rather than taking a replica count from the caller.
+  replicas: 0
   serviceName: genome-decision-worker-hs
   podManagementPolicy: Parallel
   selector: { matchLabels: { app: genome-decision-worker } }
