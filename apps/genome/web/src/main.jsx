@@ -470,19 +470,25 @@ function AdminPanel({ onClose }) {
     localStorage.getItem("genome_admin_token") || "");
   const [worlds, setWorlds] = useState(null);
   const [cfg, setCfg] = useState(null);
+  const [engine, setEngine] = useState(null);
+  const [engineBusy, setEngineBusy] = useState(false);
   const [costs, setCosts] = useState(null);
   const [err, setErr] = useState(null);
   const hdrs = { "x-admin-token": token, "Content-Type": "application/json" };
   const load = async () => {
     setErr(null);
     try {
-      const [rw, rc] = await Promise.all([
+      const [rw, rc, re] = await Promise.all([
         fetch(`${API}/admin/worlds`, { headers: hdrs }),
-        fetch(`${API}/admin/config`, { headers: hdrs })]);
+        fetch(`${API}/admin/config`, { headers: hdrs }),
+        fetch(`${API}/admin/engine`, { headers: hdrs })]);
       if (!rw.ok) throw new Error("token rejected");
       localStorage.setItem("genome_admin_token", token);
       setWorlds(await rw.json());
       setCfg(await rc.json());
+      // Engine state is a nice-to-have: an api without the scaler RoleBinding
+      // 502s here, and the rest of the panel stays usable.
+      setEngine(re.ok ? await re.json() : null);
     } catch (e) { setErr(String(e.message || e)); setWorlds(null); }
   };
   const saveCfg = async (patch) => {
@@ -490,6 +496,19 @@ function AdminPanel({ onClose }) {
     setCfg(next);
     await fetch(`${API}/admin/config`, {
       method: "PUT", headers: hdrs, body: JSON.stringify(next) });
+  };
+  // Pause scales both worker StatefulSets to 0; resume puts each back to its
+  // own SHARD_COUNT. Resumed pods take a while to report ready, so the button
+  // stays disabled until the call lands rather than inviting a second click.
+  const engineAct = async (verb) => {
+    setEngineBusy(true);
+    try {
+      const r = await fetch(`${API}/admin/engine/${verb}`,
+                            { method: "POST", headers: hdrs });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) setErr(d.error || `${verb} failed`);
+      else setEngine(d);
+    } finally { setEngineBusy(false); }
   };
   const [roster, setRoster] = useState(null);
   const agentAct = async (uuid, verb) => {
@@ -539,6 +558,39 @@ function AdminPanel({ onClose }) {
                   className="px-3 py-1.5 bg-emerald-700 rounded">connect</button>
         </div>
         {err && <div className="text-amber-400 mb-3">{err}</div>}
+        {engine && (
+          <div className="mb-4 p-3 bg-neutral-800/60 rounded">
+            <div className="font-semibold mb-2 flex items-center gap-2">
+              Engine
+              <span className={"px-2 py-0.5 rounded text-xs "
+                + (engine.paused ? "bg-amber-900 text-amber-200"
+                                 : "bg-emerald-900 text-emerald-200")}>
+                {engine.paused ? "paused" : "running"}
+              </span>
+              <span className="opacity-50 font-normal text-xs">
+                — the worker pods. Paused, genome costs nothing but this
+                screen, and no world progresses.
+              </span>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <button
+                disabled={engineBusy}
+                onClick={() => engineAct(engine.paused ? "resume" : "pause")}
+                className={"px-3 py-1.5 rounded disabled:opacity-40 "
+                  + (engine.paused ? "bg-emerald-700" : "bg-amber-700")}>
+                {engineBusy ? "working…" : engine.paused ? "resume" : "pause"}
+              </button>
+              {engine.workers.map(w => (
+                <span key={w.name} className="opacity-70 text-xs">
+                  {w.name.replace("genome-", "")}: {w.ready}/{w.replicas}
+                  <span className="opacity-50"> of {w.shard_count} shards</span>
+                </span>))}
+              <button onClick={load}
+                      className="px-2 py-1 bg-neutral-700 rounded text-xs">
+                refresh
+              </button>
+            </div>
+          </div>)}
         {cfg && (
           <div className="mb-4 p-3 bg-neutral-800/60 rounded">
             <div className="font-semibold mb-2">Free agents

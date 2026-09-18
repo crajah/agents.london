@@ -1720,6 +1720,116 @@ async def admin_resume(realm: str, request: __import__("fastapi").Request):
     return {"ok": True, "resumed": realm}
 
 
+# ---------------------------------------------------------------------------
+# Engine pause/resume. The per-world pause above is a flag the tick reads: the
+# world stops progressing but every worker pod stays up, so it saves nothing.
+# This is the other kind -- it scales the two worker StatefulSets, which are 18
+# of genome's 22 pods and ~9.5Gi of its requests. Paused genome costs the api
+# and the web pod and nothing else, which is why 0 is the committed default in
+# 07-genome.yaml rather than a state someone has to remember to restore.
+#
+# Resume never takes a replica count from the caller. Both workers shard
+# statically -- replica k owns the realms (or agents) where crc32(x) %
+# SHARD_COUNT == k -- so any count other than SHARD_COUNT leaves shards nobody
+# owns, silently stranding whole worlds. The count is read back off each pod
+# spec instead, which also means changing SHARD_COUNT in the manifest moves
+# resume with it.
+# ---------------------------------------------------------------------------
+
+_K8S_SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+_ENGINE_WORKERS = ("genome-tick-worker", "genome-decision-worker")
+
+
+def _k8s(method: str, path: str, body=None):
+    """One in-cluster Kubernetes API call, stdlib only.
+
+    Not the `kubernetes` package: this needs two verbs against two named
+    objects, and the dependency would land in every genome-api image for it.
+    The RoleBinding in 07-genome.yaml is what makes the pod token able to do
+    this, and it is scoped by resourceNames to exactly the two workers.
+    """
+    import json as _j
+    import ssl as _ssl
+    import urllib.request as _u
+    with open(f"{_K8S_SA}/token") as f:
+        token = f.read().strip()
+    with open(f"{_K8S_SA}/namespace") as f:
+        ns = f.read().strip()
+    host = os.getenv("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+    port = os.getenv("KUBERNETES_SERVICE_PORT", "443")
+    req = _u.Request(f"https://{host}:{port}{path.format(ns=ns)}",
+                     data=_j.dumps(body).encode() if body is not None else None,
+                     method=method)
+    req.add_header("Authorization", "Bearer " + token)
+    if body is not None:
+        req.add_header("Content-Type", "application/merge-patch+json")
+    ctx = _ssl.create_default_context(cafile=f"{_K8S_SA}/ca.crt")
+    with _u.urlopen(req, context=ctx, timeout=15) as r:
+        return _j.loads(r.read())
+
+
+def _engine_worker(name: str) -> dict:
+    d = _k8s("GET", f"/apis/apps/v1/namespaces/{{ns}}/statefulsets/{name}")
+    env = {e["name"]: e.get("value") for e
+           in d["spec"]["template"]["spec"]["containers"][0].get("env", [])}
+    return {"name": name,
+            "replicas": d["spec"].get("replicas", 0),
+            "ready": d.get("status", {}).get("readyReplicas") or 0,
+            "shard_count": int(env.get("SHARD_COUNT") or 0)}
+
+
+def _engine_scale(name: str, replicas: int) -> None:
+    _k8s("PATCH",
+         f"/apis/apps/v1/namespaces/{{ns}}/statefulsets/{name}/scale",
+         {"spec": {"replicas": replicas}})
+
+
+@app.get("/admin/engine", tags=["Admin"])
+async def admin_engine(request: __import__("fastapi").Request):
+    """Whether the world engine is running, and at what width."""
+    from fastapi.responses import JSONResponse
+    import asyncio as _aio
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    try:
+        workers = await _aio.to_thread(
+            lambda: [_engine_worker(n) for n in _ENGINE_WORKERS])
+    except Exception as e:                       # no RBAC, no token, no api
+        return JSONResponse({"error": f"kubernetes: {e}"}, status_code=502)
+    return {"paused": all(w["replicas"] == 0 for w in workers),
+            "workers": workers}
+
+
+@app.post("/admin/engine/{verb}", tags=["Admin"])
+async def admin_engine_set(verb: str,
+                           request: __import__("fastapi").Request):
+    """pause -> both workers to 0. resume -> each back to its SHARD_COUNT."""
+    from fastapi.responses import JSONResponse
+    import asyncio as _aio
+    if not _admin_ok(request):
+        return JSONResponse({"error": "admin token"}, status_code=403)
+    if verb not in ("pause", "resume"):
+        return JSONResponse({"error": "pause or resume"}, status_code=404)
+
+    def _apply():
+        out = []
+        for name in _ENGINE_WORKERS:
+            st = _engine_worker(name)
+            # Falling back to 1 keeps resume from being a silent no-op if
+            # SHARD_COUNT is ever unset; one worker owns every shard.
+            want = 0 if verb == "pause" else (st["shard_count"] or 1)
+            if st["replicas"] != want:
+                _engine_scale(name, want)
+            out.append({**st, "replicas": want})
+        return out
+
+    try:
+        workers = await _aio.to_thread(_apply)
+    except Exception as e:
+        return JSONResponse({"error": f"kubernetes: {e}"}, status_code=502)
+    return {"ok": True, "paused": verb == "pause", "workers": workers}
+
+
 @app.post("/me/materialize", tags=["Account"])
 async def my_materialize(request: __import__("fastapi").Request):
     """Rule 2.1: a further agent costs 8 units of deposited stock drawn
